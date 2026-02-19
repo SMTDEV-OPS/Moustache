@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Phone, Mail, MessageCircle, Video, FileText, Calendar, User as UserIcon, Hotel, Flame, Clock, CheckCircle, XCircle, RefreshCw, IndianRupee, Loader2, Edit, Save, Building2, Users, ThermometerSun, MessageSquare } from "lucide-react";
-import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
+import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, LeadStage, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
 import { listEmails, EmailMessage } from "@/services/email";
 import { EmailComposer } from "@/components/EmailComposer";
 import { ScheduleFollowUpDialog } from "@/components/ScheduleFollowUpDialog";
@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { EditContactDetailsDialog } from "@/components/EditContactDetailsDialog";
 import { EditLeadDetailsDialog, LeadTripDetails } from "@/components/EditLeadDetailsDialog";
+import { CreateBookingDialog } from "@/components/CreateBookingDialog";
 
 interface LeadDetailPageProps {
   leadId: string;
@@ -189,6 +190,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   // State for editable fields - must be declared before any early returns
   const [editingStatus, setEditingStatus] = useState(false);
   const [localStatus, setLocalStatus] = useState<LeadStatus>("NEW");
+  const [localStage, setLocalStage] = useState<LeadStage>("NEW_LEAD");
+  const [localClosedReason, setLocalClosedReason] = useState<string>("");
   const [localHeatLevel, setLocalHeatLevel] = useState<HeatLevel>("WARM");
   const [localCallStatus, setLocalCallStatus] = useState<string>("");
   const [localNotes, setLocalNotes] = useState<string>("");
@@ -198,6 +201,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [isEditContactDialogOpen, setIsEditContactDialogOpen] = useState(false);
   const [isEditLeadDetailsDialogOpen, setIsEditLeadDetailsDialogOpen] = useState(false);
+  const [isCreateBookingDialogOpen, setIsCreateBookingDialogOpen] = useState(false);
 
   // Permission checks
   const canUpdate = !!isAdmin || permissions?.includes("leads.update") || permissions?.includes("leads.manage");
@@ -215,6 +219,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     if (leadDetail) {
       const lead = leadDetail.lead;
       setLocalStatus(lead.status);
+      setLocalStage(lead.stage || "NEW_LEAD");
+      setLocalClosedReason(lead.closedReason || "");
       setLocalHeatLevel(lead.heatLevel);
       setLocalCallStatus((lead as any).callStatus || "");
       setLocalNotes(lead.notes || "");
@@ -404,11 +410,51 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     }
   };
 
+  const getScoreColor = (score: number) => {
+    if (score >= 7) return "bg-green-100 text-green-800 border-green-200";
+    if (score >= 4) return "bg-yellow-100 text-yellow-800 border-yellow-200";
+    return "bg-red-100 text-red-800 border-red-200";
+  };
+
+  const STAGES: LeadStage[] = ["NEW_LEAD", "FIRST_CONNECT", "DISCUSSION", "PAYMENT_REQUEST", "BOOKED"];
+
+  const getStageLabel = (stage: string) => {
+    switch (stage) {
+      case "NEW_LEAD": return "New Lead";
+      case "FIRST_CONNECT": return "1st Connect";
+      case "DISCUSSION": return "Discussion";
+      case "PAYMENT_REQUEST": return "Payment Request";
+      case "BOOKED": return "Booked";
+      case "LOST": return "Lost";
+      default: return stage.replace(/_/g, " ");
+    }
+  };
+
   const handleStatusChange = async () => {
+    // MANDATORY DATA VALIDATION (SOP 1.9)
+    if (["PAYMENT_REQUEST", "BOOKED"].includes(localStage)) {
+      const missingFields: string[] = [];
+      const lead = leadDetail?.lead;
+      if (!lead?.checkInDate) missingFields.push("Check-in Date");
+      if (!lead?.checkOutDate) missingFields.push("Check-out Date");
+      if (!lead?.guests?.adults && !lead?.guests?.children) missingFields.push("Guest Count");
+
+      if (missingFields.length > 0) {
+        toast({
+          title: "Missing Mandatory Data",
+          description: `Please fill the following fields before moving to ${getStageLabel(localStage)}: ${missingFields.join(", ")}`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     try {
       setIsSavingStatus(true);
       await updateLead(leadId, {
         status: localStatus,
+        stage: localStage,
+        closedReason: localStatus === "LOST" ? localClosedReason : undefined,
         heatLevel: localHeatLevel,
         callStatus: localCallStatus || undefined,
       });
@@ -559,6 +605,11 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             <p className="text-xs text-muted-foreground mt-1">
               {lead.leadNumber ?? lead.id}
             </p>
+            {lead.score !== undefined && (
+              <Badge variant="outline" className={`ml-2 ${getScoreColor(lead.score)}`}>
+                Score: {lead.score}/10
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -577,8 +628,55 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             <FileText className="h-4 w-4 mr-2" />
             Create Quotation
           </Button>
+          <Button
+            size="sm"
+            variant="default"
+            className="bg-green-600 hover:bg-green-700"
+            onClick={() => setIsCreateBookingDialogOpen(true)}
+          >
+            <Hotel className="h-4 w-4 mr-2" />
+            Create Booking
+          </Button>
         </div>
       </div>
+
+      {/* Pipeline Stepper */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="relative flex items-center justify-between w-full">
+            <div className="absolute left-0 top-1/2 w-full h-1 bg-gray-200 -z-0"></div>
+            {STAGES.map((stage, index) => {
+              const currentStageIndex = STAGES.indexOf(lead.stage as LeadStage) > -1
+                ? STAGES.indexOf(lead.stage as LeadStage)
+                : (lead.stage === "LOST" ? -1 : 0);
+
+              const isCompleted = index <= currentStageIndex;
+              const isCurrent = index === currentStageIndex;
+
+              return (
+                <div key={stage} className="relative z-10 flex flex-col items-center bg-white px-2">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center border-2 
+                      ${isCompleted ? "bg-primary border-primary text-primary-foreground" : "bg-white border-gray-300 text-gray-300"}
+                      ${isCurrent ? "ring-4 ring-primary/20" : ""}
+                    `}
+                  >
+                    {index + 1}
+                  </div>
+                  <span className={`text-xs mt-2 font-medium ${isCompleted ? "text-primary" : "text-gray-400"}`}>
+                    {getStageLabel(stage)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {lead.stage === "LOST" && (
+            <div className="flex justify-center mt-4">
+              <Badge variant="destructive">LOST LEAD</Badge>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Main Content Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -669,7 +767,27 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-muted-foreground uppercase mb-2 block">Status</label>
+                  <label className="text-xs text-muted-foreground uppercase mb-2 block">Stage</label>
+                  <Select
+                    value={localStage}
+                    onValueChange={(value) => setLocalStage(value as LeadStage)}
+                    disabled={!canUpdate}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STAGES.map((stage) => (
+                        <SelectItem key={stage} value={stage}>
+                          {getStageLabel(stage)}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="LOST">Lost</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase mb-2 block">Status (Legacy)</label>
                   <Select
                     value={localStatus}
                     onValueChange={(value) => setLocalStatus(value as LeadStatus)}
@@ -689,6 +807,35 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                     </SelectContent>
                   </Select>
                 </div>
+                {(localStatus === "LOST" || localStage === "LOST") && (
+                  <div>
+                    <label className="text-xs text-muted-foreground uppercase mb-2 block">Closed Reason</label>
+                    <Select
+                      value={localClosedReason}
+                      onValueChange={setLocalClosedReason}
+                      disabled={!canUpdate}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Reason" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SOLD_OUT">Sold Out</SelectItem>
+                        <SelectItem value="BUDGET">Budget Issue</SelectItem>
+                        <SelectItem value="BOOKED_OTA">Booked OTA</SelectItem>
+                        <SelectItem value="BOOKED_WEBSITE">Booked Website</SelectItem>
+                        <SelectItem value="BOOKED_OTHER_PROPERTY">Booked Other Property</SelectItem>
+                        <SelectItem value="NO_RESPONSE">No Response</SelectItem>
+                        <SelectItem value="PRICE">Price</SelectItem>
+                        <SelectItem value="NO_AVAILABILITY">No Availability</SelectItem>
+                        <SelectItem value="POLICY_UNDER_18">Policy: Under 18</SelectItem>
+                        <SelectItem value="POLICY_LOCAL_ID">Policy: Local ID</SelectItem>
+                        <SelectItem value="POLICY_PET">Policy: Pet</SelectItem>
+                        <SelectItem value="POLICY_ALCOHOL">Policy: Alcohol</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs text-muted-foreground uppercase mb-2 block">Heat Level</label>
                   <Select
@@ -1022,6 +1169,14 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
           occasion: lead.occasion,
         }}
         onSave={handleSaveLeadDetails}
+      />
+      <CreateBookingDialog
+        isOpen={isCreateBookingDialogOpen}
+        onClose={() => setIsCreateBookingDialogOpen(false)}
+        lead={lead}
+        onSuccess={() => {
+          void loadLeadDetail();
+        }}
       />
     </div>
   );

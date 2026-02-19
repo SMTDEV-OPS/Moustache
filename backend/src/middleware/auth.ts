@@ -7,17 +7,20 @@ import { RoleModel } from "../models/role";
 import { UserRoleModel } from "../models/userRole";
 import { EmployeeGroupModel } from "../models/employeeGroup";
 import { logger } from "../config/logger";
+import { AccessControlService } from "../services/auth/AccessControlService";
 
 export interface AuthUser {
   id: string;
   email: string;
   roleId?: string;
   isAdmin?: boolean;
+  permissions?: string[];
+  descendants?: string[]; // IDs of subordinates
 }
 
 declare module "express-serve-static-core" {
   interface Request {
-    user?: AuthUser & { permissions?: string[]; isAdmin?: boolean };
+    user?: AuthUser;
   }
 }
 
@@ -93,87 +96,12 @@ export async function requireAuth(
       return next(unauthorized());
     }
 
-    let permissions: string[] | undefined;
-    let isAdmin = false;
+    const { permissions, isAdmin } = await AccessControlService.getUserPermissions(user.id);
 
-    const explicitAssignments = await UserRoleModel.find({
-      userId: user._id,
-    }).lean();
-
-    const explicitRoleIds = explicitAssignments.map((a) => a.roleId);
-
-    // Roles coming from groups
-    const groups = await EmployeeGroupModel.find({
-      memberUserIds: user._id,
-      isActive: true,
-    }).lean();
-
-    const groupRoleIds = groups.flatMap((g) => g.roleIds ?? []);
-
-    // Roles where user is an owner (SPOC) - they get ownerPermissions
-    const ownedRoles = await RoleModel.find({
-      $or: [
-        { ownerUserId: user._id },
-        { ownerUserIds: user._id },
-      ],
-    }).lean();
-
-    const ownerRoleIds = ownedRoles.map((r) => r._id);
-
-    let roleIds = [...explicitRoleIds, ...groupRoleIds];
-
-    // Fallback to legacy single roleId on user / token
-    if (roleIds.length === 0) {
-      const fallbackRoleId = user.roleId ?? decoded.roleId;
-      if (fallbackRoleId) {
-        roleIds = [fallbackRoleId as any];
-      }
-    }
-
-    const permsSet = new Set<string>();
-
-    // Process regular roles (from assignments and groups)
-    // Group members get memberPermissions from roles
-    if (roleIds.length > 0) {
-      const uniqueIds = Array.from(new Set(roleIds.map((id) => id.toString())));
-      const roles = await RoleModel.find({ _id: { $in: uniqueIds } }).lean();
-
-      for (const role of roles) {
-        // Use memberPermissions if available, fallback to legacy permissions field
-        const memberPerms = role.memberPermissions && role.memberPermissions.length > 0
-          ? role.memberPermissions
-          : role.permissions ?? []; // Fallback to legacy permissions
-
-        for (const p of memberPerms) {
-          permsSet.add(p);
-        }
-        // Check for admin role - case-insensitive and also check isSystemRole
-        if (role.name?.toLowerCase() === "admin" || role.isSystemRole) {
-          isAdmin = true;
-        }
-      }
-    }
-
-    // Process owner permissions (from roles where user is an owner/SPOC)
-    // Role owners get ownerPermissions
-    for (const role of ownedRoles) {
-      const ownerPerms = role.ownerPermissions && role.ownerPermissions.length > 0
-        ? role.ownerPermissions
-        : []; // No fallback - owners must have explicit ownerPermissions
-
-      for (const p of ownerPerms) {
-        permsSet.add(p);
-      }
-
-      // Check for admin role - case-insensitive and also check isSystemRole
-      if (role.name?.toLowerCase() === "admin" || role.isSystemRole) {
-        isAdmin = true;
-      }
-    }
-
-    if (permsSet.size > 0) {
-      permissions = Array.from(permsSet);
-    }
+    // Populate descendants for "Own" scope checks
+    // optimization: only if user has management capabilities?
+    // for now, always fetch to be safe.
+    const descendants = await AccessControlService.getDescendants(user.id);
 
     req.user = {
       id: user.id,
@@ -181,6 +109,7 @@ export async function requireAuth(
       roleId: user.roleId?.toString(),
       isAdmin,
       permissions,
+      descendants,
     };
 
     logger.debug("User authenticated successfully", {
@@ -318,16 +247,9 @@ export function requirePermissions(required: string[]) {
 export function requireAnyPermission(required: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     const requestId = req.requestId;
-    const source = getRequestSource(req);
+    // const source = getRequestSource(req); // helper not exported? it is in this file.
 
     if (!req.user) {
-      logger.warn("Permission check failed: user not authenticated", {
-        requestId,
-        method: req.method,
-        path: req.originalUrl,
-        requiredPermissions: required,
-        ...source,
-      });
       return next(unauthorized());
     }
 
@@ -335,15 +257,32 @@ export function requireAnyPermission(required: string[]) {
       return next();
     }
 
-    logger.warn("Permission check failed: insufficient permissions", {
-      requestId,
-      userId: req.user.id,
-      method: req.method,
-      path: req.originalUrl,
-      requiredPermissions: required,
-      userPermissions: req.user.permissions,
-      ...source,
-    });
     return next(forbidden("Insufficient permissions"));
+  };
+}
+
+/**
+ * Middleware to check scoped permissions.
+ * Usage: requireResourcePermission("leads", "read", req => ({ regionId: req.params.regionId }))
+ */
+export function requireResourcePermission(
+  resource: string,
+  action: string,
+  contextResolver: (req: Request) => Promise<any>
+) {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return next(unauthorized());
+
+      const context = await contextResolver(req);
+      const allowed = await AccessControlService.hasPermission(req.user, resource, action, context);
+
+      if (!allowed) {
+        return next(forbidden("Insufficient permissions for this resource"));
+      }
+      return next();
+    } catch (err) {
+      next(err);
+    }
   };
 }

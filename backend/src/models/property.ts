@@ -10,6 +10,12 @@ export interface IProperty extends Document {
   };
   timeZone?: string;
   status: "ACTIVE" | "INACTIVE";
+  pmsProvider?: "NONE" | "EZEE";
+  pmsConfig?: {
+    hotelCode?: string;
+    authCode?: string;
+    username?: string;
+  };
 }
 
 const propertySchema = new Schema<IProperty>(
@@ -23,6 +29,16 @@ const propertySchema = new Schema<IProperty>(
     },
     timeZone: String,
     status: { type: String, enum: ["ACTIVE", "INACTIVE"], default: "ACTIVE" },
+    pmsProvider: {
+      type: String,
+      enum: ["NONE", "EZEE"],
+      default: "NONE",
+    },
+    pmsConfig: {
+      hotelCode: String,
+      authCode: String,
+      username: String,
+    },
   },
   { timestamps: true }
 );

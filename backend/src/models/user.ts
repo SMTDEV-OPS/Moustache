@@ -8,6 +8,8 @@ export interface IUser extends Document {
   teamType: TeamType;
   regions: ObjectId[];
   roleId?: ObjectId;
+  reportsTo?: ObjectId;
+  hierarchyPath?: string;
   groupIds?: ObjectId[];
   buddyUserId?: ObjectId;
   status: "ACTIVE" | "INACTIVE";
@@ -27,6 +29,8 @@ const userSchema = new Schema<IUser>(
     teamType: { type: String, enum: Object.values(TeamType), required: true },
     regions: [RegionRef],
     roleId: { type: Schema.Types.ObjectId, ref: "Role" },
+    reportsTo: { type: Schema.Types.ObjectId, ref: "User", index: true },
+    hierarchyPath: { type: String, index: true }, // Materialized path: /CEO_ID/VP_ID/MANAGER_ID/
     groupIds: [{ type: Schema.Types.ObjectId, ref: "EmployeeGroup", index: true }],
     buddyUserId: UserRef,
     status: { type: String, enum: ["ACTIVE", "INACTIVE"], default: "ACTIVE" },

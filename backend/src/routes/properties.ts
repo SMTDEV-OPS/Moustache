@@ -18,8 +18,17 @@ const propertySchema = z.object({
       country: z.string().optional(),
     })
     .optional(),
+  title: z.string().optional(), // Allow title if it exists on frontend form (sometimes it does)
   timeZone: z.string().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  pmsProvider: z.enum(["NONE", "EZEE"]).optional(),
+  pmsConfig: z
+    .object({
+      hotelCode: z.string().optional(),
+      authCode: z.string().optional(),
+      username: z.string().optional(),
+    })
+    .optional(),
 });
 
 propertiesRouter.get("/", async (_req, res, next) => {

@@ -33,6 +33,7 @@ import { conglomeratesRouter } from "./routes/conglomerates";
 import { contactsRouter } from "./routes/contacts";
 import { accountPotentialsRouter } from "./routes/accountPotentials";
 import { hotelBrandsRouter } from "./routes/hotelBrands";
+import { pmsRouter } from "./routes/pms";
 
 export const app = express();
 
@@ -92,6 +93,7 @@ app.use("/conglomerates", conglomeratesRouter);
 app.use("/contacts", contactsRouter);
 app.use("/account-potentials", accountPotentialsRouter);
 app.use("/hotel-brands", hotelBrandsRouter);
+app.use("/pms", pmsRouter);
 
 // Public endpoints (no authentication required)
 app.use("/api/public/website-leads", publicWebsiteLeadsRouter);

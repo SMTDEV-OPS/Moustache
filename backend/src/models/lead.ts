@@ -10,6 +10,7 @@ import {
   LeadRef,
   LeadSource,
   LeadStatus,
+  LeadStage, // New SOP stage enum
   LeadType,
   PropertyRef,
   RegionRef,
@@ -37,8 +38,18 @@ export interface ILead extends Document {
   propertyId?: Types.ObjectId;
   source: LeadSource;
   leadType: LeadType;
-  status: LeadStatus;
+
+  // Status & Pipeline
+  status: LeadStatus; // Legacy/Backward compat
+  stage: LeadStage;   // New SOP pipeline stage
+
+  // Scoring & Qualification
   heatLevel: HeatLevel;
+  score: number;      // 0-10 SOP score
+  budget?: number;    // Numeric budget for scoring
+  bookingWindow?: string; // "Within 5 hrs", "Within 24 hrs", "Yet to decide"
+  customerType?: string; // B2C, B2B, Corporate, Influencer, NRI, HNI, Reference
+
   checkInDate?: Date;
   checkOutDate?: Date;
   roomsRequested?: number;
@@ -71,6 +82,7 @@ export interface ILead extends Document {
   callStatus?: CallStatus;
   pendingAmount?: number;
   lastSMSFollowUpAt?: Date;
+  followUpCount: number; // Track number of follow-ups
 }
 
 const leadSchema = new Schema<ILead>(
@@ -86,17 +98,32 @@ const leadSchema = new Schema<ILead>(
     propertyId: PropertyRef,
     source: { type: String, enum: Object.values(LeadSource), required: true },
     leadType: { type: String, enum: Object.values(LeadType), required: true },
+
+    // Status & Progression
     status: {
       type: String,
       enum: Object.values(LeadStatus),
       default: LeadStatus.NEW,
       index: true,
     },
+    stage: {
+      type: String,
+      enum: Object.values(LeadStage),
+      default: LeadStage.NEW_LEAD, // Default to first SOP stage
+      index: true,
+    },
+
+    // Scoring & Heat
     heatLevel: {
       type: String,
       enum: Object.values(HeatLevel),
       default: HeatLevel.WARM,
     },
+    score: { type: Number, default: 0 }, // 0-10 score
+    budget: Number,
+    bookingWindow: String,
+    customerType: String,
+
     checkInDate: Date,
     checkOutDate: Date,
     roomsRequested: Number,
@@ -137,6 +164,7 @@ const leadSchema = new Schema<ILead>(
     },
     pendingAmount: Number,
     lastSMSFollowUpAt: Date,
+    followUpCount: { type: Number, default: 0 },
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );

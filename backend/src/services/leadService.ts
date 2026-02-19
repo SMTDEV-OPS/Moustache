@@ -12,9 +12,13 @@ import {
   HeatLevel,
   LeadSource,
   LeadStatus,
+  LeadStage,
   LeadType,
   TeamType,
+  TicketPriority,
+  TicketStatus,
 } from "../models/common";
+import { TaskModel } from "../models/task";
 import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import {
   autoAssignLead as autoAssignFromRules,
@@ -59,6 +63,10 @@ export interface CreateLeadInput {
   assignmentMode?: AssignmentMode;
   assignedToUserId?: string;
   createdByUserId?: string;
+  // New fields
+  budget?: number;
+  bookingWindow?: string;
+  customerType?: string;
 }
 
 export interface AutoAssignResult {
@@ -68,6 +76,106 @@ export interface AutoAssignResult {
   assignmentMethod: "auto" | "manual" | "legacy" | "none";
   wasRedirectedToBuddy?: boolean;
   originalAssigneeId?: Types.ObjectId;
+}
+
+// Helper to calculate lead score (0-10) based on SOP 1.11
+export function calculateLeadScore(lead: Partial<ILead>): number {
+  let score = 0;
+
+  // 1. Travel Date Urgency (0-3 points)
+  if (lead.checkInDate) {
+    const daysUntilCheckIn = Math.ceil(
+      (new Date(lead.checkInDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (daysUntilCheckIn >= 0 && daysUntilCheckIn <= 10) score += 3;
+    else if (daysUntilCheckIn > 10 && daysUntilCheckIn <= 30) score += 2;
+    // else if (daysUntilCheckIn > 30 && daysUntilCheckIn <= 60) score += 1;
+    else if (daysUntilCheckIn > 30) score += 1;
+  }
+
+  // 2. Budget Fit (0-2 points)
+  if (lead.budget && lead.budget > 0) {
+    score += 1;
+  }
+
+  // 3. Engagement Level (0-2 points)
+  if (lead.contactDetails?.phone || lead.contactDetails?.email) score += 1;
+  if (lead.status && lead.status !== LeadStatus.NEW) score += 1;
+
+  // 4. Call Back Requested (0-1 point)
+  if (lead.source === LeadSource.IVR) score += 1;
+
+  // 5. Deal Size (0-2 points)
+  const dealValue = parseFloat(lead.estimatedValue || "0") || lead.budget || 0;
+  if (dealValue >= 50000) score += 2;
+  else if (dealValue >= 20000) score += 1;
+
+  return Math.min(score, 10);
+}
+
+// Helper to derive heat level based on SOP 1.5 & 1.11
+export function deriveHeatLevel(lead: Partial<ILead>): HeatLevel {
+  const score = calculateLeadScore(lead);
+  if (score >= 7) return HeatLevel.HOT;
+  if (score >= 4) return HeatLevel.WARM;
+  return HeatLevel.COLD;
+}
+
+// Helper to schedule follow-ups based on SOP 1.8
+async function scheduleFollowUps(lead: ILead) {
+  if (!lead.assignedToUserId) return;
+
+  const now = new Date();
+  const tasks = [];
+
+  if (lead.heatLevel === HeatLevel.HOT) {
+    // Hot: 2 hrs and 5 hrs
+    tasks.push({
+      title: "Hot Lead Follow-up 1",
+      description: "First follow-up for Hot lead (2 hours)",
+      dueAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
+    });
+    tasks.push({
+      title: "Hot Lead Follow-up 2",
+      description: "Second follow-up for Hot lead (5 hours)",
+      dueAt: new Date(now.getTime() + 5 * 60 * 60 * 1000),
+    });
+  } else if (lead.heatLevel === HeatLevel.WARM) {
+    // Warm: 24 hrs and 48 hrs
+    tasks.push({
+      title: "Warm Lead Follow-up 1",
+      description: "First follow-up for Warm lead (24 hours)",
+      dueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+    });
+    tasks.push({
+      title: "Warm Lead Follow-up 2",
+      description: "Second follow-up for Warm lead (48 hours)",
+      dueAt: new Date(now.getTime() + 48 * 60 * 60 * 1000),
+    });
+  } else {
+    // Cold: 5 days
+    tasks.push({
+      title: "Cold Lead Follow-up",
+      description: "Follow-up for Cold lead (5 days)",
+      dueAt: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000),
+    });
+  }
+
+  for (const t of tasks) {
+    await TaskModel.create({
+      title: t.title,
+      description: t.description,
+      status: TicketStatus.NEW,
+      priority: TicketPriority.HIGH,
+      assignedToUserId: lead.assignedToUserId,
+      relatedTo: {
+        itemType: "Lead",
+        itemId: lead._id,
+      },
+      dueDate: t.dueAt,
+      createdByUserId: lead.assignedToUserId,
+    });
+  }
 }
 
 function determineTeamType(source: LeadSource): TeamType {
@@ -206,7 +314,7 @@ async function performAssignment(
   }
 
   // Auto assignment using rules
-  const ruleResult = await autoAssignFromRules(leadType);
+  const ruleResult = await autoAssignFromRules(leadType, source);
 
   if (ruleResult.assignmentMethod === "auto" && ruleResult.assignedToUserId) {
     const user = await UserModel.findById(ruleResult.assignedToUserId).exec();
@@ -362,6 +470,24 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
   }
 
 
+  // Duplicate Detection (SOP 1.4)
+  if (guestId) {
+    const activeLead = await LeadModel.findOne({
+      guestId,
+      status: {
+        $nin: [
+          LeadStatus.LOST,
+          LeadStatus.CLOSED_AUTO,
+          LeadStatus.CONFIRMED
+        ]
+      }
+    }).select("leadNumber status").exec();
+
+    if (activeLead) {
+      throw new Error(`Active lead exists for this guest (Lead #${activeLead.leadNumber} is ${activeLead.status}). Please manage the existing lead.`);
+    }
+  }
+
   // Resolve propertyId - handle both ObjectId strings and property names
   let propertyId: Types.ObjectId | undefined;
   if (input.propertyId) {
@@ -455,6 +581,19 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
   const leadNumber = generateLeadNumber();
   const contactDetails = buildContactDetails(input.guestContact, guest);
 
+  // Prepare initial lead object for scoring/heat calculation
+  const initialLeadState: Partial<ILead> = {
+    checkInDate: input.checkInDate,
+    budget: input.budget,
+    estimatedValue: input.estimatedValue,
+    contactDetails,
+    status: LeadStatus.NEW,
+    source: input.source
+  };
+
+  const calculatedScore = calculateLeadScore(initialLeadState);
+  const calculatedHeatLevel = deriveHeatLevel({ ...initialLeadState, score: calculatedScore });
+
   const lead = await LeadModel.create({
     leadNumber,
     guestId,
@@ -464,7 +603,12 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     source: input.source,
     leadType: input.leadType,
     status: LeadStatus.NEW,
-    heatLevel: input.heatLevel ?? HeatLevel.WARM,
+    stage: LeadStage.NEW_LEAD, // Initialize stage
+    heatLevel: input.heatLevel ?? calculatedHeatLevel, // Use manual or calculated
+    score: calculatedScore, // Set score
+    budget: input.budget,
+    bookingWindow: input.bookingWindow,
+    customerType: input.customerType,
     checkInDate: input.checkInDate,
     checkOutDate: input.checkOutDate,
     roomsRequested: input.roomsRequested,
@@ -486,6 +630,11 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     notes: input.notes,
     roomCategory: input.roomCategory,
     roomPreference: input.roomPreference,
+  });
+
+  // Schedule follow-ups (fire and forget)
+  scheduleFollowUps(lead as unknown as ILead).catch(err => {
+    logger.error("Failed to schedule follow-ups", { leadId: lead._id }, err);
   });
 
   if (guest) {

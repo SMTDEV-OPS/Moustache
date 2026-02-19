@@ -11,6 +11,11 @@ export interface Property {
   };
   timeZone?: string;
   status: "ACTIVE" | "INACTIVE";
+  pmsProvider?: "NONE" | "EZEE";
+  pmsConfig?: {
+    hotelCode?: string;
+    authCode?: string;
+  };
   createdAt?: string;
   updatedAt?: string;
 }
@@ -25,6 +30,11 @@ export interface CreatePropertyInput {
   };
   timeZone?: string;
   status?: "ACTIVE" | "INACTIVE";
+  pmsProvider?: "NONE" | "EZEE";
+  pmsConfig?: {
+    hotelCode?: string;
+    authCode?: string;
+  };
 }
 
 export interface UpdatePropertyInput {
@@ -37,6 +47,11 @@ export interface UpdatePropertyInput {
   };
   timeZone?: string;
   status?: "ACTIVE" | "INACTIVE";
+  pmsProvider?: "NONE" | "EZEE";
+  pmsConfig?: {
+    hotelCode?: string;
+    authCode?: string;
+  };
 }
 
 /**

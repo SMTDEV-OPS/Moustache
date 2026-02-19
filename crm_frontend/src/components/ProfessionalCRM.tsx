@@ -14,8 +14,8 @@ import SalesHeadDashboard from "@/components/SalesHeadDashboard";
 import PropertyManagerDashboard from "@/components/PropertyManagerDashboard";
 import Dashboard from "@/components/Dashboard";
 import Reports from "@/components/Reports";
-import { RoleDefinition } from "@/components/RoleDefinition";
-import { UserRoleManagement } from "@/components/UserRoleManagement";
+import { RoleBuilder as RoleDefinition } from "@/pages/admin/RoleBuilder";
+import { UserManagement as UserRoleManagement } from "@/pages/admin/UserManagement";
 import { EmployeeGroupsManagement } from "@/components/EmployeeGroupsManagement";
 import { AccountManagement } from "@/components/AccountManagement";
 import { PropertyManagement } from "@/components/PropertyManagement";
@@ -38,12 +38,12 @@ import { TicketManagement } from "@/components/TicketManagement";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { 
-  LogOut, 
-  Phone, 
-  Search, 
-  User, 
-  Settings, 
+import {
+  LogOut,
+  Phone,
+  Search,
+  User,
+  Settings,
   ChevronDown,
   Menu
 } from "lucide-react";
@@ -155,8 +155,8 @@ export const ProfessionalCRM = ({
         );
       case 'calls':
         return (
-          <EnhancedCallInterface 
-            guest={mockGuest} 
+          <EnhancedCallInterface
+            guest={mockGuest}
             incomingCall={incomingCall}
             onCallEnd={() => setIncomingCall(false)}
             agentName={userName}
@@ -397,7 +397,7 @@ export const ProfessionalCRM = ({
             </div>
           );
         }
-        return <BuddyManagement 
+        return <BuddyManagement
           canAssignBuddy={canAssignBuddy}
           canViewHistory={canViewBuddyHistory}
           canViewReports={canViewBuddyReports}
@@ -427,31 +427,31 @@ export const ProfessionalCRM = ({
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
-        <AppSidebar 
+        <AppSidebar
           userRole={userRole}
           isAdmin={!!isAdmin}
           permissions={permissions}
-          activeView={activeView} 
+          activeView={activeView}
           onViewChange={setActiveView}
           incomingCall={incomingCall}
         />
-        
+
         <div className="flex-1 flex flex-col">
           {/* Professional Header */}
           <header className="h-16 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 flex items-center justify-between sticky top-0 z-40">
             <div className="flex items-center flex-1 gap-6">
               {/* Logo - Hidden on mobile, shown on desktop */}
               <div className="hidden md:flex items-center gap-3">
-                <img 
-                  src="/lovable-uploads/e26310ec-726d-4063-b241-25a7abbba814.png" 
-                  alt="Postcard CRM" 
-                  className="h-8 w-auto" 
+                <img
+                  src="/lovable-uploads/e26310ec-726d-4063-b241-25a7abbba814.png"
+                  alt="Postcard CRM"
+                  className="h-8 w-auto"
                 />
                 <Badge variant="outline" className="text-xs font-medium">
                   CRM - DEMO
                 </Badge>
               </div>
-              
+
               {/* Global Search */}
               <div className="flex-1 max-w-xl">
                 <div className="relative">
@@ -464,7 +464,7 @@ export const ProfessionalCRM = ({
                 </div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
               {/* Call Center Simulate Call Button */}
               {userRole === 'callcenter' && (
@@ -477,7 +477,7 @@ export const ProfessionalCRM = ({
                   <span className="hidden sm:inline">Simulate Call</span>
                 </Button>
               )}
-              
+
               {/* Follow-up Reminder */}
               <FollowUpReminder
                 onViewLead={(leadId) => {
@@ -487,10 +487,10 @@ export const ProfessionalCRM = ({
                   setActiveView("todays-followups");
                 }}
               />
-              
+
               {/* Notifications */}
               <NotificationBell />
-              
+
               {/* User Menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -506,12 +506,12 @@ export const ProfessionalCRM = ({
                     <div className="hidden md:flex flex-col items-start">
                       <span className="text-sm font-medium leading-none">{userName}</span>
                       <span className="text-xs text-muted-foreground capitalize leading-none mt-0.5">
-                        {userRole === 'callcenter' ? 'Call Center Agent' : 
-                         userRole === 'ccmanager' ? 'CC Manager' :
-                         userRole === 'salesexecutive' ? 'Sales Executive' :
-                         userRole === 'saleshead' ? 'Sales Head' :
-                         userRole === 'management' ? 'Management' :
-                         userRole.startsWith('propertymanager') ? 'Property Manager' : userRole}
+                        {userRole === 'callcenter' ? 'Call Center Agent' :
+                          userRole === 'ccmanager' ? 'CC Manager' :
+                            userRole === 'salesexecutive' ? 'Sales Executive' :
+                              userRole === 'saleshead' ? 'Sales Head' :
+                                userRole === 'management' ? 'Management' :
+                                  userRole.startsWith('propertymanager') ? 'Property Manager' : userRole}
                       </span>
                     </div>
                     <ChevronDown className="h-4 w-4 text-muted-foreground hidden md:block" />
@@ -522,12 +522,12 @@ export const ProfessionalCRM = ({
                     <div className="flex flex-col space-y-1">
                       <p className="text-sm font-medium">{userName}</p>
                       <p className="text-xs text-muted-foreground capitalize">
-                        {userRole === 'callcenter' ? 'Call Center Agent' : 
-                         userRole === 'ccmanager' ? 'CC Manager' :
-                         userRole === 'salesexecutive' ? 'Sales Executive' :
-                         userRole === 'saleshead' ? 'Sales Head' :
-                         userRole === 'management' ? 'Management' :
-                         userRole.startsWith('propertymanager') ? 'Property Manager' : userRole}
+                        {userRole === 'callcenter' ? 'Call Center Agent' :
+                          userRole === 'ccmanager' ? 'CC Manager' :
+                            userRole === 'salesexecutive' ? 'Sales Executive' :
+                              userRole === 'saleshead' ? 'Sales Head' :
+                                userRole === 'management' ? 'Management' :
+                                  userRole.startsWith('propertymanager') ? 'Property Manager' : userRole}
                       </p>
                     </div>
                   </DropdownMenuLabel>

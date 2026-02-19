@@ -27,6 +27,11 @@ export enum LeadSource {
   TRAVEL_AGENT = "TRAVEL_AGENT",
   WALK_IN = "WALK_IN",
   EVENT_MICE = "EVENT_MICE",
+  // New SOP sources
+  IVR = "IVR",
+  WHATSAPP = "WHATSAPP",
+  MANUAL = "MANUAL",
+  CSV_UPLOAD = "CSV_UPLOAD",
 }
 
 export enum LeadType {
@@ -37,6 +42,10 @@ export enum LeadType {
   WEDDING = "WEDDING",
 }
 
+/**
+ * Legacy status enum - kept for backward compatibility with existing data
+ * The new "LeadStage" enum should be used for the SOP-defined pipeline.
+ */
 export enum LeadStatus {
   NEW = "NEW",
   CONTACTED = "CONTACTED",
@@ -48,6 +57,19 @@ export enum LeadStatus {
   CLOSED_AUTO = "CLOSED_AUTO",
 }
 
+/**
+ * SOP-defined 5-stage pipeline
+ * New Lead -> 1st Connect -> Discussion -> Payment Request -> Booked/Lost
+ */
+export enum LeadStage {
+  NEW_LEAD = "NEW_LEAD",
+  FIRST_CONNECT = "FIRST_CONNECT",
+  DISCUSSION = "DISCUSSION",
+  PAYMENT_REQUEST = "PAYMENT_REQUEST",
+  BOOKED = "BOOKED",
+  LOST = "LOST",
+}
+
 export enum HeatLevel {
   HOT = "HOT",
   WARM = "WARM",
@@ -56,10 +78,24 @@ export enum HeatLevel {
 }
 
 export enum ClosedReason {
+  // Existing values
   PRICE = "PRICE",
   NO_AVAILABILITY = "NO_AVAILABILITY",
   GUEST_NOT_RESPONDING = "GUEST_NOT_RESPONDING",
   OTHER = "OTHER",
+  // New SOP values
+  SOLD_OUT = "SOLD_OUT",
+  BUDGET = "BUDGET",
+  BOOKED_OTA = "BOOKED_OTA",
+  BOOKED_WEBSITE = "BOOKED_WEBSITE",
+  BOOKED_OTHER_PROPERTY = "BOOKED_OTHER_PROPERTY",
+  NO_RESPONSE = "NO_RESPONSE",
+  POLICY_UNDER_18 = "POLICY_UNDER_18",
+  POLICY_LOCAL_ID = "POLICY_LOCAL_ID",
+  POLICY_PET = "POLICY_PET",
+  POLICY_ALCOHOL = "POLICY_ALCOHOL",
+  POLICY_CREDIT_CARD = "POLICY_CREDIT_CARD",
+  PROPERTY_MAINTENANCE = "PROPERTY_MAINTENANCE",
 }
 
 export enum CommunicationChannel {
@@ -112,6 +148,11 @@ export enum TicketCategory {
   GENERAL = "GENERAL",
   FEATURE_REQUEST = "FEATURE_REQUEST",
   BUG_REPORT = "BUG_REPORT",
+}
+
+export enum PMSProvider {
+  NONE = "NONE",
+  EZEE = "EZEE",
 }
 
 export const GuestRef = { type: Schema.Types.ObjectId, ref: "Guest", index: true };

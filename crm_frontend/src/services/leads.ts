@@ -6,9 +6,60 @@ export type LeadStatus =
   | "TENTATIVE"
   | "CONFIRMED"
   | "LOST"
-  | "CLOSED_AUTO";
+  | "CLOSED_AUTO"
+  // Backend values
+  | "CONTACTED"
+  | "QUOTATION_SHARED"
+  | "PAYMENT_PENDING"
+  | "PAYMENT_PENDING"
+  | "ON_HOLD";
 
-export type HeatLevel = "COLD" | "WARM" | "HOT";
+export type LeadSource =
+  | "DIRECT_CALL"
+  | "UNIT"
+  | "EMAIL"
+  | "REPEAT_GUEST"
+  | "REFERRAL"
+  | "CORPORATE_OFFICE"
+  | "BRAND_WEBSITE"
+  | "SOCIAL"
+  | "VIP_MR_CHOPRA"
+  | "TRAVEL_AGENT"
+  | "WALK_IN"
+  | "EVENT_MICE"
+  | "IVR"
+  | "WHATSAPP"
+  | "MANUAL"
+  | "CSV_UPLOAD";
+
+export type LeadStage =
+  | "NEW_LEAD"
+  | "FIRST_CONNECT"
+  | "DISCUSSION"
+  | "PAYMENT_REQUEST"
+  | "BOOKED"
+  | "BOOKED"
+  | "LOST";
+
+export type ClosedReason =
+  | "PRICE"
+  | "NO_AVAILABILITY"
+  | "GUEST_NOT_RESPONDING"
+  | "OTHER"
+  | "SOLD_OUT"
+  | "BUDGET"
+  | "BOOKED_OTA"
+  | "BOOKED_WEBSITE"
+  | "BOOKED_OTHER_PROPERTY"
+  | "NO_RESPONSE"
+  | "POLICY_UNDER_18"
+  | "POLICY_LOCAL_ID"
+  | "POLICY_PET"
+  | "POLICY_ALCOHOL"
+  | "POLICY_CREDIT_CARD"
+  | "PROPERTY_MAINTENANCE";
+
+export type HeatLevel = "COLD" | "WARM" | "HOT" | "NOT_INTERESTED";
 
 export interface LeadGuests {
   adults?: number;
@@ -70,7 +121,12 @@ export interface Lead {
   source: string;
   leadType: string;
   status: LeadStatus;
+  stage?: LeadStage; // New field
   heatLevel: HeatLevel;
+  score?: number;     // New field
+  budget?: number;    // New field
+  bookingWindow?: string; // New field
+  customerType?: string;  // New field
   checkInDate?: string;
   checkOutDate?: string;
   roomsRequested?: number;
@@ -93,6 +149,7 @@ export interface Lead {
   notes?: string;
   roomCategory?: string;
   roomPreference?: string;
+  closedReason?: string; // Add closedReason
 }
 
 export type LeadScope = "own" | "team" | "all";
@@ -186,6 +243,7 @@ export interface LeadDetail {
 
 export interface UpdateLeadPayload {
   status?: LeadStatus;
+  stage?: LeadStage;
   heatLevel?: HeatLevel;
   callStatus?: string;
   notes?: string;
@@ -196,6 +254,7 @@ export interface UpdateLeadPayload {
   occasion?: string;
   assignedToUserId?: string;
   contactDetails?: LeadContactDetails;
+  closedReason?: string;
 }
 
 export const listLeads = async (

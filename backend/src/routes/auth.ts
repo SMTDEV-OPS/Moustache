@@ -5,6 +5,7 @@ import { UserModel } from "../models/user";
 import { badRequest, unauthorized } from "../utils/httpError";
 import { signJwt, requireAuth } from "../middleware/auth";
 import { logger } from "../config/logger";
+import { AccessControlService } from "../services/auth/AccessControlService";
 
 export const authRouter = Router();
 
@@ -69,6 +70,8 @@ authRouter.post("/login", async (req, res, next) => {
       userId: user.id,
     });
 
+    const { permissions, isAdmin } = await AccessControlService.getUserPermissions(user.id);
+
     res.json({
       token,
       user: {
@@ -77,6 +80,11 @@ authRouter.post("/login", async (req, res, next) => {
         email: user.email,
         teamType: user.teamType,
         roleId: user.roleId,
+        permissions: permissions,
+        isAdmin: isAdmin,
+        reportsTo: user.reportsTo,
+        hierarchyPath: user.hierarchyPath,
+        pfp: (user as any).pfp, // in case pfp exists
       },
     });
   } catch (err) {

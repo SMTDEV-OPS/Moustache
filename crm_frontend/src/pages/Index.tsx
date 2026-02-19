@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,47 +19,42 @@ import SalesRevenueDashboard from "@/components/SalesRevenueDashboard";
 import CCManagerDashboard from "@/components/CCManagerDashboard";
 import SalesExecutiveDashboard from "@/components/SalesExecutiveDashboard";
 import KnowledgeBase from "@/components/KnowledgeBase";
-import { backendLogout } from "@/services/auth";
+
 
 const Index = () => {
+  const { user, isAuthenticated, logout, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [incomingCall, setIncomingCall] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const [userRole, setUserRole] = useState("");
-  const [userName, setUserName] = useState("");
-  const [isAdminUser, setIsAdminUser] = useState(false);
-  const [userPermissions, setUserPermissions] = useState<string[]>([]);
-  const [backendUserId, setBackendUserId] = useState<string | null>(null);
 
-  // Restore session on initial load
+  // Effect to set initial tab based on role when user logs in
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("gcSession");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as {
-          role: string;
-          name: string;
-          isAdmin?: boolean;
-          permissions?: string[];
-          backendUserId?: string;
-        };
-        if (parsed.role && parsed.name) {
-          setUserRole(parsed.role);
-          setUserName(parsed.name);
-          setIsAdminUser(!!parsed.isAdmin);
-          setUserPermissions(parsed.permissions ?? []);
-          setBackendUserId(parsed.backendUserId ?? null);
-          setIsLoggedIn(true);
-          setShowLogin(false);
-          setActiveTab("dashboard");
-        }
-      } catch {
-        // ignore parse errors
-      }
+    if (user) {
+      // Determine role string for UI logic
+      // Only "admin" role is explicit in backend usually, others are roles.
+      // We need to map user.roleId or permissions to these UI roles if needed.
+      // For now, let's assume user.teamType or isAdmin drives this, or we default to 'management'
+
+      let role = "management";
+      if (user.isAdmin) role = "management"; // Admin sees management dashboard? Or we need 'admin'?
+      // Previous logic: role: backendIsAdmin ? "admin" : "management"
+
+      // If we want to support other roles like 'callcenter' etc based on user.teamType:
+      if (user.teamType === "callcenter") role = "callcenter";
+      if (user.teamType === "sales") role = "saleshead"; // example
+
+      // Allow overriding via explicit roleId check if needed
+
+      // For now, just default to dashboard if logic is complex, 
+      // or keep simple mapping:
+
+      // Set appropriate default tab
+      // simple logic:
+      if (user.teamType === "callcenter") setActiveTab("calls");
+      else if (user.teamType === "sales") setActiveTab("sales");
+      else setActiveTab("dashboard");
     }
-  }, []);
+  }, [user]);
 
   // Mock data for demo with Indian names
   const mockGuest = {
@@ -85,102 +81,39 @@ const Index = () => {
     setActiveTab("calls");
   };
 
-  const handleLogin = (session: { role: string; name: string; isAdmin?: boolean; permissions?: string[]; backendUserId?: string }) => {
-    const { role, name, isAdmin, permissions, backendUserId } = session;
-    setUserRole(role);
-    setUserName(name);
-    setIsAdminUser(!!isAdmin);
-    setUserPermissions(permissions ?? []);
-    setBackendUserId(backendUserId ?? null);
-    setIsLoggedIn(true);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("gcSession", JSON.stringify(session));
-    }
-    // Set appropriate default tab based on role
-    switch(role) {
-      case 'management':
-        setActiveTab('dashboard');
-        break;
-      case 'callcenter':
-        setActiveTab('calls');
-        break;
-      case 'ccmanager':
-        setActiveTab('cc-dashboard');
-        break;
-      case 'saleshead':
-        setActiveTab('sales');
-        break;
-      case 'salesexecutive':
-        setActiveTab('sales-exec');
-        break;
-      case 'propertymanager1':
-        setActiveTab('tickets');
-        break;
-      default:
-        setActiveTab('dashboard');
-    }
-  };
-
   const handleLogout = async () => {
-    try {
-      // Call backend logout to set user offline and clean up server-side state
-      // This will also clear authToken and localStorage
-      await backendLogout();
-    } catch (err) {
-      // Even if backend logout fails, we still want to clear local state
-      console.error("Logout error:", err);
-    } finally {
-      // Clear all local React state
-      setIsLoggedIn(false);
-      setShowLogin(false);
-      setUserRole("");
-      setUserName("");
-      setIsAdminUser(false);
-      setUserPermissions([]);
-      setBackendUserId(null);
-      setActiveTab("dashboard");
-      
-      // Note: backendLogout() already clears localStorage, but we ensure it's cleared here too
-      // This is a safety measure in case backendLogout() wasn't called or failed
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("gcSession");
-        window.localStorage.removeItem("authToken");
-      }
-    }
+    await logout();
+    setActiveTab("dashboard");
+    setShowLogin(false);
   };
 
   const handleGetStarted = () => {
     setShowLogin(true);
   };
 
-  // Define which tabs each role can access
-  const rolePermissions = {
-    management: ['dashboard', 'knowledge-base'],
-    callcenter: ['calls', 'tickets', 'knowledge-base'],
-    ccmanager: ['cc-dashboard', 'knowledge-base'],
-    saleshead: ['sales', 'leads', 'knowledge-base'],
-    salesexecutive: ['sales-exec', 'knowledge-base'],
-    propertymanager1: ['tickets', 'knowledge-base']
-  };
+  if (isLoading) {
+    return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  }
 
-  const availableTabs = rolePermissions[userRole as keyof typeof rolePermissions] || [];
-
-  if (!isLoggedIn) {
+  if (!isAuthenticated) {
     if (showLogin) {
-      return <Login onLogin={handleLogin} />;
+      return <Login />;
     }
     return <Landing onGetStarted={handleGetStarted} />;
   }
 
   // Use Professional CRM for all users now
+  // Create derived props from user object
+  const userRole = user?.isAdmin ? "admin" : (user?.teamType || "management");
+
   return (
     <ProfessionalCRM
       userRole={userRole}
-      userName={userName}
+      userName={user?.name || ""}
       onLogout={handleLogout}
-      isAdmin={isAdminUser}
-      permissions={userPermissions}
-      backendUserId={backendUserId ?? undefined}
+      isAdmin={!!user?.isAdmin}
+      permissions={user?.permissions || []}
+      backendUserId={user?.id}
     />
   );
 };

@@ -32,8 +32,8 @@ interface ProfessionalLeadManagementProps {
 
 const hotelEntrySchema = z.object({
   hotelName: z.string().min(1, "Hotel selection is required"),
-  checkInDate: z.date({ required_error: "Check-in date is required" }),
-  checkOutDate: z.date({ required_error: "Check-out date is required" }),
+  checkInDate: z.date({ message: "Check-in date is required" }),
+  checkOutDate: z.date({ message: "Check-out date is required" }),
   roomCategory: z.string().min(1, "Room category is required"),
   roomPreference: z.string().optional(),
   numberOfGuests: z.string().min(1, "Guest count is required"),
@@ -73,8 +73,11 @@ const ProfessionalLeadManagement = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilters, setSelectedFilters] = useState({
     status: "all",
+
+    stage: "all",
+    source: "all",
     property: "all",
-    temperature: "all", 
+    temperature: "all",
     bookingType: "all",
     assignedTo: userRole === 'callcenter' ? userName : "all"
   });
@@ -217,10 +220,10 @@ const ProfessionalLeadManagement = ({
       lead.heatLevel === "HOT"
         ? "Hot"
         : lead.heatLevel === "WARM"
-        ? "Warm"
-        : lead.heatLevel === "COLD"
-        ? "Cold"
-        : "Cold";
+          ? "Warm"
+          : lead.heatLevel === "COLD"
+            ? "Cold"
+            : "Cold";
 
     return {
       id: lead.id,
@@ -228,11 +231,13 @@ const ProfessionalLeadManagement = ({
       phone: "",
       email: "",
       property: lead.propertyId ?? "N/A",
+      source: lead.source,
       checkIn,
       checkOut,
-      budget: "",
+      budget: lead.budget ? formatCurrency(lead.budget) : "",
       pricePerNight: 0,
       status: lead.status,
+      stage: lead.stage,
       temperature,
       bookingType: "Direct Customer",
       assignedTo: assignedName,
@@ -240,7 +245,7 @@ const ProfessionalLeadManagement = ({
       nextFollowUp: undefined as string | undefined,
       workingDays: 0,
       workingHours: 0,
-      score: 0,
+      score: lead.score || 0,
       conversationHistory: [] as {
         date: string;
         time: string;
@@ -255,15 +260,25 @@ const ProfessionalLeadManagement = ({
   // Filter leads based on filters
   const filteredLeads = allLeads.filter(lead => {
     // Search query filter
-    if (searchQuery && !lead.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !lead.phone.includes(searchQuery) && 
-        !lead.email.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !lead.property.toLowerCase().includes(searchQuery.toLowerCase())) {
+    if (searchQuery && !lead.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !lead.phone.includes(searchQuery) &&
+      !lead.email.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !lead.property.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
 
     // Status filter
     if (selectedFilters.status !== "all" && lead.status !== selectedFilters.status) {
+      return false;
+    }
+
+    // Stage filter
+    if (selectedFilters.stage !== "all" && lead.stage !== selectedFilters.stage) {
+      return false;
+    }
+
+    // Source filter
+    if (selectedFilters.source !== "all" && lead.source !== selectedFilters.source) {
       return false;
     }
 
@@ -276,7 +291,7 @@ const ProfessionalLeadManagement = ({
     if (selectedFilters.temperature !== "all" && lead.temperature !== selectedFilters.temperature) {
       return false;
     }
-    
+
     // Booking type filter
     if (selectedFilters.bookingType !== "all" && lead.bookingType !== selectedFilters.bookingType) {
       return false;
@@ -348,15 +363,17 @@ const ProfessionalLeadManagement = ({
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-orange-600';
+    if (score >= 7) return 'text-green-600';
+    if (score >= 4) return 'text-orange-600';
     return 'text-red-600';
   };
 
   const clearFilters = () => {
     setSelectedFilters({
       status: "all",
-      property: "all", 
+      source: "all",
+      stage: "all",
+      property: "all",
       temperature: "all",
       bookingType: "all",
       assignedTo: userRole === 'callcenter' ? agentName : "all"
@@ -385,13 +402,13 @@ const ProfessionalLeadManagement = ({
             {userRole === 'callcenter' ? 'My Leads' : 'Lead Management'}
           </h1>
           <p className="text-muted-foreground">
-            {userRole === 'callcenter' 
+            {userRole === 'callcenter'
               ? 'Manage your assigned leads and track progress'
               : 'Comprehensive lead management and assignment'
             }
           </p>
         </div>
-        
+
         <Dialog open={isAddLeadOpen} onOpenChange={setIsAddLeadOpen}>
           <DialogTrigger asChild>
             <Button className="bg-primary hover:bg-primary/90">
@@ -457,9 +474,9 @@ const ProfessionalLeadManagement = ({
                       <Hotel className="h-5 w-5" />
                       Hotel Bookings
                     </h3>
-                    <Button 
-                      type="button" 
-                      variant="outline" 
+                    <Button
+                      type="button"
+                      variant="outline"
                       size="sm"
                       onClick={addNewHotel}
                       className="flex items-center gap-2"
@@ -468,7 +485,7 @@ const ProfessionalLeadManagement = ({
                       Add Another Hotel
                     </Button>
                   </div>
-                  
+
                   {hotelFields.map((hotel, index) => (
                     <div key={hotel.id} className="relative p-4 border rounded-lg bg-gray-50/50 space-y-4">
                       {hotelFields.length > 1 && (
@@ -485,7 +502,7 @@ const ProfessionalLeadManagement = ({
                           </Button>
                         </div>
                       )}
-                      
+
                       <FormField
                         control={form.control}
                         name={`hotels.${index}.hotelName`}
@@ -756,7 +773,7 @@ const ProfessionalLeadManagement = ({
                     <FormItem>
                       <FormLabel>Special Requests</FormLabel>
                       <FormControl>
-                        <Textarea 
+                        <Textarea
                           placeholder="Any special requirements, dietary restrictions, accessibility needs..."
                           {...field}
                         />
@@ -916,8 +933,8 @@ const ProfessionalLeadManagement = ({
 
         <TabsContent value="leads" className="space-y-6">
           {!backendUserId ? (
-          <Card>
-            <CardContent className="pt-6">
+            <Card>
+              <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">
                   Backend user session not detected. Please login using backend
                   credentials to view your leads.
@@ -926,316 +943,358 @@ const ProfessionalLeadManagement = ({
             </Card>
           ) : (
             <>
-          {/* Scope selector and Filters */}
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-muted-foreground">
-                  {scope === "own" ? "My Leads" : "My Team Leads"}
-                </div>
-                {canViewTeamLeads && (
-                  <div className="inline-flex rounded-md border bg-muted p-0.5 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setScope("own")}
-                      className={cn(
-                        "px-2 py-1 rounded-sm",
-                        scope === "own"
-                          ? "bg-background font-semibold"
-                          : "opacity-70"
-                      )}
-                    >
-                      My Leads
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setScope("team")}
-                      className={cn(
-                        "px-2 py-1 rounded-sm",
-                        scope === "team"
-                          ? "bg-background font-semibold"
-                          : "opacity-70"
-                      )}
-                    >
-                      My Team Leads
-                    </button>
+              {/* Scope selector and Filters */}
+              <Card>
+                <CardContent className="pt-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-muted-foreground">
+                      {scope === "own" ? "My Leads" : "My Team Leads"}
+                    </div>
+                    {canViewTeamLeads && (
+                      <div className="inline-flex rounded-md border bg-muted p-0.5 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setScope("own")}
+                          className={cn(
+                            "px-2 py-1 rounded-sm",
+                            scope === "own"
+                              ? "bg-background font-semibold"
+                              : "opacity-70"
+                          )}
+                        >
+                          My Leads
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScope("team")}
+                          className={cn(
+                            "px-2 py-1 rounded-sm",
+                            scope === "team"
+                              ? "bg-background font-semibold"
+                              : "opacity-70"
+                          )}
+                        >
+                          My Team Leads
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div className="flex flex-col lg:flex-row gap-4">
-                {/* Search */}
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search leads by name, phone, email, or property..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-
-                {/* Filters */}
-                <div className="flex gap-2">
-                  <Select value={selectedFilters.status} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, status: value }))}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="NEW">New</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="TENTATIVE">Tentative</SelectItem>
-                      <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                      <SelectItem value="LOST">Lost</SelectItem>
-                      <SelectItem value="CLOSED_AUTO">Auto Closed</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={selectedFilters.property} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, property: value }))}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Property" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Properties</SelectItem>
-                      <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                      <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                      <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                      <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
-                      <SelectItem value="Postcard Coonoor">Postcard Coonoor</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={selectedFilters.temperature} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, temperature: value }))}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue placeholder="Temperature" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Temperature</SelectItem>
-                      <SelectItem value="Hot">Hot</SelectItem>
-                      <SelectItem value="Warm">Warm</SelectItem>
-                      <SelectItem value="Cold">Cold</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={selectedFilters.bookingType} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, bookingType: value }))}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Booking Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Types</SelectItem>
-                      <SelectItem value="Tentative Booking">Tentative Booking</SelectItem>
-                      <SelectItem value="Amendment">Amendment</SelectItem>
-                      <SelectItem value="Corporate Booking">Corporate Booking</SelectItem>
-                      <SelectItem value="Direct Customer">Direct Customer</SelectItem>
-                      <SelectItem value="Confirmed Booking">Confirmed Booking</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {userRole !== 'callcenter' && (
-                    <Select
-                      value={selectedFilters.assignedTo}
-                      onValueChange={(value) =>
-                        setSelectedFilters((prev) => ({
-                          ...prev,
-                          assignedTo: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger className="w-40">
-                        <SelectValue placeholder="Assigned To" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Agents</SelectItem>
-                        {userList.map((user) => (
-                          <SelectItem
-                            key={user.id}
-                            value={user.name || user.email}
-                          >
-                            {user.name || user.email}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  <Button variant="outline" onClick={clearFilters}>
-                    <Filter className="h-4 w-4 mr-2" />
-                    Clear
-                  </Button>
-                </div>
-              </div>
-              
-              <div className="mt-4 text-sm text-muted-foreground">
-                {isLoadingLeads
-                  ? "Loading leads..."
-                  : `Showing ${filteredLeads.length} of ${allLeads.length} leads`}
-                {loadError && (
-                  <span className="ml-2 text-red-600">
-                    ({loadError})
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Leads Grid */}
-          <div className="space-y-4">
-            {filteredLeads.map((lead) => (
-              <Card key={lead.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-4">
-                      {/* Lead Info */}
-                      <div className="space-y-1">
-                        <h3 className="font-semibold text-lg">{lead.name}</h3>
-                        <p className="text-sm text-muted-foreground">{lead.phone}</p>
-                        <p className="text-sm text-muted-foreground">
-                          <span
-                            className="underline cursor-pointer hover:text-blue-600"
-                            onClick={() => {
-                              setEmailLead({ name: lead.name, email: lead.email });
-                              setShowEmailDialog(true);
-                            }}
-                          >
-                            {lead.email}
-                          </span>
-                        </p>
-                        <div className="flex items-center space-x-2 mt-2">
-                          <Badge className={getStatusColor(lead.status)}>
-                            {lead.status}
-                          </Badge>
-                          <Badge className={getTemperatureColor(lead.temperature)}>
-                            {lead.temperature}
-                          </Badge>
-                          <Badge className={getBookingTypeColor(lead.bookingType)}>
-                            {lead.bookingType}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      {/* Property & Dates */}
-                      <div className="space-y-1">
-                        <p className="font-medium">{lead.property}</p>
-                        <p className="text-sm text-muted-foreground">Check-in: {lead.checkIn}</p>
-                        <p className="text-sm text-muted-foreground">Check-out: {lead.checkOut}</p>
-                        <p className="text-sm text-muted-foreground">Guest Budget: {lead.budget}</p>
-                        <p className="text-sm text-muted-foreground">Total nights: {calculateNights(lead.checkIn, lead.checkOut)}</p>
-                        <p className="text-sm font-medium text-green-600">
-                          Total Deal Value: {formatCurrency(calculateNights(lead.checkIn, lead.checkOut) * lead.pricePerNight)}
-                        </p>
-                      </div>
-
-                      {/* Progress & Timing */}
-                      <div className="space-y-1">
-                        <p className="text-sm">
-                          <span className="font-medium">Score:</span> 
-                          <span className={`ml-1 font-bold ${getScoreColor(lead.score)}`}>{lead.score}%</span>
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          <Clock className="h-3 w-3 inline mr-1" />
-                          Working: {lead.workingDays}d {lead.workingHours}h
-                        </p>
-                        <p className="text-sm text-muted-foreground">Last: {lead.lastContact}</p>
-                        <p className="text-sm text-muted-foreground">Next: {lead.nextFollowUp}</p>
-                      </div>
-
-                      {/* Assignment & Actions */}
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-1 text-sm">
-                          <UserIcon className="h-3 w-3" />
-                          <span className="text-muted-foreground">Assigned:</span>
-                          <span className="font-medium">{lead.assignedTo}</span>
-                        </div>
-                        
-                        {userRole !== 'callcenter' && (
-                          <Select onValueChange={(value) => handleAssignLead(lead.id, value)}>
-                            <SelectTrigger className="w-full text-xs">
-                              <SelectValue placeholder="Reassign to..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Harleen Mehta">Harleen Mehta</SelectItem>
-                              <SelectItem value="Rahul Singh">Rahul Singh</SelectItem>
-                              <SelectItem value="Priya Kumar">Priya Kumar</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
+                  <div className="flex flex-col lg:flex-row gap-4">
+                    {/* Search */}
+                    <div className="flex-1 relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search leads by name, phone, email, or property..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9"
+                      />
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex flex-col space-y-2 ml-4">
-                      <Button size="sm" variant="outline" onClick={() => {
-                        setCallbackLead({ name: lead.name });
-                        setShowCallbackDialog(true);
-                      }}>
-                        Schedule Call back
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => {
-                        setEmailLead({ name: lead.name, email: lead.email });
-                        setShowEmailDialog(true);
-                      }}>
-                        <Mail className="h-4 w-4 mr-2" />
-                        Email
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => setSelectedLead(selectedLead === lead.id ? null : lead.id)}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        {selectedLead === lead.id ? 'Hide' : 'View'}
+                    {/* Filters */}
+                    <div className="flex gap-2">
+                      <Select value={selectedFilters.status} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, status: value }))}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="NEW">New</SelectItem>
+                          <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                          <SelectItem value="TENTATIVE">Tentative</SelectItem>
+                          <SelectItem value="CONFIRMED">Confirmed</SelectItem>
+                          <SelectItem value="LOST">Lost</SelectItem>
+                          <SelectItem value="CLOSED_AUTO">Auto Closed</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={selectedFilters.stage} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, stage: value }))}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue placeholder="Stage" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Stages</SelectItem>
+                          <SelectItem value="NEW_LEAD">New Lead</SelectItem>
+                          <SelectItem value="FIRST_CONNECT">1st Connect</SelectItem>
+                          <SelectItem value="DISCUSSION">Discussion</SelectItem>
+                          <SelectItem value="PAYMENT_REQUEST">Payment Request</SelectItem>
+                          <SelectItem value="BOOKED">Booked</SelectItem>
+                          <SelectItem value="LOST">Lost</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={selectedFilters.property} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, property: value }))}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Property" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Properties</SelectItem>
+                          <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
+                          <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
+                          <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
+                          <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
+                          <SelectItem value="Postcard Coonoor">Postcard Coonoor</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+
+
+                      <Select value={selectedFilters.source} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, source: value }))}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue placeholder="Source" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Sources</SelectItem>
+                          <SelectItem value="DIRECT_CALL">Direct Call</SelectItem>
+                          <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
+                          <SelectItem value="BRAND_WEBSITE">Website</SelectItem>
+                          <SelectItem value="EMAIL">Email</SelectItem>
+                          <SelectItem value="TRAVEL_AGENT">Travel Agent</SelectItem>
+                          <SelectItem value="OTA">OTA</SelectItem>
+                          <SelectItem value="REFERRAL">Referral</SelectItem>
+                          <SelectItem value="SOCIAL">Social Media</SelectItem>
+                          <SelectItem value="WALK_IN">Walk In</SelectItem>
+                          <SelectItem value="IVR">IVR</SelectItem>
+                          <SelectItem value="MANUAL">Manual</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={selectedFilters.temperature} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, temperature: value }))}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue placeholder="Temperature" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Temperature</SelectItem>
+                          <SelectItem value="Hot">Hot</SelectItem>
+                          <SelectItem value="Warm">Warm</SelectItem>
+                          <SelectItem value="Cold">Cold</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={selectedFilters.bookingType} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, bookingType: value }))}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Booking Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Types</SelectItem>
+                          <SelectItem value="Tentative Booking">Tentative Booking</SelectItem>
+                          <SelectItem value="Amendment">Amendment</SelectItem>
+                          <SelectItem value="Corporate Booking">Corporate Booking</SelectItem>
+                          <SelectItem value="Direct Customer">Direct Customer</SelectItem>
+                          <SelectItem value="Confirmed Booking">Confirmed Booking</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      {userRole !== 'callcenter' && (
+                        <Select
+                          value={selectedFilters.assignedTo}
+                          onValueChange={(value) =>
+                            setSelectedFilters((prev) => ({
+                              ...prev,
+                              assignedTo: value,
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="w-40">
+                            <SelectValue placeholder="Assigned To" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Agents</SelectItem>
+                            {userList.map((user) => (
+                              <SelectItem
+                                key={user.id}
+                                value={user.name || user.email}
+                              >
+                                {user.name || user.email}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+
+                      <Button variant="outline" onClick={clearFilters}>
+                        <Filter className="h-4 w-4 mr-2" />
+                        Clear
                       </Button>
                     </div>
                   </div>
 
-                  {/* Conversation History */}
-                  {selectedLead === lead.id && (
-                    <div className="mt-6 pt-6 border-t">
-                      <h4 className="font-semibold mb-4">Conversation History</h4>
-                      <div className="space-y-3">
-                        {lead.conversationHistory.map((conversation, index) => (
-                          <div key={index} className="flex items-start space-x-3 p-3 bg-muted/50 rounded-lg">
-                            <div className="flex-shrink-0">
-                              {conversation.type === 'Call' && <Phone className="h-4 w-4 text-blue-600 mt-1" />}
-                              {conversation.type === 'Email' && <Mail className="h-4 w-4 text-green-600 mt-1" />}
-                              {conversation.type === 'WhatsApp' && <MessageSquare className="h-4 w-4 text-green-600 mt-1" />}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium">{conversation.type} by {conversation.agent}</p>
-                                <div className="text-xs text-muted-foreground">
-                                  {conversation.date} - {conversation.time}
-                                </div>
-                              </div>
-                              <p className="text-sm text-muted-foreground mb-2">{conversation.notes}</p>
-                              <Badge variant="outline" className="text-xs">
-                                {conversation.disposition}
+                  <div className="mt-4 text-sm text-muted-foreground">
+                    {isLoadingLeads
+                      ? "Loading leads..."
+                      : `Showing ${filteredLeads.length} of ${allLeads.length} leads`}
+                    {loadError && (
+                      <span className="ml-2 text-red-600">
+                        ({loadError})
+                      </span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Leads Grid */}
+              <div className="space-y-4">
+                {filteredLeads.map((lead) => (
+                  <Card key={lead.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-4">
+                          {/* Lead Info */}
+                          <div className="space-y-1">
+                            <h3 className="font-semibold text-lg">{lead.name}</h3>
+                            <p className="text-sm text-muted-foreground">{lead.phone}</p>
+                            <p className="text-sm text-muted-foreground">
+                              <span
+                                className="underline cursor-pointer hover:text-blue-600"
+                                onClick={() => {
+                                  setEmailLead({ name: lead.name, email: lead.email });
+                                  setShowEmailDialog(true);
+                                }}
+                              >
+                                {lead.email}
+                              </span>
+                            </p>
+                            <div className="flex items-center space-x-2 mt-2">
+                              <Badge className={getStatusColor(lead.status)}>
+                                {lead.status}
+                              </Badge>
+                              {lead.stage && (
+                                <Badge variant="outline" className="border-blue-200 text-blue-800 bg-blue-50">
+                                  {lead.stage.replace(/_/g, ' ')}
+                                </Badge>
+                              )}
+                              <Badge className={getTemperatureColor(lead.temperature)}>
+                                {lead.temperature}
+                              </Badge>
+                              <Badge className={getBookingTypeColor(lead.bookingType)}>
+                                {lead.bookingType}
                               </Badge>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
 
-          {filteredLeads.length === 0 && !isLoadingLeads && (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No leads found</h3>
-                <p className="text-muted-foreground">Try adjusting your filters or search criteria</p>
-                <Button variant="outline" className="mt-4" onClick={clearFilters}>
-                  Clear all filters
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </>
+                          {/* Property & Dates */}
+                          <div className="space-y-1">
+                            <p className="font-medium">{lead.property}</p>
+                            <p className="text-sm text-muted-foreground">Check-in: {lead.checkIn}</p>
+                            <p className="text-sm text-muted-foreground">Check-out: {lead.checkOut}</p>
+                            <p className="text-sm text-muted-foreground">Guest Budget: {lead.budget}</p>
+                            <p className="text-sm text-muted-foreground">Total nights: {calculateNights(lead.checkIn, lead.checkOut)}</p>
+                            <p className="text-sm font-medium text-green-600">
+                              Total Deal Value: {formatCurrency(calculateNights(lead.checkIn, lead.checkOut) * lead.pricePerNight)}
+                            </p>
+                          </div>
+
+                          {/* Progress & Timing */}
+                          <div className="space-y-1">
+                            <p className="text-sm">
+                              <span className="font-medium">Score:</span>
+                              <span className={`ml-1 font-bold ${getScoreColor(lead.score)}`}>{lead.score}/10</span>
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              <Clock className="h-3 w-3 inline mr-1" />
+                              Working: {lead.workingDays}d {lead.workingHours}h
+                            </p>
+                            <p className="text-sm text-muted-foreground">Last: {lead.lastContact}</p>
+                            <p className="text-sm text-muted-foreground">Next: {lead.nextFollowUp}</p>
+                          </div>
+
+                          {/* Assignment & Actions */}
+                          <div className="space-y-2">
+                            <div className="flex items-center space-x-1 text-sm">
+                              <UserIcon className="h-3 w-3" />
+                              <span className="text-muted-foreground">Assigned:</span>
+                              <span className="font-medium">{lead.assignedTo}</span>
+                            </div>
+
+                            {userRole !== 'callcenter' && (
+                              <Select onValueChange={(value) => handleAssignLead(lead.id, value)}>
+                                <SelectTrigger className="w-full text-xs">
+                                  <SelectValue placeholder="Reassign to..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Harleen Mehta">Harleen Mehta</SelectItem>
+                                  <SelectItem value="Rahul Singh">Rahul Singh</SelectItem>
+                                  <SelectItem value="Priya Kumar">Priya Kumar</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-col space-y-2 ml-4">
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setCallbackLead({ name: lead.name });
+                            setShowCallbackDialog(true);
+                          }}>
+                            Schedule Call back
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setEmailLead({ name: lead.name, email: lead.email });
+                            setShowEmailDialog(true);
+                          }}>
+                            <Mail className="h-4 w-4 mr-2" />
+                            Email
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedLead(selectedLead === lead.id ? null : lead.id)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            {selectedLead === lead.id ? 'Hide' : 'View'}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Conversation History */}
+                      {selectedLead === lead.id && (
+                        <div className="mt-6 pt-6 border-t">
+                          <h4 className="font-semibold mb-4">Conversation History</h4>
+                          <div className="space-y-3">
+                            {lead.conversationHistory.map((conversation, index) => (
+                              <div key={index} className="flex items-start space-x-3 p-3 bg-muted/50 rounded-lg">
+                                <div className="flex-shrink-0">
+                                  {conversation.type === 'Call' && <Phone className="h-4 w-4 text-blue-600 mt-1" />}
+                                  {conversation.type === 'Email' && <Mail className="h-4 w-4 text-green-600 mt-1" />}
+                                  {conversation.type === 'WhatsApp' && <MessageSquare className="h-4 w-4 text-green-600 mt-1" />}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <p className="text-sm font-medium">{conversation.type} by {conversation.agent}</p>
+                                    <div className="text-xs text-muted-foreground">
+                                      {conversation.date} - {conversation.time}
+                                    </div>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground mb-2">{conversation.notes}</p>
+                                  <Badge variant="outline" className="text-xs">
+                                    {conversation.disposition}
+                                  </Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {filteredLeads.length === 0 && !isLoadingLeads && (
+                <Card>
+                  <CardContent className="p-12 text-center">
+                    <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No leads found</h3>
+                    <p className="text-muted-foreground">Try adjusting your filters or search criteria</p>
+                    <Button variant="outline" className="mt-4" onClick={clearFilters}>
+                      Clear all filters
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
         </TabsContent>
 
@@ -1302,7 +1361,7 @@ const ProfessionalLeadManagement = ({
                       {/* Progress & Timing */}
                       <div className="space-y-1">
                         <p className="text-sm">
-                          <span className="font-medium">Score:</span> 
+                          <span className="font-medium">Score:</span>
                           <span className={`ml-1 font-bold ${getScoreColor(lead.score)}`}>{lead.score}%</span>
                         </p>
                         <p className="text-sm text-muted-foreground">
@@ -1320,7 +1379,7 @@ const ProfessionalLeadManagement = ({
                           <span className="text-muted-foreground">Assigned:</span>
                           <span className="font-medium">{lead.assignedTo}</span>
                         </div>
-                        
+
                         {userRole !== 'callcenter' && (
                           <Select onValueChange={(value) => handleAssignLead(lead.id, value)}>
                             <SelectTrigger className="w-full text-xs">
@@ -1351,8 +1410,8 @@ const ProfessionalLeadManagement = ({
                         <Mail className="h-4 w-4 mr-2" />
                         Email
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => setSelectedLead(selectedLead === lead.id ? null : lead.id)}
                       >
@@ -1407,10 +1466,10 @@ const ProfessionalLeadManagement = ({
           )}
         </TabsContent>
 
-      </Tabs>
+      </Tabs >
 
       {/* Schedule Callback Dialog */}
-      <Dialog open={showCallbackDialog} onOpenChange={setShowCallbackDialog}>
+      < Dialog open={showCallbackDialog} onOpenChange={setShowCallbackDialog} >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Schedule Call back for {callbackLead?.name}</DialogTitle>
@@ -1470,16 +1529,16 @@ const ProfessionalLeadManagement = ({
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog >
 
       {/* Email Dialog */}
-      <EmailDialog
+      < EmailDialog
         open={showEmailDialog}
         onOpenChange={setShowEmailDialog}
         guestEmail={emailLead?.email}
         guestName={emailLead?.name}
       />
-    </div>
+    </div >
   );
 };
 

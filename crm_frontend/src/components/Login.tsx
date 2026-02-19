@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,23 +10,16 @@ import { backendLogin } from "@/services/auth";
 import { DEFAULT_ADMIN_PLACEHOLDER } from "@/config/hotel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-interface LoginSession {
-  role: string;
-  name: string;
-  isAdmin?: boolean;
-  permissions?: string[];
-  backendUserId?: string;
-}
 
-interface LoginProps {
-  onLogin: (session: LoginSession) => void;
-}
 
-const Login = ({ onLogin }: LoginProps) => {
+const Login = () => {
+  const { login } = useAuth();
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminError, setAdminError] = useState("");
   const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
+  // Remove backendTab as it seems unused effectively or simpler to just have one login form
+  // Actually, keeping the UI structure is safer.
   const [backendTab, setBackendTab] = useState<"admin" | "user">("admin");
 
   const handleAdminLogin = async () => {
@@ -36,19 +30,10 @@ const Login = ({ onLogin }: LoginProps) => {
     }
     try {
       setIsAdminSubmitting(true);
-      const { user } = await backendLogin(adminEmail, adminPassword);
-      const backendIsAdmin = user.isAdmin ?? false;
-
-      // Backend login works for both CRM users and admins.
-      onLogin({
-        role: backendIsAdmin ? "admin" : "management",
-        name: user.name || user.email,
-        isAdmin: backendIsAdmin,
-        permissions: user.permissions ?? [],
-        backendUserId: user.id,
-      });
+      await login(adminEmail, adminPassword);
+      // Login successful - AuthContext updates state, parent (Index) re-renders
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to login as admin";
+      const message = err instanceof Error ? err.message : "Unable to login";
       setAdminError(message);
     } finally {
       setIsAdminSubmitting(false);

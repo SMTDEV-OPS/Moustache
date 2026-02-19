@@ -6,17 +6,19 @@ import { UserRoleModel } from "../models/userRole";
 import { RoleModel } from "../models/role";
 import { requireAuth, requirePermissions } from "../middleware/auth";
 import { badRequest, forbidden, notFound, unauthorized } from "../utils/httpError";
+import { AccessControlService } from "../services/auth/AccessControlService";
 
 export const usersRouter = Router();
 
 const createUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  phone: z.string().optional(),
+  phone: z.string().nullish(),
   password: z.string().min(6),
   teamType: z.string(),
-  regions: z.array(z.string()).optional(),
-  roleId: z.string().optional(),
+  regions: z.array(z.string()).nullish(),
+  roleId: z.string().nullish(),
+  reportsTo: z.string().nullish(), // ID of the manager
 });
 
 const updateUserSchema = z.object({
@@ -27,10 +29,27 @@ const updateUserSchema = z.object({
   regions: z.array(z.string()).optional(),
   roleId: z.string().optional(),
   password: z.string().min(6).optional(),
+  reportsTo: z.string().optional().nullable(),
 });
 
 usersRouter.use(requireAuth);
 usersRouter.use(requirePermissions(["users.manage"]));
+
+// Get entire user hierarchy
+usersRouter.get("/hierarchy", async (req, res, next) => {
+  try {
+    // Fetch all active users
+    const users = await UserModel.find({ status: "ACTIVE" })
+      .select("name email roleId reportsTo hierarchyPath teamType pfp")
+      .lean();
+
+    // Construct tree in memory? Or just return flat list with reportsTo?
+    // Returning flat list is easier for frontend to build tree.
+    res.json(users);
+  } catch (err) {
+    next(err);
+  }
+});
 
 usersRouter.get("/", async (req, res, next) => {
   try {
@@ -96,9 +115,10 @@ usersRouter.post(
     try {
       const parsed = createUserSchema.safeParse(req.body);
       if (!parsed.success) {
-        throw badRequest("Invalid user payload");
+        console.error("User Validation Error:", JSON.stringify(parsed.error.format(), null, 2));
+        throw badRequest(`Invalid user payload: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(", ")}`);
       }
-      const { name, email, phone, password, teamType, regions, roleId } =
+      const { name, email, phone, password, teamType, regions, roleId, reportsTo } =
         parsed.data;
 
       const existing = await UserModel.findOne({ email });
@@ -108,6 +128,7 @@ usersRouter.post(
 
       const passwordHash = await bcrypt.hash(password, 10);
 
+      // Create user first
       const user = await UserModel.create({
         name,
         email,
@@ -116,7 +137,16 @@ usersRouter.post(
         regions,
         roleId,
         passwordHash,
+        reportsTo,
       });
+
+      // If reportsTo is set, build hierarchy
+      if (reportsTo) {
+        await AccessControlService.rebuildHierarchy(user.id);
+        // re-fetch to get updated path
+        const updated = await UserModel.findById(user.id);
+        if (updated) Object.assign(user, updated);
+      }
 
       res.status(201).json({
         id: user.id,
@@ -124,6 +154,8 @@ usersRouter.post(
         email: user.email,
         teamType: user.teamType,
         roleId: user.roleId,
+        reportsTo: user.reportsTo,
+        hierarchyPath: user.hierarchyPath,
       });
     } catch (err) {
       next(err);
@@ -138,7 +170,8 @@ usersRouter.patch(
     try {
       const parsed = updateUserSchema.safeParse(req.body);
       if (!parsed.success) {
-        throw badRequest("Invalid update payload");
+        console.error("User Update Validation Error:", JSON.stringify(parsed.error.format(), null, 2));
+        throw badRequest(`Invalid update payload: ${parsed.error.issues.map(i => i.message).join(", ")}`);
       }
       const update: Record<string, unknown> = { ...parsed.data };
 
@@ -146,6 +179,9 @@ usersRouter.patch(
         update.passwordHash = await bcrypt.hash(parsed.data.password, 10);
         delete update.password;
       }
+
+      // Handle reportsTo change specifically
+      const oldUser = await UserModel.findById(req.params.id);
 
       const user = await UserModel.findByIdAndUpdate(
         req.params.id,
@@ -155,6 +191,15 @@ usersRouter.patch(
 
       if (!user) {
         throw notFound("User not found");
+      }
+
+      // If reportsTo changed, rebuild hierarchy
+      if (
+        oldUser &&
+        parsed.data.reportsTo !== undefined &&
+        String(oldUser.reportsTo) !== String(parsed.data.reportsTo)
+      ) {
+        await AccessControlService.rebuildHierarchy(user._id.toString());
       }
 
       res.json(user);

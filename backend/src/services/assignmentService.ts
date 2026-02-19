@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { LeadType, LeadStatus, ObjectId } from "../models/common";
+import { LeadType, LeadStatus, ObjectId, TeamType, LeadSource } from "../models/common";
 import { LeadAssignmentRuleModel } from "../models/leadAssignmentRule";
 import { EmployeeGroupModel } from "../models/employeeGroup";
 import { UserModel } from "../models/user";
@@ -46,7 +46,8 @@ export async function getAssignmentRule(leadType: LeadType) {
  * Find eligible users from an employee group who are online and active
  */
 export async function findEligibleUsers(
-  groupId: Types.ObjectId | string
+  groupId: Types.ObjectId | string,
+  requiredTeamType?: TeamType
 ): Promise<LeanUser[]> {
   const group = await EmployeeGroupModel.findById(groupId).lean();
   if (!group || !group.isActive) {
@@ -59,12 +60,18 @@ export async function findEligibleUsers(
   }
 
   // Find users who are active and online
-  const users = await UserModel.find({
+  const query: any = {
     _id: { $in: memberIds },
     status: "ACTIVE",
     isOnline: true,
-  })
-    .select("_id name email isOnline")
+  };
+
+  if (requiredTeamType) {
+    query.teamType = requiredTeamType;
+  }
+
+  const users = await UserModel.find(query)
+    .select("_id name email isOnline teamType")
     .lean();
 
   return users as LeanUser[];
@@ -74,7 +81,8 @@ export async function findEligibleUsers(
  * Find all active users from an employee group (for manual assignment)
  */
 export async function findAllGroupUsers(
-  groupId: Types.ObjectId | string
+  groupId: Types.ObjectId | string,
+  requiredTeamType?: TeamType
 ): Promise<LeanUser[]> {
   const group = await EmployeeGroupModel.findById(groupId).lean();
   if (!group || !group.isActive) {
@@ -86,11 +94,17 @@ export async function findAllGroupUsers(
     return [];
   }
 
-  const users = await UserModel.find({
+  const query: any = {
     _id: { $in: memberIds },
     status: "ACTIVE",
-  })
-    .select("_id name email isOnline")
+  };
+
+  if (requiredTeamType) {
+    query.teamType = requiredTeamType;
+  }
+
+  const users = await UserModel.find(query)
+    .select("_id name email isOnline teamType")
     .lean();
 
   return users as LeanUser[];
@@ -157,9 +171,40 @@ export async function getUserWithLeastLeads(
 }
 
 /**
+ * Helper to determine team type based on LeadType and Source
+ */
+function determineRequiredTeamType(leadType: LeadType, source?: LeadSource): TeamType {
+  // 1. Source-based overrides (Strongest signal for B2B)
+  if (source) {
+    if (
+      source === LeadSource.TRAVEL_AGENT ||
+      source === LeadSource.CORPORATE_OFFICE ||
+      source === LeadSource.EVENT_MICE
+    ) {
+      return TeamType.SALES;
+    }
+  }
+
+  // 2. LeadType-based routing
+  switch (leadType) {
+    case LeadType.MICE:
+    case LeadType.WEDDING:
+      return TeamType.SALES;
+    case LeadType.STAY:
+    case LeadType.DINING:
+    case LeadType.INFORMATION:
+    default:
+      return TeamType.RESERVATIONS;
+  }
+}
+
+/**
  * Auto-assign a lead based on lead type rules
  */
-export async function autoAssignLead(leadType: LeadType): Promise<AssignmentResult> {
+export async function autoAssignLead(
+  leadType: LeadType,
+  source?: LeadSource
+): Promise<AssignmentResult> {
   // Get the assignment rule for this lead type
   const rule = await getAssignmentRule(leadType);
 
@@ -170,13 +215,15 @@ export async function autoAssignLead(leadType: LeadType): Promise<AssignmentResu
     };
   }
 
-  // Find eligible (online + active) users in the group
-  let eligibleUsers = await findEligibleUsers(rule.employeeGroupId);
+  const requiredTeamType = determineRequiredTeamType(leadType, source);
+
+  // Find eligible (online + active) users in the group, filtering by team type
+  let eligibleUsers = await findEligibleUsers(rule.employeeGroupId, requiredTeamType);
 
   // If no online users, fall back to all active users in the group
   if (eligibleUsers.length === 0) {
-    eligibleUsers = await findAllGroupUsers(rule.employeeGroupId);
-    
+    eligibleUsers = await findAllGroupUsers(rule.employeeGroupId, requiredTeamType);
+
     if (eligibleUsers.length === 0) {
       return {
         employeeGroupId: rule.employeeGroupId,
@@ -201,7 +248,7 @@ export async function autoAssignLead(leadType: LeadType): Promise<AssignmentResu
 
   // Check if the selected user has an active buddy assignment
   const buddyResolution = await resolveAssigneeWithBuddy(result.userId);
-  
+
   let reason = `Auto-assigned to user with ${result.count} open leads`;
   if (buddyResolution.wasRedirected) {
     reason += `. Redirected to buddy due to unavailability${buddyResolution.reason ? ` (${buddyResolution.reason})` : ""}`;
@@ -221,7 +268,8 @@ export async function autoAssignLead(leadType: LeadType): Promise<AssignmentResu
  * Get eligible users for manual assignment based on lead type
  */
 export async function getEligibleUsersForManualAssignment(
-  leadType: LeadType
+  leadType: LeadType,
+  source?: LeadSource
 ): Promise<EligibleUser[]> {
   const rule = await getAssignmentRule(leadType);
 
@@ -229,7 +277,8 @@ export async function getEligibleUsersForManualAssignment(
     return [];
   }
 
-  const users = await findAllGroupUsers(rule.employeeGroupId);
+  const requiredTeamType = determineRequiredTeamType(leadType, source);
+  const users = await findAllGroupUsers(rule.employeeGroupId, requiredTeamType);
 
   if (users.length === 0) {
     return [];
@@ -363,7 +412,7 @@ export async function checkActiveBuddyAssignment(
     // Extract the actual ObjectId - handle both populated object and direct ObjectId
     const buddyUserIdObj = buddy?._id ? buddy._id : assignment.buddyUserId;
     const buddyUserIdStr = buddyUserIdObj?.toString() || (assignment.buddyUserId as any)?.toString();
-    
+
     logger.info("[Buddy Check] Active buddy assignment found", {
       userId: userIdStr,
       assignmentId: assignment._id.toString(),
@@ -417,7 +466,7 @@ export async function resolveAssigneeWithBuddy(
   targetUserId: Types.ObjectId | string
 ): Promise<{ finalUserId: Types.ObjectId; wasRedirected: boolean; reason?: string }> {
   const targetUserIdStr = targetUserId.toString();
-  
+
   logger.info("[Buddy Resolution] Starting buddy resolution", {
     targetUserId: targetUserIdStr,
   });
@@ -426,7 +475,7 @@ export async function resolveAssigneeWithBuddy(
   const targetUser = await UserModel.findById(targetUserId)
     .select("name email status")
     .lean();
-  
+
   logger.info("[Buddy Resolution] Target user info", {
     targetUserId: targetUserIdStr,
     targetUserName: targetUser?.name,
@@ -435,10 +484,10 @@ export async function resolveAssigneeWithBuddy(
   });
 
   const buddyCheck = await checkActiveBuddyAssignment(targetUserId);
-  
+
   if (buddyCheck) {
     const buddyUserIdStr = buddyCheck.buddyUserId.toString();
-    
+
     logger.info("[Buddy Resolution] Buddy check returned assignment", {
       targetUserId: targetUserIdStr,
       buddyUserId: buddyUserIdStr,
@@ -449,7 +498,7 @@ export async function resolveAssigneeWithBuddy(
     const buddy = await UserModel.findById(buddyCheck.buddyUserId)
       .select("name email status")
       .lean();
-    
+
     logger.info("[Buddy Resolution] Buddy user info", {
       buddyUserId: buddyUserIdStr,
       buddyName: buddy?.name,
@@ -473,8 +522,8 @@ export async function resolveAssigneeWithBuddy(
       if (buddyUserIdValue instanceof Types.ObjectId) {
         finalBuddyId = buddyUserIdValue;
       } else {
-        const buddyUserIdStr = typeof buddyUserIdValue === 'string' 
-          ? buddyUserIdValue 
+        const buddyUserIdStr = typeof buddyUserIdValue === 'string'
+          ? buddyUserIdValue
           : String(buddyUserIdValue);
         finalBuddyId = new Types.ObjectId(buddyUserIdStr);
       }

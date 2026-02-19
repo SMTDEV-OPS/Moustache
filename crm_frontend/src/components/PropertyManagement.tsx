@@ -85,6 +85,11 @@ export const PropertyManagement = () => {
         },
         timeZone: property.timeZone || "",
         status: property.status || "ACTIVE",
+        pmsProvider: property.pmsProvider || "NONE",
+        pmsConfig: {
+          hotelCode: property.pmsConfig?.hotelCode || "",
+          authCode: property.pmsConfig?.authCode || "",
+        },
       });
     } else {
       setEditingProperty(null);
@@ -98,6 +103,11 @@ export const PropertyManagement = () => {
         },
         timeZone: "",
         status: "ACTIVE",
+        pmsProvider: "NONE",
+        pmsConfig: {
+          hotelCode: "",
+          authCode: "",
+        },
       });
     }
     setIsDialogOpen(true);
@@ -116,6 +126,11 @@ export const PropertyManagement = () => {
       },
       timeZone: "",
       status: "ACTIVE",
+      pmsProvider: "NONE",
+      pmsConfig: {
+        hotelCode: "",
+        authCode: "",
+      },
     });
   };
 
@@ -143,6 +158,8 @@ export const PropertyManagement = () => {
         },
         timeZone: formData.timeZone?.trim() || undefined,
         status: formData.status,
+        pmsProvider: formData.pmsProvider,
+        pmsConfig: formData.pmsConfig,
       };
 
       // Remove empty location object if all fields are empty
@@ -158,7 +175,7 @@ export const PropertyManagement = () => {
         await updateProperty(editingProperty._id, propertyPayload);
         toast.success("Property updated successfully");
       } else {
-        await createProperty(propertyPayload);
+        await createProperty(propertyPayload as CreatePropertyInput);
         toast.success("Property created successfully");
       }
       handleCloseDialog();
@@ -353,19 +370,19 @@ export const PropertyManagement = () => {
                     {(property.location.city ||
                       property.location.state ||
                       property.location.country) && (
-                      <div className="flex items-start gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                        <div className="text-sm">
-                          {[
-                            property.location.city,
-                            property.location.state,
-                            property.location.country,
-                          ]
-                            .filter(Boolean)
-                            .join(", ")}
+                        <div className="flex items-start gap-2">
+                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                          <div className="text-sm">
+                            {[
+                              property.location.city,
+                              property.location.state,
+                              property.location.country,
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                   </div>
                 )}
                 {property.timeZone && (
@@ -529,6 +546,71 @@ export const PropertyManagement = () => {
               </div>
             </div>
 
+            {/* PMS Configuration */}
+            <div className="space-y-4 border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-semibold">PMS Configuration</h3>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="pmsProvider">Provider</Label>
+                  <Select
+                    value={formData.pmsProvider || "NONE"}
+                    onValueChange={(value: "NONE" | "EZEE") =>
+                      setFormData({ ...formData, pmsProvider: value })
+                    }
+                  >
+                    <SelectTrigger id="pmsProvider" className="rounded-none h-12">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">None</SelectItem>
+                      <SelectItem value="EZEE">eZee Technosys</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formData.pmsProvider === "EZEE" && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="hotelCode">Hotel Code *</Label>
+                      <Input
+                        id="hotelCode"
+                        value={formData.pmsConfig?.hotelCode || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            pmsConfig: {
+                              ...formData.pmsConfig,
+                              hotelCode: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="e.g., 12345"
+                        className="rounded-none h-12"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="authCode">Auth Code *</Label>
+                      <Input
+                        id="authCode"
+                        value={formData.pmsConfig?.authCode || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            pmsConfig: {
+                              ...formData.pmsConfig,
+                              authCode: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="e.g., abcde12345"
+                        className="rounded-none h-12"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="flex justify-end gap-3 pt-4 border-t">
               <Button
                 variant="outline"
@@ -547,8 +629,8 @@ export const PropertyManagement = () => {
                 {isSubmitting
                   ? "Saving..."
                   : editingProperty
-                  ? "Update Property"
-                  : "Create Property"}
+                    ? "Update Property"
+                    : "Create Property"}
               </Button>
             </div>
           </div>
@@ -557,4 +639,3 @@ export const PropertyManagement = () => {
     </div>
   );
 };
-
