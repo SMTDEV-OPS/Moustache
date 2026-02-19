@@ -1,0 +1,188 @@
+{
+    "app_name": "LuxeLead - Hotel CRM",
+    "design_philosophy": {
+      "name": "Velvet & Steel",
+      "description": "A fusion of high-end hospitality elegance (Velvet) and military-grade operational efficiency (Steel). The interface must feel expensive but work fast.",
+      "core_principles": [
+        "Fusion over Imitation: Mix 'Swiss Hotel Signage' with 'Stock Trader Terminal'.",
+        "Emotion First: Every interaction should feel 'Concierge-level' - smooth, anticipating needs.",
+        "Content is King: Guest data is the hero. Use negative space to frame it like art.",
+        "Zoom In: Use large, bold typography for key metrics (e.g., 'Hot Lead').",
+        "Contrast: High contrast text for readability in busy front-desk environments."
+      ]
+    },
+    "typography": {
+      "fonts": {
+        "heading": {
+          "family": "Playfair Display",
+          "weights": ["400", "600", "700"],
+          "usage": "Page titles, Guest Names, Membership Levels (Gold/Platinum)",
+          "fallback": "serif"
+        },
+        "body": {
+          "family": "Manrope",
+          "weights": ["400", "500", "600"],
+          "usage": "Data tables, inputs, buttons, general text",
+          "fallback": "sans-serif"
+        },
+        "mono": {
+          "family": "JetBrains Mono",
+          "weights": ["400"],
+          "usage": "Reservation IDs, Room Numbers, API Keys",
+          "fallback": "monospace"
+        }
+      },
+      "rules": [
+        "Headings (h1, h2) must use 'Playfair Display' and be 'tracking-tight'.",
+        "All uppercase labels (e.g., table headers) must use 'Manrope', 'text-xs', 'font-bold', and 'tracking-[0.2em]'.",
+        "Never use 'Inter'. It is forbidden."
+      ]
+    },
+    "colors": {
+      "palette": {
+        "primary": {
+          "name": "Midnight Slate",
+          "hex": "#0F172A",
+          "tailwind": "bg-slate-900",
+          "usage": "Sidebar, Primary Buttons, Text-Heavy Headers"
+        },
+        "accent": {
+          "name": "Royal Emerald",
+          "hex": "#059669",
+          "tailwind": "bg-emerald-600",
+          "usage": "Call-to-Action, Success States, 'Confirmed' Status"
+        },
+        "secondary": {
+          "name": "Champagne Gold",
+          "hex": "#B45309",
+          "tailwind": "bg-amber-700",
+          "usage": "VIP Tags, 'Sunshine Club' Badges, Warnings"
+        },
+        "background": {
+          "name": "Alabaster",
+          "hex": "#F8FAFC",
+          "tailwind": "bg-slate-50",
+          "usage": "Main App Background"
+        },
+        "surface": {
+          "name": "Pure White",
+          "hex": "#FFFFFF",
+          "tailwind": "bg-white",
+          "usage": "Cards, Modals, Sidebar Active State"
+        },
+        "status": {
+          "hot": "text-rose-600 bg-rose-50 border-rose-200",
+          "warm": "text-amber-600 bg-amber-50 border-amber-200",
+          "cold": "text-slate-500 bg-slate-100 border-slate-200"
+        }
+      },
+      "rules": [
+        "Never use pure black (#000000). Use Slate-900 or Slate-950.",
+        "Gradients are forbidden for backgrounds. Use solid colors or subtle noise textures.",
+        "Sidebar must be Dark (Slate-900) to anchor the Light content area."
+      ]
+    },
+    "layout": {
+      "grid_system": {
+        "dashboard": "The Control Room",
+        "rules": [
+          "Base Grid: grid-cols-1 md:grid-cols-4 gap-6",
+          "Summary Cards: col-span-1",
+          "Main Chart: col-span-2 row-span-2",
+          "Activity Feed: col-span-1 row-span-2 (Tall)"
+        ]
+      },
+      "spacing": {
+        "scale": "Generous",
+        "rules": [
+          "Use p-6 or p-8 for card padding (default is usually p-4).",
+          "Gap between major sections: gap-8 or gap-12.",
+          "Sidebar width: w-64 (fixed)."
+        ]
+      },
+      "radius": {
+        "default": "rounded-sm",
+        "buttons": "rounded-none",
+        "cards": "rounded-sm",
+        "inputs": "rounded-none",
+        "logic": "Sharp edges convey precision and luxury (like a keycard). Avoid friendly rounded-xl."
+      }
+    },
+    "components": {
+      "buttons": {
+        "primary": "bg-slate-900 text-white hover:bg-slate-800 rounded-none px-8 py-6 font-medium tracking-wide shadow-none transition-all hover:-translate-y-0.5",
+        "secondary": "bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 rounded-none px-8 py-6 font-medium tracking-wide",
+        "ghost": "text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-none"
+      },
+      "cards": {
+        "style": "bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-300 rounded-sm",
+        "header": "border-b border-slate-100 p-6",
+        "content": "p-6"
+      },
+      "inputs": {
+        "style": "rounded-none border-slate-200 focus:ring-0 focus:border-emerald-600 bg-slate-50/50 h-12"
+      },
+      "badges": {
+        "style": "rounded-full px-3 py-1 text-xs font-bold tracking-wider uppercase border"
+      }
+    },
+    "visual_enhancers": {
+      "glassmorphism": {
+        "usage": "Sticky Headers, Modals",
+        "classes": "bg-white/80 backdrop-blur-md border-b border-white/20"
+      },
+      "textures": {
+        "usage": "Sidebar Background",
+        "css": "background-image: url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E\");"
+      }
+    },
+    "image_urls": {
+      "login_background": {
+        "url": "https://images.pexels.com/photos/2123430/pexels-photo-2123430.jpeg",
+        "alt": "Minimalist Luxury Hotel Lobby",
+        "category": "background"
+      },
+      "guest_avatars": [
+        {
+          "url": "https://images.pexels.com/photos/1181519/pexels-photo-1181519.jpeg",
+          "alt": "Professional Woman Guest",
+          "category": "avatar"
+        },
+        {
+          "url": "https://images.pexels.com/photos/12775213/pexels-photo-12775213.jpeg",
+          "alt": "Professional Man Guest",
+          "category": "avatar"
+        }
+      ],
+      "rooms": [
+        {
+          "url": "https://images.pexels.com/photos/271639/pexels-photo-271639.jpeg",
+          "alt": "Deluxe King Room",
+          "category": "room"
+        },
+        {
+          "url": "https://images.pexels.com/photos/2725675/pexels-photo-2725675.jpeg",
+          "alt": "Presidential Suite",
+          "category": "room"
+        }
+      ],
+      "dining": [
+        {
+          "url": "https://images.pexels.com/photos/2566037/pexels-photo-2566037.jpeg",
+          "alt": "Gourmet Plating",
+          "category": "food"
+        }
+      ]
+    },
+    "universal_guidelines": [
+      "Do not use 'Inter' font.",
+      "Do not use gradients for backgrounds.",
+      "Do not use rounded-xl or rounded-2xl. Stick to rounded-sm or rounded-none.",
+      "Always use 'data-testid' for interactive elements.",
+      "Use 'sonner' for toasts.",
+      "Use 'lucide-react' for icons.",
+      "Ensure all text has sufficient contrast (APCA/WCAG AA).",
+      "Mobile-first responsive design is mandatory."
+    ],
+    "instructions_to_main_agent": "You are building a high-end tool for hotel staff. It should feel like a 'Cockpit for Concierges'. Use the provided colors and fonts strictly. Implement the 'Control Room' grid for the dashboard. Use the provided images for the respective sections. Do not ask for clarification, just build it with confidence."
+  }

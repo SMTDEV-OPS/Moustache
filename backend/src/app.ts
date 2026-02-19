@@ -1,0 +1,103 @@
+import express from "express";
+import cors from "cors";
+import { errorHandler } from "./middleware/errorHandler";
+import { requestLogger } from "./middleware/requestLogger";
+import { logger } from "./config/logger";
+import { authRouter } from "./routes/auth";
+import { usersRouter } from "./routes/users";
+import { guestsRouter } from "./routes/guests";
+import { accountsRouter } from "./routes/accounts";
+import { propertiesRouter } from "./routes/properties";
+import { regionsRouter } from "./routes/regions";
+import { leadsRouter } from "./routes/leads";
+import { communicationsRouter } from "./routes/communications";
+import { quotationsRouter } from "./routes/quotations";
+import { paymentLinksRouter } from "./routes/paymentLinks";
+import { reservationsRouter } from "./routes/reservations";
+import { tasksRouter } from "./routes/tasks";
+import { reportsRouter } from "./routes/reports";
+import { availabilityRouter } from "./routes/availability";
+import { buddiesRouter } from "./routes/buddies";
+import { workflowsRouter } from "./routes/workflows";
+import { rolesRouter } from "./routes/roles";
+import { groupsRouter } from "./routes/groups";
+import { assignmentRulesRouter } from "./routes/assignmentRules";
+import { notificationsRouter } from "./routes/notifications";
+import { templatesRouter } from "./routes/templates";
+import { leadWorkflowRouter } from "./routes/leadWorkflow";
+import { emailRouter } from "./routes/email";
+import { publicWebsiteLeadsRouter } from "./routes/public/websiteLeads";
+import { knowledgeBaseRouter } from "./routes/knowledgeBase";
+import { ticketsRouter } from "./routes/tickets";
+import { conglomeratesRouter } from "./routes/conglomerates";
+import { contactsRouter } from "./routes/contacts";
+import { accountPotentialsRouter } from "./routes/accountPotentials";
+import { hotelBrandsRouter } from "./routes/hotelBrands";
+
+export const app = express();
+
+app.use(
+  cors({
+    origin: "*",
+  })
+);
+app.use(express.json());
+
+// Request logging middleware (must be early to capture all requests)
+app.use(requestLogger);
+
+app.get("/", (_req, res) => {
+  res.json({
+    message: "PostcardCRM API",
+    version: "1.0.0",
+    status: "running",
+    endpoints: {
+      health: "/health",
+      auth: "/auth",
+      api: "/api"
+    }
+  });
+});
+
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
+app.use("/auth", authRouter);
+app.use("/users", usersRouter);
+app.use("/guests", guestsRouter);
+app.use("/accounts", accountsRouter);
+app.use("/properties", propertiesRouter);
+app.use("/regions", regionsRouter);
+app.use("/leads", leadsRouter);
+app.use("/leads", communicationsRouter);
+app.use("/leads", quotationsRouter);
+app.use("/leads", paymentLinksRouter);
+app.use("/reservations", reservationsRouter);
+app.use("/tasks", tasksRouter);
+app.use("/reports", reportsRouter);
+app.use("/availability-reports", availabilityRouter);
+app.use("/buddies", buddiesRouter);
+app.use("/workflows", workflowsRouter);
+app.use("/templates", templatesRouter);
+app.use("/leads", leadWorkflowRouter);
+app.use("/email", emailRouter);
+app.use("/roles", rolesRouter);
+app.use("/groups", groupsRouter);
+app.use("/assignment-rules", assignmentRulesRouter);
+app.use("/notifications", notificationsRouter);
+app.use("/knowledge-base", knowledgeBaseRouter);
+app.use("/tickets", ticketsRouter);
+app.use("/conglomerates", conglomeratesRouter);
+app.use("/contacts", contactsRouter);
+app.use("/account-potentials", accountPotentialsRouter);
+app.use("/hotel-brands", hotelBrandsRouter);
+
+// Public endpoints (no authentication required)
+app.use("/api/public/website-leads", publicWebsiteLeadsRouter);
+
+app.use(errorHandler);
+
+logger.info("Express app initialized");
+
+

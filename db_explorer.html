@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostcardCRM | Database Architecture</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --bg-deep: #0a0c10;
+            --bg-card: rgba(22, 27, 34, 0.8);
+            --accent-primary: #38bdf8;
+            --accent-secondary: #818cf8;
+            --accent-tertiary: #c084fc;
+            --accent-green: #34d399;
+            --accent-amber: #fbbf24;
+            --text-main: #e6edf3;
+            --text-muted: #8b949e;
+            --border: rgba(48, 54, 61, 0.8);
+            --glass: rgba(255, 255, 255, 0.03);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        .ambient-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+            filter: blur(100px);
+            opacity: 0.4;
+        }
+
+        .blob {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            border-radius: 50%;
+        }
+
+        .blob-1 { background: var(--accent-primary); top: -10%; left: -10%; animation: float 20s infinite alternate; }
+        .blob-2 { background: var(--accent-tertiary); bottom: -10%; right: -10%; animation: float 25s infinite alternate-reverse; }
+
+        @keyframes float {
+            from { transform: translate(0, 0); }
+            to { transform: translate(100px, 100px); }
+        }
+
+        aside {
+            width: 320px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            padding: 1.25rem;
+            z-index: 10;
+        }
+
+        header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-tertiary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.25rem;
+        }
+
+        .subtitle {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .view-tabs {
+            display: flex;
+            gap: 0.35rem;
+            margin-bottom: 1rem;
+        }
+
+        .view-tab {
+            flex: 1;
+            padding: 0.5rem 0.6rem;
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .view-tab:hover {
+            border-color: var(--text-muted);
+            color: var(--text-main);
+        }
+
+        .view-tab.active {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        .legend {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            padding: 0.85rem;
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .legend-item:hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-1px);
+        }
+
+        .icon-box {
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        .blue { background: rgba(56, 189, 248, 0.2); color: var(--accent-primary); }
+        .purple { background: rgba(192, 132, 252, 0.2); color: var(--accent-tertiary); }
+        .indigo { background: rgba(129, 140, 248, 0.2); color: var(--accent-secondary); }
+        .green { background: rgba(52, 211, 153, 0.2); color: var(--accent-green); }
+        .amber { background: rgba(251, 191, 36, 0.2); color: var(--accent-amber); }
+
+        .item-info h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+        }
+
+        .item-info p {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            line-height: 1.35;
+        }
+
+        .entity-count {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        main {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            overflow: hidden;
+        }
+
+        .canvas-wrap {
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .canvas {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 2.5rem;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            min-width: 720px;
+            transform-origin: 0 0;
+            transition: transform 0.15s ease-out;
+        }
+
+        .mermaid {
+            opacity: 0;
+            transition: opacity 0.6s ease;
+        }
+
+        .mermaid.appearing {
+            opacity: 1;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            z-index: 20;
+        }
+
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn {
+            padding: 0.6rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-main);
+            font-size: 0.8rem;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--border);
+            border-color: var(--text-muted);
+        }
+
+        .btn-icon {
+            padding: 0.5rem 0.65rem;
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .loading-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        footer .subtitle {
+            margin-bottom: 0;
+            margin-top: auto;
+            padding-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-bg">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <aside>
+        <header>
+            <h1>PostcardCRM</h1>
+            <div class="subtitle">Database schema · Backend models</div>
+        </header>
+
+        <div class="view-tabs">
+            <button class="view-tab active" data-view="core" title="Core entities and relationships">Core</button>
+            <button class="view-tab" data-view="full" title="Full schema with workflows, comms, support">Full</button>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="icon-box blue">ID</div>
+                <div class="item-info">
+                    <h3>Identity & scope</h3>
+                    <p>Users, Roles, Regions, EmployeeGroups, and access boundaries.</p>
+                    <div class="entity-count">User, Role, Region, Property, EmployeeGroup, UserRole, UserBuddyAssignment</div>
+                </div>
+            </div>
+            <div class="legend-item">
+                <div class="icon-box purple">BU</div>
+                <div class="item-info">
+                    <h3>Business core</h3>
+                    <p>Accounts, Conglomerates, Contacts, and AccountPotential.</p>
+                    <div class="entity-count">Account, Conglomerate, Contact, AccountPotential, HotelBrand</div>
+                </div>
+            </div>
+            <div class="legend-item">
+                <div class="icon-box indigo">OP</div>
+                <div class="item-info">
+                    <h3>Revenue flow</h3>
+                    <p>Leads, Guests, Properties, Quotations, Reservations, PaymentLinks.</p>
+                    <div class="entity-count">Lead, Guest, Quotation, Reservation, PaymentLink</div>
+                </div>
+            </div>
+            <div class="legend-item">
+                <div class="icon-box green">WF</div>
+                <div class="item-info">
+                    <h3>Workflows & comms</h3>
+                    <p>Workflows, Lead workflow state, Tasks, Communications, Templates.</p>
+                    <div class="entity-count">Workflow, LeadWorkflowState, Task, Communication, Template, LeadActivity</div>
+                </div>
+            </div>
+            <div class="legend-item">
+                <div class="icon-box amber">SP</div>
+                <div class="item-info">
+                    <h3>Support & system</h3>
+                    <p>Tickets, Notifications, Email, Knowledge base, Activity log.</p>
+                    <div class="entity-count">Ticket, TicketActivity, Notification, EmailAccount, EmailMessage, KnowledgeBase, ActivityLog</div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <div class="subtitle">MongoDB · Mermaid ER</div>
+        </footer>
+    </aside>
+
+    <main>
+        <div class="canvas-wrap" id="canvasWrap">
+            <div class="canvas" id="canvas">
+                <div class="mermaid" id="mermaidContainer"></div>
+            </div>
+        </div>
+        <div class="loading-msg" id="loadingMsg">Rendering diagram…</div>
+    </main>
+
+    <div class="controls">
+        <div class="zoom-controls">
+            <button class="btn btn-icon" id="zoomOut" title="Zoom out">−</button>
+            <span class="btn" id="zoomLabel" style="pointer-events:none;min-width:3rem;">100%</span>
+            <button class="btn btn-icon" id="zoomIn" title="Zoom in">+</button>
+            <button class="btn btn-icon" id="zoomReset" title="Reset zoom">⌂</button>
+        </div>
+        <button class="btn" onclick="window.print()">Export PDF</button>
+        <button class="btn" id="btnRefresh" title="Re-render diagram">Refresh</button>
+    </div>
+
+    <script>
+        const DIAGRAMS = {
+            core: `erDiagram
+    USER ||--o{ REGION : "in"
+    USER }o--|| ROLE : "role"
+    USER ||--o{ EMPLOYEE_GROUP : "in"
+    USER ||--o| USER : "buddy"
+    REGION ||--o{ PROPERTY : "has"
+    EMPLOYEE_GROUP ||--o{ USER : "members"
+    EMPLOYEE_GROUP ||--o{ ROLE : "roles"
+    LEAD_ASSIGNMENT_RULE }o--|| EMPLOYEE_GROUP : "group"
+
+    CONGLOMERATE ||--o{ ACCOUNT : "has"
+    ACCOUNT ||--o{ ACCOUNT : "parent"
+    ACCOUNT ||--o{ CONTACT : "has"
+    ACCOUNT ||--o{ USER : "primaryManager"
+
+    LEAD }o--o| GUEST : "guest"
+    LEAD }o--o| ACCOUNT : "account"
+    LEAD }o--o| PROPERTY : "property"
+    LEAD }o--o| USER : "assignedTo"
+    LEAD }o--o| REGION : "region"
+    LEAD ||--o{ QUOTATION : "has"
+    LEAD ||--o{ COMMUNICATION : "has"
+    LEAD ||--o{ LEAD_ACTIVITY : "history"
+    LEAD ||--o| LEAD_WORKFLOW_STATE : "workflow"
+
+    GUEST ||--o{ RESERVATION : "has"
+    LEAD ||--o| RESERVATION : "from"
+    RESERVATION }o--|| PROPERTY : "property"
+    LEAD ||--o{ PAYMENT_LINK : "has"
+    PAYMENT_LINK }o--o| GUEST : "guest"
+
+    LEAD_WORKFLOW_STATE }o--|| WORKFLOW : "workflow"
+    TASK }o--o| LEAD : "lead"
+    TASK }o--|| USER : "owner"
+
+    TICKET }o--o| GUEST : "guest"
+    TICKET }o--o| ACCOUNT : "account"
+    TICKET }o--o| PROPERTY : "property"
+    TICKET }o--o| USER : "assignedTo"
+    TICKET }o--o| REGION : "region"
+    TICKET ||--o{ TICKET_ACTIVITY : "log"
+
+    USER {
+        string name
+        string email
+        string teamType
+        objectId roleId
+    }
+    ROLE { string name array permissions }
+    REGION { string name array properties }
+    PROPERTY { string name string code string status }
+    EMPLOYEE_GROUP { string name string teamType }
+    ACCOUNT { string name string orgType string level objectId parentId }
+    CONGLOMERATE { string name string country string region }
+    CONTACT { string name string designation boolean keyPersonnel }
+    GUEST { string name string email string phone }
+    LEAD { string leadNumber string status string heatLevel date checkIn }
+    QUOTATION { number version string status }
+    RESERVATION { date checkIn date checkOut string status }
+    PAYMENT_LINK { string gateway number amount string status }
+    WORKFLOW { string name array steps }
+    LEAD_WORKFLOW_STATE { number currentStep boolean isCompleted }
+    TASK { string title date dueAt string status }
+    TICKET { string ticketNumber string status string priority }
+`,
+
+            full: `erDiagram
+    USER ||--o{ REGION : "in"
+    USER }o--|| ROLE : "role"
+    USER ||--o{ EMPLOYEE_GROUP : "in"
+    USER ||--o| USER : "buddy"
+    USER ||--o{ NOTIFICATION : "receives"
+    USER ||--o{ ACTIVITY_LOG : "actions"
+    USER ||--o{ EMAIL_ACCOUNT : "owns"
+    USER ||--o{ USER_ROLE : "has"
+    USER ||--o{ USER_BUDDY_ASSIGNMENT : "buddyHistory"
+    REGION ||--o{ PROPERTY : "has"
+    EMPLOYEE_GROUP ||--o{ USER : "members"
+    EMPLOYEE_GROUP ||--o{ ROLE : "roles"
+    LEAD_ASSIGNMENT_RULE }o--|| EMPLOYEE_GROUP : "group"
+
+    CONGLOMERATE ||--o{ ACCOUNT : "has"
+    ACCOUNT ||--o{ ACCOUNT : "parent"
+    ACCOUNT ||--o{ CONTACT : "has"
+    ACCOUNT ||--o{ ACCOUNT_POTENTIAL : "potential"
+    ACCOUNT ||--o{ USER : "primaryManager"
+    ACCOUNT_POTENTIAL }o--o{ HOTEL_BRAND : "competitors"
+    HOTEL_BRAND { string name string category }
+
+    LEAD }o--o| GUEST : "guest"
+    LEAD }o--o| ACCOUNT : "account"
+    LEAD }o--o| PROPERTY : "property"
+    LEAD }o--o| USER : "assignedTo"
+    LEAD }o--o| REGION : "region"
+    LEAD ||--o{ QUOTATION : "has"
+    LEAD ||--o{ COMMUNICATION : "has"
+    LEAD ||--o{ LEAD_ACTIVITY : "history"
+    LEAD ||--o| LEAD_WORKFLOW_STATE : "workflow"
+    QUOTATION }o--o| PROPERTY : "property"
+    COMMUNICATION }o--o| USER : "performedBy"
+    COMMUNICATION }o--o| EMAIL_MESSAGE : "emailRef"
+    LEAD_ACTIVITY }o--o| USER : "performedBy"
+    LEAD_ACTIVITY }o--o| EMPLOYEE_GROUP : "group"
+
+    GUEST ||--o{ RESERVATION : "has"
+    GUEST ||--o{ COMMUNICATION : "has"
+    LEAD ||--o| RESERVATION : "from"
+    RESERVATION }o--|| PROPERTY : "property"
+    LEAD ||--o{ PAYMENT_LINK : "has"
+    PAYMENT_LINK }o--o| GUEST : "guest"
+
+    LEAD_WORKFLOW_STATE }o--|| WORKFLOW : "workflow"
+    WORKFLOW ||--o| TEMPLATE : "templates"
+    TASK }o--o| LEAD : "lead"
+    TASK }o--|| USER : "owner"
+    TASK }o--o| USER : "createdBy"
+
+    TICKET }o--o| GUEST : "guest"
+    TICKET }o--o| ACCOUNT : "account"
+    TICKET }o--o| PROPERTY : "property"
+    TICKET }o--o| USER : "assignedTo"
+    TICKET }o--o| USER : "createdBy"
+    TICKET }o--o| REGION : "region"
+    TICKET ||--o{ TICKET_ACTIVITY : "log"
+    TICKET_ACTIVITY }o--o| USER : "performedBy"
+
+    EMAIL_ACCOUNT ||--o{ EMAIL_MESSAGE : "messages"
+    EMAIL_MESSAGE }o--o| LEAD : "linkedLead"
+    EMAIL_MESSAGE }o--o| GUEST : "linkedGuest"
+    PROPERTY ||--o{ AVAILABILITY_REPORT : "reports"
+    AVAILABILITY_REPORT }o--o| USER : "uploadedBy"
+    PROPERTY ||--o{ KNOWLEDGE_BASE : "kb"
+    KNOWLEDGE_BASE }o--|| USER : "createdBy"
+
+    USER { string name string email string teamType }
+    ROLE { string name array permissions }
+    REGION { string name array properties }
+    PROPERTY { string name string code string status }
+    EMPLOYEE_GROUP { string name string teamType }
+    ACCOUNT { string name string orgType string level }
+    CONGLOMERATE { string name string country }
+    CONTACT { string name string designation }
+    GUEST { string name string email }
+    LEAD { string leadNumber string status string heatLevel }
+    QUOTATION { number version string status }
+    RESERVATION { date checkIn date checkOut }
+    PAYMENT_LINK { string gateway number amount }
+    WORKFLOW { string name array steps }
+    LEAD_WORKFLOW_STATE { number currentStep }
+    TASK { string title date dueAt string status }
+    TEMPLATE { string name string medium string body }
+    COMMUNICATION { string channel string direction }
+    LEAD_ACTIVITY { string type date performedAt }
+    TICKET { string ticketNumber string status string priority }
+    TICKET_ACTIVITY { string type date performedAt }
+    NOTIFICATION { string type string title boolean isRead }
+    ACTIVITY_LOG { string type string action }
+    EMAIL_ACCOUNT { string email string provider }
+    EMAIL_MESSAGE { string subject string folder }
+    ACCOUNT_POTENTIAL { string city string segment number year }
+    KNOWLEDGE_BASE { string type string title }
+    AVAILABILITY_REPORT { date date object data }
+    USER_ROLE { objectId userId objectId roleId }
+    USER_BUDDY_ASSIGNMENT { date effectiveFrom date effectiveTo }
+`
+        };
+
+        let currentView = 'core';
+        let scale = 1;
+        const MIN_SCALE = 0.4;
+        const MAX_SCALE = 1.8;
+        const SCALE_STEP = 0.15;
+
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'dark',
+            securityLevel: 'loose',
+            er: {
+                useMaxWidth: true,
+                entityPadding: 12,
+                fontSize: 13
+            },
+            themeVariables: {
+                primaryColor: '#38bdf8',
+                primaryTextColor: '#e6edf3',
+                primaryBorderColor: '#30363d',
+                lineColor: '#8b949e',
+                secondaryColor: '#818cf8',
+                tertiaryColor: '#c084fc'
+            }
+        });
+
+        function renderDiagram(view) {
+            const container = document.getElementById('mermaidContainer');
+            const loading = document.getElementById('loadingMsg');
+            const diagram = DIAGRAMS[view] || DIAGRAMS.core;
+            container.innerHTML = '';
+            container.classList.remove('appearing');
+            loading.style.display = 'block';
+
+            const id = 'mermaid-' + Date.now();
+            mermaid.render(id, diagram).then(({ svg }) => {
+                container.innerHTML = svg;
+                container.classList.add('appearing');
+                loading.style.display = 'none';
+            }).catch(err => {
+                loading.textContent = 'Render failed. Try Refresh.';
+                console.error(err);
+            });
+        }
+
+        function setView(view) {
+            currentView = view;
+            document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+            renderDiagram(view);
+        }
+
+        function applyZoom() {
+            const canvas = document.getElementById('canvas');
+            canvas.style.transform = `scale(${scale})`;
+            document.getElementById('zoomLabel').textContent = Math.round(scale * 100) + '%';
+        }
+
+        document.querySelectorAll('.view-tab').forEach(btn => {
+            btn.addEventListener('click', () => setView(btn.dataset.view));
+        });
+
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            scale = Math.min(MAX_SCALE, scale + SCALE_STEP);
+            applyZoom();
+        });
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            scale = Math.max(MIN_SCALE, scale - SCALE_STEP);
+            applyZoom();
+        });
+        document.getElementById('zoomReset').addEventListener('click', () => {
+            scale = 1;
+            applyZoom();
+        });
+
+        document.getElementById('btnRefresh').addEventListener('click', () => {
+            renderDiagram(currentView);
+        });
+
+        setView('core');
+        applyZoom();
+    </script>
+</body>
+</html>

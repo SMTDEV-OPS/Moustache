@@ -1,0 +1,33 @@
+import { Schema, model, Document } from "mongoose";
+
+export interface IProperty extends Document {
+  name: string;
+  code: string;
+  location?: {
+    city?: string;
+    state?: string;
+    country?: string;
+  };
+  timeZone?: string;
+  status: "ACTIVE" | "INACTIVE";
+}
+
+const propertySchema = new Schema<IProperty>(
+  {
+    name: { type: String, required: true },
+    code: { type: String, required: true, unique: true, index: true },
+    location: {
+      city: String,
+      state: String,
+      country: String,
+    },
+    timeZone: String,
+    status: { type: String, enum: ["ACTIVE", "INACTIVE"], default: "ACTIVE" },
+  },
+  { timestamps: true }
+);
+
+export const PropertyModel = model<IProperty>("Property", propertySchema);
+
+
+
