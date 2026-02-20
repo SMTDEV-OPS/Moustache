@@ -36,7 +36,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
       email: "ankit.sharma@email.com",
       phone: "+91 98765 43210",
       source: "Website",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       status: "New",
       priority: "High",
       checkIn: "2024-07-15",
@@ -63,7 +63,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
       email: "priya.gupta@email.com",
       phone: "+91 87654 32109",
       source: "Phone",
-      property: "Postcard Udaipur",
+      property: "Moustache Udaipur",
       status: "Follow Up",
       priority: "Medium",
       checkIn: "2024-08-10",
@@ -90,7 +90,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
       email: "rajesh.kumar@email.com",
       phone: "+91 76543 21098",
       source: "Referral",
-      property: "Postcard Munnar",
+      property: "Moustache Munnar",
       status: "Quoted",
       priority: "High",
       checkIn: "2024-07-25",
@@ -118,7 +118,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
       email: "meera.singh@email.com",
       phone: "+91 65432 10987",
       source: "Social Media",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       status: "Converted",
       priority: "Medium",
       checkIn: "2024-06-25",
@@ -150,7 +150,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
       guestName: "Ankit Sharma",
       guestEmail: "ankit.sharma@email.com",
       guestPhone: "+91 98765 43210",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       roomNumber: "201",
       issueType: "Room Service",
       priority: "High",
@@ -167,7 +167,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
       guestName: "Priya Gupta",
       guestEmail: "priya.gupta@email.com",
       guestPhone: "+91 87654 32109",
-      property: "Postcard Udaipur",
+      property: "Moustache Udaipur",
       roomNumber: "305",
       issueType: "Maintenance",
       priority: "Medium",
@@ -184,7 +184,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
       guestName: "Rajesh Kumar",
       guestEmail: "rajesh.kumar@email.com",
       guestPhone: "+91 76543 21098",
-      property: "Postcard Munnar",
+      property: "Moustache Munnar",
       roomNumber: "102",
       issueType: "Billing",
       priority: "Low",
@@ -441,7 +441,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
                       {/* Progress & Timing */}
                       <div className="space-y-1">
                         <p className="text-sm">
-                          <span className="font-medium">Score:</span> 
+                          <span className="font-medium">Score:</span>
                           <span className={`ml-1 font-bold ${getScoreColor(lead.score)}`}>{lead.score}%</span>
                         </p>
                         <p className="text-sm text-muted-foreground">
@@ -466,8 +466,8 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
 
                     {/* Action Buttons */}
                     <div className="flex flex-col space-y-2 ml-4">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => {
                           setSelectedLead(lead);
@@ -477,7 +477,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
                         <Mail className="h-4 w-4 mr-2" />
                         Email
                       </Button>
-                      <Button 
+                      <Button
                         size="sm"
                         onClick={() => {
                           setSelectedLead(lead);
@@ -486,8 +486,8 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
                       >
                         Schedule Call back
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => setLeadDetailView(leadDetailView === lead.id ? null : lead.id)}
                       >
@@ -592,7 +592,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
                         {/* Progress & Timing */}
                         <div className="space-y-1">
                           <p className="text-sm">
-                            <span className="font-medium">Score:</span> 
+                            <span className="font-medium">Score:</span>
                             <span className={`ml-1 font-bold ${getScoreColor(lead.score)}`}>{lead.score}%</span>
                           </p>
                           <p className="text-sm text-muted-foreground">
@@ -617,8 +617,8 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
 
                       {/* Action Buttons */}
                       <div className="flex flex-col space-y-2 ml-4">
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           variant="outline"
                           onClick={() => {
                             setSelectedLead(lead);
@@ -628,7 +628,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
                           <Mail className="h-4 w-4 mr-2" />
                           Email
                         </Button>
-                        <Button 
+                        <Button
                           size="sm"
                           onClick={() => {
                             setSelectedLead(lead);
@@ -637,8 +637,8 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
                         >
                           Schedule Call back
                         </Button>
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           variant="outline"
                           onClick={() => setLeadDetailView(leadDetailView === lead.id ? null : lead.id)}
                         >
@@ -717,22 +717,20 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
                         <p className="text-sm text-muted-foreground">{ticket.guestPhone}</p>
                         <p className="text-sm text-muted-foreground">{ticket.guestEmail}</p>
                         <div className="flex items-center space-x-2 mt-2">
-                          <Badge className={`${
-                            ticket.status === 'Open' 
-                              ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-                              : ticket.status === 'In Progress'
+                          <Badge className={`${ticket.status === 'Open'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                            : ticket.status === 'In Progress'
                               ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
                               : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                          }`}>
+                            }`}>
                             {ticket.status}
                           </Badge>
-                          <Badge className={`${
-                            ticket.priority === 'High'
-                              ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-                              : ticket.priority === 'Medium'
+                          <Badge className={`${ticket.priority === 'High'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                            : ticket.priority === 'Medium'
                               ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
                               : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                          }`}>
+                            }`}>
                             {ticket.priority}
                           </Badge>
                         </div>
@@ -824,7 +822,7 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
             </div>
             <div>
               <Label>Notes</Label>
-              <Textarea 
+              <Textarea
                 placeholder="Add callback notes..."
                 value={callbackNotes}
                 onChange={(e) => setCallbackNotes(e.target.value)}

@@ -15,7 +15,7 @@ interface ManagementDashboardProps {
 const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) => {
   // Get today's date in YYYY-MM-DD format
   const today = new Date().toISOString().split('T')[0];
-  
+
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -187,7 +187,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
     },
     {
       category: 'Sales Person 2',
-      type: 'individual', 
+      type: 'individual',
       target: 170,
       delivered: 142,
       roomNights: 625,
@@ -509,8 +509,8 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
             Welcome back, <span className="font-semibold text-foreground">{userName}</span>. Here's your comprehensive business overview.
           </p>
         </div>
-        <Button 
-          onClick={exportToExcel} 
+        <Button
+          onClick={exportToExcel}
           className="bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-elegant hover:shadow-lg transform hover:scale-105"
           size="lg"
         >
@@ -586,9 +586,9 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
                       <SelectValue placeholder="Select Property" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="postcard-goa">Postcard Goa</SelectItem>
-                      <SelectItem value="postcard-kerala">Postcard Kerala</SelectItem>
-                      <SelectItem value="postcard-rajasthan">Postcard Rajasthan</SelectItem>
+                      <SelectItem value="moustache-goa">Moustache Goa</SelectItem>
+                      <SelectItem value="moustache-kerala">Moustache Kerala</SelectItem>
+                      <SelectItem value="moustache-rajasthan">Moustache Rajasthan</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -721,8 +721,8 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
               </TableHeader>
               <TableBody>
                 {salesCycleData.map((row, index) => (
-                  <TableRow 
-                    key={index} 
+                  <TableRow
+                    key={index}
                     className="hover:bg-gradient-to-r hover:from-info/10 hover:via-info/15 hover:to-info/10 transition-all duration-300 h-14 border-b border-border/20"
                   >
                     <TableCell className="font-semibold px-8 border-r border-border/20">
@@ -841,14 +841,14 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
                   const achievementPercentage = ((row.delivered / row.target) * 100).toFixed(1);
                   const isOverAchieved = row.delivered > row.target;
                   const isUnderAchieved = row.delivered < row.target * 0.9;
-                  
+
                   return (
-                    <TableRow 
-                      key={index} 
-                      className={`${row.isHeader 
-                        ? 'bg-gradient-to-r from-warning/15 via-warning/20 to-warning/15 border-l-4 border-l-warning hover:from-warning/20 hover:via-warning/25 hover:to-warning/20' 
+                    <TableRow
+                      key={index}
+                      className={`${row.isHeader
+                        ? 'bg-gradient-to-r from-warning/15 via-warning/20 to-warning/15 border-l-4 border-l-warning hover:from-warning/20 hover:via-warning/25 hover:to-warning/20'
                         : 'hover:bg-gradient-to-r hover:from-warning/10 hover:via-warning/15 hover:to-warning/10'
-                      } transition-all duration-300 ${row.isHeader ? 'h-14' : 'h-12'} border-b border-border/20`}
+                        } transition-all duration-300 ${row.isHeader ? 'h-14' : 'h-12'} border-b border-border/20`}
                     >
                       <TableCell className="font-semibold px-8 border-r border-border/20">
                         {row.isHeader ? (
@@ -866,13 +866,12 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
                       <TableCell className="text-center border-r border-border/20">
                         <div className="flex flex-col items-center gap-1">
                           <span className="font-semibold text-lg">{row.delivered.toLocaleString()}</span>
-                          <Badge className={`text-xs font-bold ${
-                            isOverAchieved 
-                              ? 'bg-gradient-to-r from-success/20 to-success/30 text-success-foreground border border-success/30' 
-                              : isUnderAchieved
+                          <Badge className={`text-xs font-bold ${isOverAchieved
+                            ? 'bg-gradient-to-r from-success/20 to-success/30 text-success-foreground border border-success/30'
+                            : isUnderAchieved
                               ? 'bg-gradient-to-r from-destructive/20 to-destructive/30 text-destructive-foreground border border-destructive/30'
                               : 'bg-gradient-to-r from-info/20 to-info/30 text-info-foreground border border-info/30'
-                          }`}>
+                            }`}>
                             {achievementPercentage}%
                           </Badge>
                         </div>
@@ -883,13 +882,12 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
                       <TableCell className="text-center border-r border-border/20">
                         <div className="flex flex-col items-center gap-1">
                           <span className="font-semibold text-lg">{row.salesCycleDays} days</span>
-                          <Badge className={`text-xs font-bold ${
-                            row.salesCycleDays <= 10 
-                              ? 'bg-gradient-to-r from-success/20 to-success/30 text-success-foreground border border-success/30' 
-                              : row.salesCycleDays <= 15
+                          <Badge className={`text-xs font-bold ${row.salesCycleDays <= 10
+                            ? 'bg-gradient-to-r from-success/20 to-success/30 text-success-foreground border border-success/30'
+                            : row.salesCycleDays <= 15
                               ? 'bg-gradient-to-r from-warning/20 to-warning/30 text-warning-foreground border border-warning/30'
                               : 'bg-gradient-to-r from-destructive/20 to-destructive/30 text-destructive-foreground border border-destructive/30'
-                          }`}>
+                            }`}>
                             {row.salesCycleDays <= 10 ? 'Fast' : row.salesCycleDays <= 15 ? 'Average' : 'Slow'}
                           </Badge>
                         </div>
@@ -993,12 +991,12 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
                   };
 
                   return (
-                    <TableRow 
-                      key={index} 
-                      className={`${row.isHeader 
-                        ? 'bg-gradient-to-r from-success/15 via-success/20 to-success/15 border-l-4 border-l-success hover:from-success/20 hover:via-success/25 hover:to-success/20' 
+                    <TableRow
+                      key={index}
+                      className={`${row.isHeader
+                        ? 'bg-gradient-to-r from-success/15 via-success/20 to-success/15 border-l-4 border-l-success hover:from-success/20 hover:via-success/25 hover:to-success/20'
                         : 'hover:bg-gradient-to-r hover:from-success/10 hover:via-success/15 hover:to-success/10'
-                      } transition-all duration-300 ${row.isHeader ? 'h-14' : 'h-12'} border-b border-border/20`}
+                        } transition-all duration-300 ${row.isHeader ? 'h-14' : 'h-12'} border-b border-border/20`}
                     >
                       <TableCell className="font-semibold px-8 border-r border-border/20">
                         {row.isHeader ? (
@@ -1130,15 +1128,15 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
 
                   const getStatusBadge = (status: string, variant: string) => {
                     if (status === 'Total') return null;
-                    
+
                     const badgeStyles = {
                       confirmed: "bg-gradient-to-r from-success/20 to-success/30 text-success-foreground border border-success/30 shadow-sm",
                       tentative: "bg-gradient-to-r from-warning/20 to-warning/30 text-warning-foreground border border-warning/30 shadow-sm",
                       cancelled: "bg-gradient-to-r from-destructive/20 to-destructive/30 text-destructive-foreground border border-destructive/30 shadow-sm"
                     };
-                    
+
                     return (
-                      <Badge 
+                      <Badge
                         className={`${badgeStyles[variant as keyof typeof badgeStyles]} font-semibold px-3 py-1 hover:scale-105 transition-transform duration-200`}
                       >
                         {status}
@@ -1147,8 +1145,8 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
                   };
 
                   return (
-                    <TableRow 
-                      key={index} 
+                    <TableRow
+                      key={index}
                       className={`${getRowStyles(row.variant, row.isHeader)} border-b border-border/20 ${row.isHeader ? 'h-14' : 'h-12'} transition-all duration-300`}
                     >
                       <TableCell className="font-medium px-8 border-r border-border/20">

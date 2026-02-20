@@ -516,10 +516,10 @@ const ProfessionalLeadManagement = ({
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                                <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                                <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                                <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
+                                <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
+                                <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
+                                <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
+                                <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -1030,11 +1030,11 @@ const ProfessionalLeadManagement = ({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Properties</SelectItem>
-                          <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                          <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                          <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                          <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
-                          <SelectItem value="Postcard Coonoor">Postcard Coonoor</SelectItem>
+                          <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
+                          <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
+                          <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
+                          <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
+                          <SelectItem value="Moustache Coonoor">Moustache Coonoor</SelectItem>
                         </SelectContent>
                       </Select>
 

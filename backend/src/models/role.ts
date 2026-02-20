@@ -1,5 +1,6 @@
 import { Schema, model, Document } from "mongoose";
 import { ObjectId, UserRef } from "./common";
+import { ALL_PERMISSIONS } from "../constants/permissions";
 
 export interface IRole extends Document {
   name: string;
@@ -19,7 +20,11 @@ const roleSchema = new Schema<IRole>(
     name: { type: String, required: true, unique: true },
     description: { type: String },
     // Standardized permissions array (Resource:Action:Scope)
-    permissions: [{ type: String, required: true }],
+    permissions: [{
+      type: String,
+      required: true,
+      enum: ALL_PERMISSIONS
+    }],
 
     // Deprecated / Legacy Support
     memberPermissions: [{ type: String }],

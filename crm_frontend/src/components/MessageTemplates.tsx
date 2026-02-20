@@ -168,14 +168,14 @@ export const MessageTemplates = () => {
     // Replace placeholders with sample data
     let content = template.body;
     content = content.replace(/\{\{guestName\}\}/g, "Priya Sharma");
-    content = content.replace(/\{\{propertyName\}\}/g, "Postcard Goa");
+    content = content.replace(/\{\{propertyName\}\}/g, "Moustache Goa");
     content = content.replace(/\{\{checkInDate\}\}/g, "15 Jan 2025");
     content = content.replace(/\{\{checkOutDate\}\}/g, "18 Jan 2025");
     content = content.replace(/\{\{leadNumber\}\}/g, "L-20250112-0042");
 
     let subject = template.subject || "";
     subject = subject.replace(/\{\{guestName\}\}/g, "Priya Sharma");
-    subject = subject.replace(/\{\{propertyName\}\}/g, "Postcard Goa");
+    subject = subject.replace(/\{\{propertyName\}\}/g, "Moustache Goa");
 
     return { subject, content };
   };
@@ -428,7 +428,7 @@ export const MessageTemplates = () => {
               </Card>
 
               <div className="text-xs text-muted-foreground">
-                Sample data used: Guest Name = "Priya Sharma", Property = "Postcard Goa",
+                Sample data used: Guest Name = "Priya Sharma", Property = "Moustache Goa",
                 Check-in = "15 Jan 2025"
               </div>
             </div>

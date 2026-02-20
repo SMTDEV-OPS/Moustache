@@ -263,7 +263,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [assigningLeadId, setAssigningLeadId] = useState<string | null>(null);
-  
+
   // Email state
   const [leadEmails, setLeadEmails] = useState<EmailMessage[]>([]);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
@@ -483,16 +483,16 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
   // Memoize filtered accounts to prevent re-render issues
   const filteredAccounts = useMemo(() => {
-    const showAccountSection = 
-      form.source === "TRAVEL_AGENT" || 
-      form.source === "CORPORATE_OFFICE" || 
-      form.source === "EVENT_MICE" || 
+    const showAccountSection =
+      form.source === "TRAVEL_AGENT" ||
+      form.source === "CORPORATE_OFFICE" ||
+      form.source === "EVENT_MICE" ||
       form.isCorporateBooking === "yes";
-    
+
     if (!showAccountSection || !Array.isArray(accounts) || accounts.length === 0) {
       return [];
     }
-    
+
     try {
       return accounts.filter((acc) => {
         if (!acc || !acc.type) return false;
@@ -654,7 +654,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
   const handleCreate = async () => {
     const guestFullName = `${form.firstName} ${form.middleName ? form.middleName + " " : ""}${form.lastName}`.trim();
-    
+
     if (!form.firstName || !form.lastName || !form.source || !form.leadType) {
       toast({
         title: "Missing required fields",
@@ -689,9 +689,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
         roomsRequested: primaryHotel?.rooms ? Number(primaryHotel.rooms) : (hotels.length || undefined),
         guests: (primaryHotel?.adults || primaryHotel?.children)
           ? {
-              adults: primaryHotel.adults ? Number(primaryHotel.adults) : undefined,
-              children: primaryHotel.children ? Number(primaryHotel.children) : undefined,
-            }
+            adults: primaryHotel.adults ? Number(primaryHotel.adults) : undefined,
+            children: primaryHotel.children ? Number(primaryHotel.children) : undefined,
+          }
           : undefined,
         occasion: form.occasion || undefined,
         heatLevel: form.heatLevel as any,
@@ -738,7 +738,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       }));
       // Reset hotels
       setHotels([{ ...emptyHotel }]);
-      
+
       // Reset assignment mode
       setAssignmentMode("auto");
       setManualAssigneeId("");
@@ -747,7 +747,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
       // Close dialog on success
       setIsCreateDialogOpen(false);
-      
+
       // Navigate to new lead if onViewLead callback is provided
       if (onViewLead) {
         onViewLead(newLead.id);
@@ -854,42 +854,42 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   };
 
   return (
-      <div className="space-y-6">
-        {/* Page Header */}
-            <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Leads</h1>
           <p className="text-slate-500 mt-1">Manage and track all hotel inquiries</p>
         </div>
         <div className="flex items-center gap-2">
-                <Tabs
-                  value={activeScope}
-                  onValueChange={(value) =>
-                    setActiveScope(value as "own" | "team" | "all")
-                  }
-                >
-                  <TabsList className="h-10">
-                    {canViewOwn && (
-                      <TabsTrigger value="own" className="px-4">My Leads</TabsTrigger>
-                    )}
-                    {canViewTeam && (
-                      <TabsTrigger value="team" className="px-4">My Team Leads</TabsTrigger>
-                    )}
-                    {canViewAll && (
-                      <TabsTrigger value="all" className="px-4">All Leads</TabsTrigger>
-                    )}
-                  </TabsList>
-                </Tabs>
-                <Button 
-                  size="default" 
-                  onClick={() => setIsCreateDialogOpen(true)}
+          <Tabs
+            value={activeScope}
+            onValueChange={(value) =>
+              setActiveScope(value as "own" | "team" | "all")
+            }
+          >
+            <TabsList className="h-10">
+              {canViewOwn && (
+                <TabsTrigger value="own" className="px-4">My Leads</TabsTrigger>
+              )}
+              {canViewTeam && (
+                <TabsTrigger value="team" className="px-4">My Team Leads</TabsTrigger>
+              )}
+              {canViewAll && (
+                <TabsTrigger value="all" className="px-4">All Leads</TabsTrigger>
+              )}
+            </TabsList>
+          </Tabs>
+          <Button
+            size="default"
+            onClick={() => setIsCreateDialogOpen(true)}
             className="h-10 font-medium bg-slate-900 hover:bg-slate-800 text-white"
-                >
+          >
             <Plus className="h-4 w-4 mr-2" />
             New Lead
-                </Button>
-              </div>
-            </div>
+          </Button>
+        </div>
+      </div>
 
       {/* Search and Filters */}
       <Card className="border-slate-200 shadow-sm">
@@ -897,90 +897,90 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
           <div className="flex flex-wrap items-center gap-4">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
+              <Input
                 placeholder="Search by name, email, phone..."
                 className="pl-10 h-10 border-slate-200"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-                <Select
-                  value={statusFilter}
-                  onValueChange={setStatusFilter}
-                >
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Select
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+            >
               <SelectTrigger className="w-[140px] h-10 border-slate-200">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All Status</SelectItem>
-                    <SelectItem value="NEW">New</SelectItem>
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Status</SelectItem>
+                <SelectItem value="NEW">New</SelectItem>
                 <SelectItem value="CONTACTED">Contacted</SelectItem>
                 <SelectItem value="QUOTATION_SHARED">Quotation Shared</SelectItem>
                 <SelectItem value="PAYMENT_PENDING">Payment Pending</SelectItem>
-                    <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                    <SelectItem value="LOST">Lost</SelectItem>
-                    <SelectItem value="CLOSED_AUTO">Auto Closed</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={heatFilter}
-                  onValueChange={setHeatFilter}
-                >
+                <SelectItem value="CONFIRMED">Confirmed</SelectItem>
+                <SelectItem value="LOST">Lost</SelectItem>
+                <SelectItem value="CLOSED_AUTO">Auto Closed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={heatFilter}
+              onValueChange={setHeatFilter}
+            >
               <SelectTrigger className="w-[140px] h-10 border-slate-200">
                 <SelectValue placeholder="Heat Level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All Heat</SelectItem>
-                    <SelectItem value="HOT">Hot</SelectItem>
-                    <SelectItem value="WARM">Warm</SelectItem>
-                    <SelectItem value="COLD">Cold</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Heat</SelectItem>
+                <SelectItem value="HOT">Hot</SelectItem>
+                <SelectItem value="WARM">Warm</SelectItem>
+                <SelectItem value="COLD">Cold</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
               value={sourceFilter}
               onValueChange={setSourceFilter}
-                >
+            >
               <SelectTrigger className="w-[150px] h-10 border-slate-200">
                 <SelectValue placeholder="Source" />
-                  </SelectTrigger>
-                  <SelectContent>
+              </SelectTrigger>
+              <SelectContent>
                 <SelectItem value="ALL">All Sources</SelectItem>
                 {Array.from(new Set(leads.map(l => l.source))).map((source) => (
                   <SelectItem key={source} value={source}>
                     {source.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
       {/* Leads Table */}
       <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-0">
+        <CardContent className="p-0">
           {isLoadingList ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
               <p className="text-sm text-muted-foreground">Loading leads...</p>
             </div>
           ) : filteredLeads.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <Users className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Users className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
               <p className="text-base font-medium text-slate-900 mb-1">No leads found</p>
               <p className="text-sm text-slate-500 mb-4">
                 {searchQuery || statusFilter !== "ALL" || heatFilter !== "ALL" || sourceFilter !== "ALL"
-                        ? "Try adjusting your filters"
-                        : "Create your first lead to get started"}
-                    </p>
+                  ? "Try adjusting your filters"
+                  : "Create your first lead to get started"}
+              </p>
               {!searchQuery && statusFilter === "ALL" && heatFilter === "ALL" && sourceFilter === "ALL" && (
                 <Button onClick={() => setIsCreateDialogOpen(true)} className="mt-2 bg-slate-900 hover:bg-slate-800">
                   <Plus className="h-4 w-4 mr-2" />
                   New Lead
-                      </Button>
-                    )}
-                  </div>
-                ) : (
+                </Button>
+              )}
+            </div>
+          ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -996,13 +996,13 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                    {filteredLeads.map((lead) => {
+                  {filteredLeads.map((lead) => {
                     const assignedUser = users.find((u) => u.id === lead.assignedToUserId);
                     const guestName = getGuestName(lead);
                     const guestPhone = getGuestPhone(lead);
                     const propertyName = getPropertyName(lead);
                     const travelDates = formatTravelDates(lead);
-                    
+
                     return (
                       <tr
                         key={lead.id}
@@ -1037,7 +1037,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                             <Badge variant="outline" className={`${getHeatBadgeColor(lead.heatLevel)} text-xs font-medium`}>
                               {lead.heatLevel.toLowerCase()}
                             </Badge>
-                            </div>
+                          </div>
                         </td>
                         <td className="p-4">
                           <Badge variant="outline" className={`${getStatusBadgeColor(lead.status)} text-xs font-medium`}>
@@ -1048,61 +1048,61 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                           {assignedUser ? assignedUser.name || assignedUser.email : "Unassigned"}
                         </td>
                         <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenuItem
-                              onClick={() => {
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenuItem
+                                onClick={() => {
                                   void selectLead(lead.id);
-                              }}
-                            >
+                                }}
+                              >
                                 <Edit className="h-4 w-4 mr-2" />
                                 View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSchedulingLead(lead);
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSchedulingLead(lead);
                                   setScheduleType("call");
-                                setIsScheduleDialogOpen(true);
-                              }}
-                            >
+                                  setIsScheduleDialogOpen(true);
+                                }}
+                              >
                                 <Phone className="h-4 w-4 mr-2 text-green-600" />
                                 Schedule Call
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
                                   setQuotationLead(lead);
                                   setIsQuotationDialogOpen(true);
-                              }}
-                            >
+                                }}
+                              >
                                 <FileText className="h-4 w-4 mr-2 text-amber-600" />
                                 Send Quotation
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setAssigningLeadId(lead.id);
-                                setAssignUserId(lead.assignedToUserId ?? "");
-                                setIsAssignDialogOpen(true);
-                              }}
-                            >
-                              <UserPlus className="h-4 w-4 mr-2 text-indigo-600" />
-                              Assign Lead
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setAssigningLeadId(lead.id);
+                                  setAssignUserId(lead.assignedToUserId ?? "");
+                                  setIsAssignDialogOpen(true);
+                                }}
+                              >
+                                <UserPlus className="h-4 w-4 mr-2 text-indigo-600" />
+                                Assign Lead
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </td>
                       </tr>
-                  );
-                    })}
+                    );
+                  })}
                 </tbody>
               </table>
-                  </div>
-                )}
-          </CardContent>
+            </div>
+          )}
+        </CardContent>
       </Card>
 
       {/* Lead Details Dialog */}
@@ -1135,7 +1135,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                 <TabsTrigger value="quotations">Quotations</TabsTrigger>
                 <TabsTrigger value="workflow">Workflow</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="details" className="space-y-4 text-sm mt-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1575,9 +1575,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                   <Hotel className="h-4 w-4" />
                   Hotel Bookings
                 </h3>
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   size="sm"
                   onClick={addHotel}
                   className="flex items-center gap-2"
@@ -1586,7 +1586,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                   Add Another Hotel
                 </Button>
               </div>
-              
+
               {hotels.map((hotel, index) => (
                 <div key={index} className="relative p-4 border rounded-lg bg-muted/30 space-y-4">
                   {hotels.length > 1 && (
@@ -1603,7 +1603,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                       </Button>
                     </div>
                   )}
-                  
+
                   <div className="space-y-2">
                     <label className="text-xs font-medium">Hotel Name</label>
                     <Select
@@ -1615,10 +1615,10 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="NONE">None</SelectItem>
-                        <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                        <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                        <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                        <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
+                        <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
+                        <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
+                        <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
+                        <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1682,7 +1682,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
+                    <div className="space-y-2">
                       <label className="text-xs font-medium">Adults *</label>
                       <Input
                         type="number"
@@ -1858,71 +1858,71 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
             </div>
 
             {/* Account Selection - Show for B2B sources */}
-            {(form.source === "TRAVEL_AGENT" || 
-              form.source === "CORPORATE_OFFICE" || 
-              form.source === "EVENT_MICE" || 
+            {(form.source === "TRAVEL_AGENT" ||
+              form.source === "CORPORATE_OFFICE" ||
+              form.source === "EVENT_MICE" ||
               form.isCorporateBooking === "yes") && (
-              <div className="space-y-2 border rounded-lg p-4 bg-slate-50/50">
-                <label className="text-xs font-medium">
-                  Account {form.source === "TRAVEL_AGENT" || form.source === "CORPORATE_OFFICE" || form.source === "EVENT_MICE" ? "(Optional - will auto-link if company name matches)" : "(Optional)"}
-                </label>
-                {isLoadingAccounts ? (
-                  <p className="text-xs text-muted-foreground">Loading accounts...</p>
-                ) : (
-                  <Select
-                    value={selectedAccountId || form.accountId || undefined}
-                    onValueChange={(value) => {
-                      // Handle "none" value to clear selection
-                      if (value === "none") {
-                        setSelectedAccountId("");
-                        setForm((prev) => ({ ...prev, accountId: "" }));
-                      } else {
-                        setSelectedAccountId(value);
-                        setForm((prev) => ({ ...prev, accountId: value }));
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None (Create without account)</SelectItem>
-                      {filteredAccounts.length > 0 ? (
-                        filteredAccounts
-                          .map((account) => {
-                            const accountId = account.id || account._id;
-                            // Skip accounts without valid ID or with empty string ID
-                            if (!accountId || accountId === "") return null;
-                            const accountName = account.name || "Unnamed Account";
-                            const accountType = account.type ? account.type.replace(/_/g, " ") : "";
-                            return (
-                              <SelectItem key={accountId} value={accountId}>
-                                <div className="flex items-center justify-between gap-4">
-                                  <span>{accountName}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {accountType}
-                                    {account.city && ` • ${account.city}`}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            );
-                          })
-                          .filter((item) => item !== null)
-                      ) : (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                          No accounts available
-                        </div>
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
-                <p className="text-xs text-muted-foreground mt-1">
-                  {form.source === "TRAVEL_AGENT" || form.source === "CORPORATE_OFFICE" || form.source === "EVENT_MICE"
-                    ? "If you enter a company name below and it matches an existing account, the lead will be automatically linked."
-                    : "Link this lead to an existing account for better relationship tracking."}
-                </p>
-              </div>
-            )}
+                <div className="space-y-2 border rounded-lg p-4 bg-slate-50/50">
+                  <label className="text-xs font-medium">
+                    Account {form.source === "TRAVEL_AGENT" || form.source === "CORPORATE_OFFICE" || form.source === "EVENT_MICE" ? "(Optional - will auto-link if company name matches)" : "(Optional)"}
+                  </label>
+                  {isLoadingAccounts ? (
+                    <p className="text-xs text-muted-foreground">Loading accounts...</p>
+                  ) : (
+                    <Select
+                      value={selectedAccountId || form.accountId || undefined}
+                      onValueChange={(value) => {
+                        // Handle "none" value to clear selection
+                        if (value === "none") {
+                          setSelectedAccountId("");
+                          setForm((prev) => ({ ...prev, accountId: "" }));
+                        } else {
+                          setSelectedAccountId(value);
+                          setForm((prev) => ({ ...prev, accountId: value }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select account (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None (Create without account)</SelectItem>
+                        {filteredAccounts.length > 0 ? (
+                          filteredAccounts
+                            .map((account) => {
+                              const accountId = account.id || (account as any)._id;
+                              // Skip accounts without valid ID or with empty string ID
+                              if (!accountId || accountId === "") return null;
+                              const accountName = account.name || "Unnamed Account";
+                              const accountType = account.type ? account.type.replace(/_/g, " ") : "";
+                              return (
+                                <SelectItem key={accountId} value={accountId}>
+                                  <div className="flex items-center justify-between gap-4">
+                                    <span>{accountName}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {accountType}
+                                      {account.city && ` • ${account.city}`}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })
+                            .filter((item) => item !== null)
+                        ) : (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                            No accounts available
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {form.source === "TRAVEL_AGENT" || form.source === "CORPORATE_OFFICE" || form.source === "EVENT_MICE"
+                      ? "If you enter a company name below and it matches an existing account, the lead will be automatically linked."
+                      : "Link this lead to an existing account for better relationship tracking."}
+                  </p>
+                </div>
+              )}
 
             {/* Estimated Value */}
             <div className="space-y-2">
@@ -2022,9 +2022,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
               >
                 Cancel
               </Button>
-                      <Button
+              <Button
                 type="button"
-                        onClick={async () => {
+                onClick={async () => {
                   try {
                     await handleCreate();
                     // Dialog will be closed in handleCreate on success
@@ -2036,9 +2036,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                 disabled={isCreating}
               >
                 {isCreating ? "Creating..." : "Create Lead"}
-                      </Button>
-                    </div>
-                  </div>
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

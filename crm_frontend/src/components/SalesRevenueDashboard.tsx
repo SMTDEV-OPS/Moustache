@@ -3,14 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  TrendingUp, DollarSign, Users, Target, Calendar, 
+import {
+  TrendingUp, DollarSign, Users, Target, Calendar,
   Star, Award, BarChart3, PieChart, Filter, Clock, Mail, Eye
 } from "lucide-react";
 
 const SalesRevenueDashboard = () => {
   const salesPersonName = "Priya Sharma";
-  
+
   const [selectedPeriod, setSelectedPeriod] = useState("month");
   const [leadCreationFilter, setLeadCreationFilter] = useState({
     fromDate: "",
@@ -49,7 +49,7 @@ const SalesRevenueDashboard = () => {
 
   const revenueBreakdown = [
     {
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       revenue: "₹18,75,000",
       leads: 9,
       avgValue: "₹2,08,333",
@@ -57,7 +57,7 @@ const SalesRevenueDashboard = () => {
       color: "bg-blue-500"
     },
     {
-      property: "Postcard Kerala", 
+      property: "Moustache Kerala",
       revenue: "₹12,50,000",
       leads: 6,
       avgValue: "₹2,08,333",
@@ -65,15 +65,15 @@ const SalesRevenueDashboard = () => {
       color: "bg-green-500"
     },
     {
-      property: "Postcard Rajasthan",
+      property: "Moustache Rajasthan",
       revenue: "₹9,45,000",
       leads: 5,
-      avgValue: "₹1,89,000", 
+      avgValue: "₹1,89,000",
       share: "20.9%",
       color: "bg-purple-500"
     },
     {
-      property: "Postcard Mumbai",
+      property: "Moustache Mumbai",
       revenue: "₹4,50,000",
       leads: 3,
       avgValue: "₹1,50,000",
@@ -94,7 +94,7 @@ const SalesRevenueDashboard = () => {
     {
       id: "L001",
       guest: "Arjun Kumar",
-      property: "Postcard Goa", 
+      property: "Moustache Goa",
       value: "₹3,20,000",
       status: "Converted",
       date: "2024-12-10",
@@ -104,8 +104,8 @@ const SalesRevenueDashboard = () => {
     {
       id: "L006",
       guest: "Ravi Patel Family",
-      property: "Postcard Kerala",
-      value: "₹2,85,000", 
+      property: "Moustache Kerala",
+      value: "₹2,85,000",
       status: "Converted",
       date: "2024-12-08",
       nights: 5,
@@ -114,7 +114,7 @@ const SalesRevenueDashboard = () => {
     {
       id: "L012",
       guest: "Sneha Reddy",
-      property: "Postcard Rajasthan",
+      property: "Moustache Rajasthan",
       value: "₹2,45,000",
       status: "Proposal",
       date: "2024-12-14",
@@ -124,10 +124,10 @@ const SalesRevenueDashboard = () => {
     {
       id: "L018",
       guest: "Corporate Event - Tech Solutions",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       value: "₹4,50,000",
       status: "In Progress",
-      date: "2024-12-12", 
+      date: "2024-12-12",
       nights: 3,
       rooms: 8
     }
@@ -168,7 +168,7 @@ const SalesRevenueDashboard = () => {
             <input
               type="date"
               value={leadCreationFilter.fromDate}
-              onChange={(e) => setLeadCreationFilter({...leadCreationFilter, fromDate: e.target.value})}
+              onChange={(e) => setLeadCreationFilter({ ...leadCreationFilter, fromDate: e.target.value })}
               className="text-sm px-2 py-1 border rounded"
               placeholder="From"
             />
@@ -176,7 +176,7 @@ const SalesRevenueDashboard = () => {
             <input
               type="date"
               value={leadCreationFilter.toDate}
-              onChange={(e) => setLeadCreationFilter({...leadCreationFilter, toDate: e.target.value})}
+              onChange={(e) => setLeadCreationFilter({ ...leadCreationFilter, toDate: e.target.value })}
               className="text-sm px-2 py-1 border rounded"
               placeholder="To"
             />
@@ -318,7 +318,7 @@ const SalesRevenueDashboard = () => {
                         <span className="text-gray-600">₹{month.revenue}L / ₹{month.target}L</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
+                        <div
                           className={`h-2 rounded-full ${month.revenue >= month.target ? 'bg-green-500' : 'bg-blue-500'}`}
                           style={{ width: `${Math.min((month.revenue / month.target) * 100, 100)}%` }}
                         />
@@ -394,7 +394,7 @@ const SalesRevenueDashboard = () => {
               </Button>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Team Performance Overview */}
             <Card>
@@ -445,63 +445,63 @@ const SalesRevenueDashboard = () => {
               <CardContent>
                 <div className="space-y-4">
                   {[
-                     { 
-                       id: "L001",
-                       name: "Priya Sharma", 
-                       phone: "+91 98765 43210",
-                       email: "priya.sharma@gmail.com",
-                       property: "Postcard Goa",
-                       checkIn: "2025-02-15", 
-                       checkOut: "2025-02-20",
-                       budget: "₹50,000",
-                       pricePerNight: 8500,
-                       status: "hot",
-                       priority: "high",
-                       score: 85,
-                       workingDays: 3,
-                       workingHours: 2,
-                       lastContact: "2 hours ago",
-                       nextFollowUp: "Today 4:00 PM",
-                       assignedTo: "Priya Sharma"
-                     },
-                     { 
-                       id: "L002",
-                       name: "Rajesh Kumar", 
-                       phone: "+91 87654 32109",
-                       email: "rajesh.kumar@yahoo.com",
-                       property: "Postcard Kerala",
-                       checkIn: "2025-02-20", 
-                       checkOut: "2025-02-25",
-                       budget: "₹60,000",
-                       pricePerNight: 9500,
-                       status: "warm",
-                       priority: "medium",
-                       score: 72,
-                       workingDays: 5,
-                       workingHours: 4,
-                       lastContact: "1 day ago",
-                       nextFollowUp: "Tomorrow 10:00 AM",
-                       assignedTo: "Rajesh Kumar"
-                     },
-                     { 
-                       id: "L003",
-                       name: "Anjali Patel", 
-                       phone: "+91 76543 21098",
-                       email: "anjali.patel@hotmail.com",
-                       property: "Postcard Rajasthan",
-                       checkIn: "2025-02-18", 
-                       checkOut: "2025-02-22",
-                       budget: "₹45,000",
-                       pricePerNight: 7500,
-                       status: "qualified",
-                       priority: "high",
-                       score: 91,
-                       workingDays: 2,
-                       workingHours: 6,
-                       lastContact: "4 hours ago",
-                       nextFollowUp: "Today 6:00 PM",
-                       assignedTo: "Anjali Patel"
-                     }
+                    {
+                      id: "L001",
+                      name: "Priya Sharma",
+                      phone: "+91 98765 43210",
+                      email: "priya.sharma@gmail.com",
+                      property: "Moustache Goa",
+                      checkIn: "2025-02-15",
+                      checkOut: "2025-02-20",
+                      budget: "₹50,000",
+                      pricePerNight: 8500,
+                      status: "hot",
+                      priority: "high",
+                      score: 85,
+                      workingDays: 3,
+                      workingHours: 2,
+                      lastContact: "2 hours ago",
+                      nextFollowUp: "Today 4:00 PM",
+                      assignedTo: "Priya Sharma"
+                    },
+                    {
+                      id: "L002",
+                      name: "Rajesh Kumar",
+                      phone: "+91 87654 32109",
+                      email: "rajesh.kumar@yahoo.com",
+                      property: "Moustache Kerala",
+                      checkIn: "2025-02-20",
+                      checkOut: "2025-02-25",
+                      budget: "₹60,000",
+                      pricePerNight: 9500,
+                      status: "warm",
+                      priority: "medium",
+                      score: 72,
+                      workingDays: 5,
+                      workingHours: 4,
+                      lastContact: "1 day ago",
+                      nextFollowUp: "Tomorrow 10:00 AM",
+                      assignedTo: "Rajesh Kumar"
+                    },
+                    {
+                      id: "L003",
+                      name: "Anjali Patel",
+                      phone: "+91 76543 21098",
+                      email: "anjali.patel@hotmail.com",
+                      property: "Moustache Rajasthan",
+                      checkIn: "2025-02-18",
+                      checkOut: "2025-02-22",
+                      budget: "₹45,000",
+                      pricePerNight: 7500,
+                      status: "qualified",
+                      priority: "high",
+                      score: 91,
+                      workingDays: 2,
+                      workingHours: 6,
+                      lastContact: "4 hours ago",
+                      nextFollowUp: "Today 6:00 PM",
+                      assignedTo: "Anjali Patel"
+                    }
                   ].map((lead, index) => (
                     <Card key={index} className="hover:shadow-md transition-shadow border-l-4 border-l-orange-500">
                       <CardContent className="p-6">
@@ -517,16 +517,16 @@ const SalesRevenueDashboard = () => {
                               <div className="flex items-center space-x-2 mt-2">
                                 <Badge className={
                                   lead.status === 'hot' ? 'bg-red-100 text-red-800' :
-                                  lead.status === 'warm' ? 'bg-orange-100 text-orange-800' : 
-                                  lead.status === 'qualified' ? 'bg-green-100 text-green-800' :
-                                  'bg-blue-100 text-blue-800'
+                                    lead.status === 'warm' ? 'bg-orange-100 text-orange-800' :
+                                      lead.status === 'qualified' ? 'bg-green-100 text-green-800' :
+                                        'bg-blue-100 text-blue-800'
                                 }>
                                   {lead.status}
                                 </Badge>
                                 <Badge className={
                                   lead.priority === 'high' ? 'bg-red-100 text-red-800' :
-                                  lead.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-green-100 text-green-800'
+                                    lead.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-green-100 text-green-800'
                                 }>
                                   {lead.priority}
                                 </Badge>
@@ -548,11 +548,10 @@ const SalesRevenueDashboard = () => {
                             {/* Progress & Timing */}
                             <div className="space-y-1">
                               <p className="text-sm">
-                                <span className="font-medium">Score:</span> 
-                                <span className={`ml-1 font-bold ${
-                                  lead.score >= 80 ? 'text-green-600' :
-                                  lead.score >= 60 ? 'text-orange-600' : 'text-red-600'
-                                }`}>{lead.score}%</span>
+                                <span className="font-medium">Score:</span>
+                                <span className={`ml-1 font-bold ${lead.score >= 80 ? 'text-green-600' :
+                                    lead.score >= 60 ? 'text-orange-600' : 'text-red-600'
+                                  }`}>{lead.score}%</span>
                               </p>
                               <p className="text-sm text-muted-foreground">
                                 <Clock className="h-3 w-3 inline mr-1" />
@@ -622,7 +621,7 @@ const SalesRevenueDashboard = () => {
                         </div>
                         <div className="text-right">
                           <p className="text-xl font-bold text-green-600">{person.revenue}</p>
-                          <Badge 
+                          <Badge
                             className={`${person.position <= 3 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}
                           >
                             Position #{person.position}

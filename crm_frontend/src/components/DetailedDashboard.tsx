@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer } from "recharts";
 import * as XLSX from 'xlsx';
-import { 
+import {
   Users, TrendingUp, Target, BarChart3, Download,
   DollarSign, Bed, MapPin, Calendar, Info
 } from "lucide-react";
@@ -16,39 +16,39 @@ const DetailedDashboard = () => {
   const [selectedPeriod, setSelectedPeriod] = useState("current-month");
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
   const stats = [
-    { 
-      title: "Total Guests", 
-      value: "3,247", 
-      icon: Users, 
-      change: "+15%", 
+    {
+      title: "Total Guests",
+      value: "3,247",
+      icon: Users,
+      change: "+15%",
       color: "text-blue-600"
     },
-    { 
-      title: "Total Leads", 
-      value: "456", 
-      icon: Target, 
-      change: "+12%", 
+    {
+      title: "Total Leads",
+      value: "456",
+      icon: Target,
+      change: "+12%",
       color: "text-green-600"
     },
-    { 
-      title: "Revenue This Month", 
-      value: "₹2.8Cr", 
-      icon: TrendingUp, 
-      change: "+28%", 
+    {
+      title: "Revenue This Month",
+      value: "₹2.8Cr",
+      icon: TrendingUp,
+      change: "+28%",
       color: "text-purple-600"
     },
-    { 
-      title: "Room Nights Sold", 
-      value: "1,845", 
-      icon: Bed, 
-      change: "+18%", 
+    {
+      title: "Room Nights Sold",
+      value: "1,845",
+      icon: Bed,
+      change: "+18%",
       color: "text-orange-600"
     }
   ];
 
   const propertyPerformance = [
     {
-      name: "Postcard Goa",
+      name: "Moustache Goa",
       leads: 156,
       revenue: 8520000,
       conversion: 32,
@@ -59,7 +59,7 @@ const DetailedDashboard = () => {
       forecast: 524
     },
     {
-      name: "Postcard Kerala", 
+      name: "Moustache Kerala",
       leads: 134,
       revenue: 6780000,
       conversion: 28,
@@ -70,7 +70,7 @@ const DetailedDashboard = () => {
       forecast: 445
     },
     {
-      name: "Postcard Rajasthan",
+      name: "Moustache Rajasthan",
       leads: 142,
       revenue: 7350000,
       conversion: 35,
@@ -81,7 +81,7 @@ const DetailedDashboard = () => {
       forecast: 468
     },
     {
-      name: "Postcard Munnar",
+      name: "Moustache Munnar",
       leads: 98,
       revenue: 4890000,
       conversion: 24,
@@ -146,7 +146,7 @@ const DetailedDashboard = () => {
   // SLA Performance Data for Property Managers
   const slaPerformance = [
     {
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       manager: "Rajesh Kumari",
       totalTickets: 45,
       withinSLA: 42,
@@ -156,7 +156,7 @@ const DetailedDashboard = () => {
       status: "Excellent"
     },
     {
-      property: "Postcard Kerala",
+      property: "Moustache Kerala",
       manager: "Priya Nair",
       totalTickets: 38,
       withinSLA: 35,
@@ -166,7 +166,7 @@ const DetailedDashboard = () => {
       status: "Excellent"
     },
     {
-      property: "Postcard Rajasthan",
+      property: "Moustache Rajasthan",
       manager: "Vikram Singh",
       totalTickets: 52,
       withinSLA: 46,
@@ -176,7 +176,7 @@ const DetailedDashboard = () => {
       status: "Good"
     },
     {
-      property: "Postcard Munnar",
+      property: "Moustache Munnar",
       manager: "Meera Gupta",
       totalTickets: 29,
       withinSLA: 24,
@@ -191,7 +191,7 @@ const DetailedDashboard = () => {
 
   // Peak dates and pricing data for popup
   const propertyPeakData = {
-    "Postcard Goa": {
+    "Moustache Goa": {
       peakDates: [
         { date: "2024-05-15", checkIns: 45, avgPrice: 18500 },
         { date: "2024-05-22", checkIns: 52, avgPrice: 19200 },
@@ -199,7 +199,7 @@ const DetailedDashboard = () => {
       ],
       totalAvgPrice: 18833
     },
-    "Postcard Kerala": {
+    "Moustache Kerala": {
       peakDates: [
         { date: "2024-05-12", checkIns: 38, avgPrice: 17800 },
         { date: "2024-05-19", checkIns: 41, avgPrice: 18200 },
@@ -207,7 +207,7 @@ const DetailedDashboard = () => {
       ],
       totalAvgPrice: 17833
     },
-    "Postcard Rajasthan": {
+    "Moustache Rajasthan": {
       peakDates: [
         { date: "2024-05-10", checkIns: 42, avgPrice: 18100 },
         { date: "2024-05-17", checkIns: 46, avgPrice: 18500 },
@@ -215,7 +215,7 @@ const DetailedDashboard = () => {
       ],
       totalAvgPrice: 18167
     },
-    "Postcard Munnar": {
+    "Moustache Munnar": {
       peakDates: [
         { date: "2024-05-14", checkIns: 28, avgPrice: 17200 },
         { date: "2024-05-21", checkIns: 32, avgPrice: 17600 },
@@ -522,7 +522,7 @@ const DetailedDashboard = () => {
                       </div>
                       <div className="mt-3">
                         <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
+                          <div
                             className={`h-2 rounded-full ${property.slaPercentage >= 90 ? 'bg-green-500' : property.slaPercentage >= 80 ? 'bg-blue-500' : 'bg-red-500'}`}
                             style={{ width: `${property.slaPercentage}%` }}
                           />
@@ -658,21 +658,21 @@ const DetailedDashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <Button 
+                <Button
                   onClick={() => downloadExcel('daily')}
                   className="h-20 flex flex-col items-center justify-center space-y-2 bg-blue-600 hover:bg-blue-700"
                 >
                   <Download className="h-6 w-6" />
                   <span>Daily Performance</span>
                 </Button>
-                <Button 
+                <Button
                   onClick={() => downloadExcel('revenue')}
                   className="h-20 flex flex-col items-center justify-center space-y-2 bg-green-600 hover:bg-green-700"
                 >
                   <Download className="h-6 w-6" />
                   <span>Revenue Report</span>
                 </Button>
-                <Button 
+                <Button
                   onClick={() => downloadExcel('team')}
                   className="h-20 flex flex-col items-center justify-center space-y-2 bg-purple-600 hover:bg-purple-700"
                 >

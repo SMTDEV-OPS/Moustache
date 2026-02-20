@@ -6,6 +6,10 @@ export enum TeamType {
   RESERVATIONS = "RESERVATIONS",
   SALES = "SALES",
   OPERATIONS = "OPERATIONS",
+  MANAGEMENT = "MANAGEMENT",
+  CALL_CENTER = "CALL_CENTER",
+  PROPERTY = "PROPERTY",
+  HR = "HR",
 }
 
 export enum SunshineTier {

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { AccountModel } from "../models/account";
 import { requireAuth, requirePermissions } from "../middleware/auth";
+import { PERMISSIONS } from "../constants/permissions";
 import { badRequest, notFound } from "../utils/httpError";
 
 export const accountsRouter = Router();
@@ -101,7 +102,7 @@ accountsRouter.get("/search", async (req, res, next) => {
   }
 });
 
-accountsRouter.get("/", async (req, res, next) => {
+accountsRouter.get("/", requirePermissions([PERMISSIONS.ACCOUNTS.READ]), async (req, res, next) => {
   try {
     const { type, organizationTypes, city, accountType, accountLevel } = req.query;
     const filter: Record<string, unknown> = {};
@@ -126,7 +127,7 @@ accountsRouter.get("/", async (req, res, next) => {
 
 accountsRouter.post(
   "/",
-  requirePermissions(["accounts.manage"]),
+  requirePermissions([PERMISSIONS.ACCOUNTS.MANAGE]),
   async (req, res, next) => {
     try {
       const parsed = accountSchema.safeParse(req.body);
@@ -172,7 +173,7 @@ accountsRouter.post(
 
 accountsRouter.patch(
   "/:id",
-  requirePermissions(["accounts.manage"]),
+  requirePermissions([PERMISSIONS.ACCOUNTS.MANAGE]),
   async (req, res, next) => {
     try {
       const parsed = accountSchema.partial().safeParse(req.body);
@@ -371,7 +372,7 @@ accountsRouter.get("/:id/parents", async (req, res, next) => {
 
 accountsRouter.delete(
   "/:id",
-  requirePermissions(["accounts.manage"]),
+  requirePermissions([PERMISSIONS.ACCOUNTS.MANAGE]),
   async (req, res, next) => {
     try {
       // Check if account has children

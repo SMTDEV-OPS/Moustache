@@ -38,6 +38,20 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { getUnreadCount } from "@/services/notifications";
 import { ModuleInfoButton } from "./ModuleInfoButton";
+import { Search, LogOut, Settings, User, ChevronUp, BellRing } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { SidebarHeader, SidebarFooter, SidebarInput, useSidebar } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+
+import { cn } from "@/lib/utils";
 
 interface AppSidebarProps {
   userRole: string;
@@ -46,6 +60,9 @@ interface AppSidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
   incomingCall: boolean;
+  userName: string;
+  onLogout: () => void;
+  simulateIncomingCall?: () => void;
 }
 
 export function AppSidebar({
@@ -55,7 +72,11 @@ export function AppSidebar({
   activeView,
   onViewChange,
   incomingCall,
+  userName,
+  onLogout,
+  simulateIncomingCall,
 }: AppSidebarProps) {
+  const { state } = useSidebar();
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const hasUsersManagePermission = permissions?.includes("users.manage");
   const canManageAccounts = !!isAdmin || permissions?.includes("accounts.manage");
@@ -174,66 +195,66 @@ export function AppSidebar({
         return true;
       }
 
-// Backend CRM users: show items based on permissions
-        if (isBackendSession) {
-          // Call Center – requires callcenter.access permission
-          if (item.url === "calls") {
-            return permissions?.includes("callcenter.access");
-          }
+      // Backend CRM users: show items based on permissions
+      if (isBackendSession) {
+        // Call Center – requires callcenter.access permission
+        if (item.url === "calls") {
+          return permissions?.includes("callcenter.access");
+        }
 
-          // Lead CRM module – show whenever user has any lead view/control permission.
-          if (item.url === "admin-leads") {
-            return permissions?.some((p) =>
-              p === "leads.manage" ||
-              p === "leads.view.own" ||
-              p === "leads.view.team" ||
-              p === "leads.view.all"
-            );
-          }
+        // Lead CRM module – show whenever user has any lead view/control permission.
+        if (item.url === "admin-leads") {
+          return permissions?.some((p) =>
+            p === "leads.manage" ||
+            p === "leads.view.own" ||
+            p === "leads.view.team" ||
+            p === "leads.view.all"
+          );
+        }
 
-          // Reports – requires explicit reporting permission
-          if (item.url === "reports") {
-            return permissions?.includes("reports.view");
-          }
+        // Reports – requires explicit reporting permission
+        if (item.url === "reports") {
+          return permissions?.includes("reports.view");
+        }
 
-          // Buddy – requires any buddy permission
-          if (item.url === "buddy-management") {
-            return canAccessBuddy;
-          }
+        // Buddy – requires any buddy permission
+        if (item.url === "buddy-management") {
+          return canAccessBuddy;
+        }
 
-          // Tickets – requires any ticket view/control permission
-          if (item.url === "ticket-management") {
-            return permissions?.some((p) =>
-              p === "tickets.manage" ||
-              p === "tickets.view.own" ||
-              p === "tickets.view.team" ||
-              p === "tickets.view.all"
-            );
-          }
+        // Tickets – requires any ticket view/control permission
+        if (item.url === "ticket-management") {
+          return permissions?.some((p) =>
+            p === "tickets.manage" ||
+            p === "tickets.view.own" ||
+            p === "tickets.view.team" ||
+            p === "tickets.view.all"
+          );
+        }
 
-          // In backend session we do not use demo \"leads\" route – hide it.
-          if (item.url === "leads") {
-            return false;
-          }
-
-          // Always allow dashboard for backend sessions
-          if (item.url === "dashboard") {
-            return true;
-          }
-
-          // Always show follow-up pages for backend sessions
-          if (item.url === "todays-followups" || item.url === "my-calendar") {
-            return true;
-          }
-
-          // Always show dashboard for backend sessions
-          if (item.url === "dashboard") {
-            return true;
-          }
-
-          // Hide other demo-only items for backend sessions
+        // In backend session we do not use demo \"leads\" route – hide it.
+        if (item.url === "leads") {
           return false;
         }
+
+        // Always allow dashboard for backend sessions
+        if (item.url === "dashboard") {
+          return true;
+        }
+
+        // Always show follow-up pages for backend sessions
+        if (item.url === "todays-followups" || item.url === "my-calendar") {
+          return true;
+        }
+
+        // Always show dashboard for backend sessions
+        if (item.url === "dashboard") {
+          return true;
+        }
+
+        // Hide other demo-only items for backend sessions
+        return false;
+      }
 
       // Demo mode: use role-based visibility
       return item.roles.includes(userRole);
@@ -251,8 +272,39 @@ export function AppSidebar({
     "admin",
   ].includes(userRole);
 
+
   return (
-    <Sidebar className="border-r bg-sidebar">
+    <Sidebar collapsible="icon" className="border-r bg-sidebar">
+      {/* Sidebar Header: Logo & Search */}
+      <SidebarHeader className="bg-sidebar border-b border-sidebar-border p-4">
+        <div className="flex items-center gap-3 px-1">
+          <div className="flex items-center justify-center h-8 w-8 rounded-md bg-primary/10">
+            <img
+              src="/lovable-uploads/e26310ec-726d-4063-b241-25a7abbba814.png"
+              alt="Logo"
+              className="h-6 w-auto"
+            />
+          </div>
+          {state === "expanded" && (
+            <div className="flex flex-col">
+              <span className="font-bold text-base tracking-tight">Moustache CRM</span>
+              <span className="text-[10px] text-muted-foreground">AGENCY DEMO</span>
+            </div>
+          )}
+        </div>
+
+        {state === "expanded" && (
+          <div className="mt-4 px-1">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <SidebarInput
+                placeholder="Search..."
+                className="pl-8 h-9 bg-sidebar-accent/30 border-sidebar-border/50 focus:bg-sidebar-accent focus:border-primary/50 transition-colors"
+              />
+            </div>
+          </div>
+        )}
+      </SidebarHeader>
       <SidebarContent className="p-3">
         {/* Notifications Section */}
         <SidebarGroup className="mb-4 pb-4 border-b border-sidebar-border">
@@ -263,9 +315,9 @@ export function AppSidebar({
                   onClick={() => onViewChange("notifications")}
                   isActive={activeView === "notifications"}
                   className={`
-                    w-full justify-between px-3 py-2.5 rounded-md transition-all duration-200
-                    ${activeView === "notifications" 
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                    group w-full justify-between px-3 py-2.5 rounded-md transition-all duration-200
+                    ${activeView === "notifications"
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                     }
                   `}
@@ -273,7 +325,7 @@ export function AppSidebar({
                   <div className="flex items-center flex-1">
                     <Bell className={`mr-3 h-4 w-4 ${activeView === "notifications" ? 'text-primary' : ''}`} />
                     <span className="text-sm flex-1">Notifications</span>
-                    <ModuleInfoButton description={moduleDescriptions["notifications"] || "Module information"} />
+                    <ModuleInfoButton description={moduleDescriptions["notifications"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                   </div>
                   {unreadNotificationCount > 0 && (
                     <Badge className="ml-2 bg-red-500 text-white text-xs px-1.5 py-0 h-5 min-w-[20px] flex items-center justify-center">
@@ -299,9 +351,9 @@ export function AppSidebar({
                     onClick={() => onViewChange(item.url)}
                     isActive={activeView === item.url}
                     className={`
-                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                      ${activeView === item.url 
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                      group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                      ${activeView === item.url
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                       }
                     `}
@@ -309,7 +361,7 @@ export function AppSidebar({
                     <item.icon className={`mr-3 h-4 w-4 ${activeView === item.url ? 'text-primary' : ''}`} />
                     <span className="flex-1 text-sm">{item.title}</span>
                     <div className="flex items-center gap-1 ml-2">
-                      <ModuleInfoButton description={moduleDescriptions[item.url] || "Module information"} />
+                      <ModuleInfoButton description={moduleDescriptions[item.url] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                       {item.url === "calls" && incomingCall && (
                         <Badge className="bg-red-500 h-2 w-2 p-0 animate-pulse border-0" />
                       )}
@@ -321,57 +373,57 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-          {/* Knowledge Base Section */}
-          {hasKnowledgeAccess && (
-            <SidebarGroup className="mb-4 pb-4 border-b border-sidebar-border">
-              <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
-                Resources
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="space-y-1">
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      onClick={() => onViewChange("knowledge-properties")}
-                      isActive={
-                        activeView === "knowledge-properties" ||
-                        activeView === "knowledge-factsheets" ||
-                        activeView === "knowledge-templates" ||
-                        activeView === "knowledge-resources"
-                      }
-                      className={`
-                        w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+        {/* Knowledge Base Section */}
+        {hasKnowledgeAccess && (
+          <SidebarGroup className="mb-4 pb-4 border-b border-sidebar-border">
+            <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
+              Resources
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="space-y-1">
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => onViewChange("knowledge-properties")}
+                    isActive={
+                      activeView === "knowledge-properties" ||
+                      activeView === "knowledge-factsheets" ||
+                      activeView === "knowledge-templates" ||
+                      activeView === "knowledge-resources"
+                    }
+                    className={`
+                        group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
                         ${(activeView === "knowledge-properties" ||
-                          activeView === "knowledge-factsheets" ||
-                          activeView === "knowledge-templates" ||
-                          activeView === "knowledge-resources")
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                        }
-                      `}
-                    >
-                      <BookOpen className={`mr-3 h-4 w-4 ${(activeView === "knowledge-properties" ||
                         activeView === "knowledge-factsheets" ||
                         activeView === "knowledge-templates" ||
-                        activeView === "knowledge-resources") ? 'text-primary' : ''}`} />
-                      <span className="text-sm flex-1">Knowledge Base</span>
-                      <ModuleInfoButton description={moduleDescriptions["knowledge-properties"] || "Module information"} />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )}
-          {(isAdminLike || canManageAccounts) && (
-            <SidebarGroup className="mb-4 pb-4 border-b border-sidebar-border">
-              <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
-                Administration
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="space-y-1">
-                  {isAdminLike && (
-                    <>
-                      {/* Admin API Console hidden per user request */}
-                      {/* <SidebarMenuItem>
+                        activeView === "knowledge-resources")
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                      }
+                      `}
+                  >
+                    <BookOpen className={`mr-3 h-4 w-4 ${(activeView === "knowledge-properties" ||
+                      activeView === "knowledge-factsheets" ||
+                      activeView === "knowledge-templates" ||
+                      activeView === "knowledge-resources") ? 'text-primary' : ''}`} />
+                    <span className="text-sm flex-1">Knowledge Base</span>
+                    <ModuleInfoButton description={moduleDescriptions["knowledge-properties"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {(isAdminLike || canManageAccounts) && (
+          <SidebarGroup className="mb-4 pb-4 border-b border-sidebar-border">
+            <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
+              Administration
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="space-y-1">
+                {isAdminLike && (
+                  <>
+                    {/* Admin API Console hidden per user request */}
+                    {/* <SidebarMenuItem>
                         <SidebarMenuButton
                           onClick={() => onViewChange("admin-console")}
                           isActive={activeView === "admin-console"}
@@ -388,232 +440,319 @@ export function AppSidebar({
                           <ModuleInfoButton description={moduleDescriptions["admin-console"] || "Module information"} />
                         </SidebarMenuButton>
                       </SidebarMenuItem> */}
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          onClick={() => onViewChange("role-definition")}
-                          isActive={activeView === "role-definition"}
-                          className={`
-                            w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                            ${activeView === "role-definition" 
-                              ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
-                              : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                            }
-                          `}
-                        >
-                          <Settings2 className={`mr-3 h-4 w-4 ${activeView === "role-definition" ? 'text-primary' : ''}`} />
-                          <span className="text-sm flex-1">Role Definition</span>
-                          <ModuleInfoButton description={moduleDescriptions["role-definition"] || "Module information"} />
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          onClick={() => onViewChange("user-role-management")}
-                          isActive={activeView === "user-role-management"}
-                          className={`
-                            w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                            ${activeView === "user-role-management" 
-                              ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
-                              : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                            }
-                          `}
-                        >
-                          <UserPlus className={`mr-3 h-4 w-4 ${activeView === "user-role-management" ? 'text-primary' : ''}`} />
-                          <span className="text-sm flex-1">User Role Management</span>
-                          <ModuleInfoButton description={moduleDescriptions["user-role-management"] || "Module information"} />
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          onClick={() => onViewChange("employee-groups")}
-                          isActive={activeView === "employee-groups"}
-                          className={`
-                            w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                            ${activeView === "employee-groups" 
-                              ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
-                              : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                            }
-                          `}
-                        >
-                          <Users className={`mr-3 h-4 w-4 ${activeView === "employee-groups" ? 'text-primary' : ''}`} />
-                          <span className="text-sm flex-1">Employee Groups</span>
-                          <ModuleInfoButton description={moduleDescriptions["employee-groups"] || "Module information"} />
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    </>
-                  )}
-                  {canManageAccounts && (
                     <SidebarMenuItem>
                       <SidebarMenuButton
-                        onClick={() => onViewChange("account-management")}
-                        isActive={activeView === "account-management"}
+                        onClick={() => onViewChange("role-definition")}
+                        isActive={activeView === "role-definition"}
                         className={`
-                          w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                          ${activeView === "account-management" 
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                            group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                            ${activeView === "role-definition"
+                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                             : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                           }
-                        `}
+                          `}
                       >
-                        <Building2 className={`mr-3 h-4 w-4 ${activeView === "account-management" ? 'text-primary' : ''}`} />
-                        <span className="text-sm flex-1">Account Management</span>
-                        <ModuleInfoButton description={moduleDescriptions["account-management"] || "Module information"} />
+                        <Settings2 className={`mr-3 h-4 w-4 ${activeView === "role-definition" ? 'text-primary' : ''}`} />
+                        <span className="text-sm flex-1">Role Definition</span>
+                        <ModuleInfoButton description={moduleDescriptions["role-definition"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )}
-                  {(isAdminLike || permissions?.includes("properties.manage")) && (
                     <SidebarMenuItem>
                       <SidebarMenuButton
-                        onClick={() => onViewChange("property-management")}
-                        isActive={activeView === "property-management"}
+                        onClick={() => onViewChange("user-role-management")}
+                        isActive={activeView === "user-role-management"}
                         className={`
-                          w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                          ${activeView === "property-management" 
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                            group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                            ${activeView === "user-role-management"
+                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                             : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                           }
-                        `}
+                          `}
                       >
-                        <Building2 className={`mr-3 h-4 w-4 ${activeView === "property-management" ? 'text-primary' : ''}`} />
-                        <span className="text-sm flex-1">Property Management</span>
-                        <ModuleInfoButton description={moduleDescriptions["property-management"] || "Module information"} />
+                        <UserPlus className={`mr-3 h-4 w-4 ${activeView === "user-role-management" ? 'text-primary' : ''}`} />
+                        <span className="text-sm flex-1">User Role Management</span>
+                        <ModuleInfoButton description={moduleDescriptions["user-role-management"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )}
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        onClick={() => onViewChange("employee-groups")}
+                        isActive={activeView === "employee-groups"}
+                        className={`
+                            group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                            ${activeView === "employee-groups"
+                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                            : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                          }
+                          `}
+                      >
+                        <Users className={`mr-3 h-4 w-4 ${activeView === "employee-groups" ? 'text-primary' : ''}`} />
+                        <span className="text-sm flex-1">Employee Groups</span>
+                        <ModuleInfoButton description={moduleDescriptions["employee-groups"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </>
+                )}
+                {canManageAccounts && (
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      onClick={() => onViewChange("assignment-rules")}
-                      isActive={activeView === "assignment-rules"}
+                      onClick={() => onViewChange("account-management")}
+                      isActive={activeView === "account-management"}
                       className={`
-                        w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                        ${activeView === "assignment-rules" 
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                          ${activeView === "account-management"
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                         }
-                      `}
+                        `}
                     >
-                      <GitBranch className={`mr-3 h-4 w-4 ${activeView === "assignment-rules" ? 'text-primary' : ''}`} />
-                      <span className="text-sm flex-1">Lead Assignment Rules</span>
-                      <ModuleInfoButton description={moduleDescriptions["assignment-rules"] || "Module information"} />
+                      <Building2 className={`mr-3 h-4 w-4 ${activeView === "account-management" ? 'text-primary' : ''}`} />
+                      <span className="text-sm flex-1">Account Management</span>
+                      <ModuleInfoButton description={moduleDescriptions["account-management"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                )}
+                {(isAdminLike || permissions?.includes("properties.manage")) && (
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      onClick={() => onViewChange("workflow-management")}
-                      isActive={activeView === "workflow-management"}
+                      onClick={() => onViewChange("property-management")}
+                      isActive={activeView === "property-management"}
                       className={`
-                        w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                        ${activeView === "workflow-management" 
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                          ${activeView === "property-management"
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                         }
-                      `}
+                        `}
                     >
-                      <Workflow className={`mr-3 h-4 w-4 ${activeView === "workflow-management" ? 'text-primary' : ''}`} />
-                      <span className="text-sm flex-1">Follow-up Workflows</span>
-                      <ModuleInfoButton description={moduleDescriptions["workflow-management"] || "Module information"} />
+                      <Building2 className={`mr-3 h-4 w-4 ${activeView === "property-management" ? 'text-primary' : ''}`} />
+                      <span className="text-sm flex-1">Property Management</span>
+                      <ModuleInfoButton description={moduleDescriptions["property-management"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      onClick={() => onViewChange("message-templates")}
-                      isActive={activeView === "message-templates"}
-                      className={`
-                        w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                        ${activeView === "message-templates" 
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                        }
-                      `}
-                    >
-                      <Mail className={`mr-3 h-4 w-4 ${activeView === "message-templates" ? 'text-primary' : ''}`} />
-                      <span className="text-sm flex-1">Message Templates</span>
-                      <ModuleInfoButton description={moduleDescriptions["message-templates"] || "Module information"} />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      onClick={() => onViewChange("email-provider-settings")}
-                      isActive={activeView === "email-provider-settings"}
-                      className={`
-                        w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                        ${activeView === "email-provider-settings" 
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                        }
-                      `}
-                    >
-                      <Mail className={`mr-3 h-4 w-4 ${activeView === "email-provider-settings" ? 'text-primary' : ''}`} />
-                      <span className="text-sm flex-1">Email Provider Settings</span>
-                      <ModuleInfoButton description={moduleDescriptions["email-provider-settings"] || "Module information"} />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )}
-          
-          {/* Email - Available to all users */}
-          <SidebarGroup className="mb-0">
-            <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
-              Email
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu className="space-y-1">
+                )}
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    onClick={() => onViewChange("email-client")}
-                    isActive={activeView === "email-client"}
+                    onClick={() => onViewChange("assignment-rules")}
+                    isActive={activeView === "assignment-rules"}
                     className={`
-                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                      ${activeView === "email-client" 
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                        group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                        ${activeView === "assignment-rules"
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                       }
-                    `}
+                      `}
                   >
-                    <Mail className={`mr-3 h-4 w-4 ${activeView === "email-client" ? 'text-primary' : ''}`} />
-                    <span className="text-sm flex-1">Email Client</span>
-                    <ModuleInfoButton description={moduleDescriptions["email-client"] || "Module information"} />
+                    <GitBranch className={`mr-3 h-4 w-4 ${activeView === "assignment-rules" ? 'text-primary' : ''}`} />
+                    <span className="text-sm flex-1">Lead Assignment Rules</span>
+                    <ModuleInfoButton description={moduleDescriptions["assignment-rules"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    onClick={() => onViewChange("email-settings")}
-                    isActive={activeView === "email-settings"}
+                    onClick={() => onViewChange("workflow-management")}
+                    isActive={activeView === "workflow-management"}
                     className={`
-                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                      ${activeView === "email-settings" 
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                        group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                        ${activeView === "workflow-management"
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                       }
-                    `}
+                      `}
                   >
-                    <Settings2 className={`mr-3 h-4 w-4 ${activeView === "email-settings" ? 'text-primary' : ''}`} />
-                    <span className="text-sm flex-1">Email Settings</span>
-                    <ModuleInfoButton description={moduleDescriptions["email-settings"] || "Module information"} />
+                    <Workflow className={`mr-3 h-4 w-4 ${activeView === "workflow-management" ? 'text-primary' : ''}`} />
+                    <span className="text-sm flex-1">Follow-up Workflows</span>
+                    <ModuleInfoButton description={moduleDescriptions["workflow-management"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    onClick={() => onViewChange("email-health")}
-                    isActive={activeView === "email-health"}
+                    onClick={() => onViewChange("message-templates")}
+                    isActive={activeView === "message-templates"}
                     className={`
-                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                      ${activeView === "email-health" 
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
+                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                          ${activeView === "message-templates"
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                       }
-                    `}
+                        `}
                   >
-                    <Activity className={`mr-3 h-4 w-4 ${activeView === "email-health" ? 'text-primary' : ''}`} />
-                    <span className="text-sm flex-1">Email Health</span>
-                    <ModuleInfoButton description={moduleDescriptions["email-health"] || "Module information"} />
+                    <Mail className={`mr-3 h-4 w-4 ${activeView === "message-templates" ? 'text-primary' : ''}`} />
+                    <span className="text-sm flex-1">Message Templates</span>
+                    <ModuleInfoButton description={moduleDescriptions["message-templates"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => onViewChange("email-provider-settings")}
+                    isActive={activeView === "email-provider-settings"}
+                    className={`
+                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                          ${activeView === "email-provider-settings"
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                      }
+                        `}
+                  >
+                    <Mail className={`mr-3 h-4 w-4 ${activeView === "email-provider-settings" ? 'text-primary' : ''}`} />
+                    <span className="text-sm flex-1">Email Provider Settings</span>
+                    <ModuleInfoButton description={moduleDescriptions["email-provider-settings"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+        )}
+
+        {/* Email - Available to all users */}
+        <SidebarGroup className="mb-0">
+          <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
+            Email
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="space-y-1">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onViewChange("email-client")}
+                  isActive={activeView === "email-client"}
+                  className={`
+                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                      ${activeView === "email-client"
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                    }
+                    `}
+                >
+                  <Mail className={`mr-3 h-4 w-4 ${activeView === "email-client" ? 'text-primary' : ''}`} />
+                  <span className="text-sm flex-1">Email Client</span>
+                  <ModuleInfoButton description={moduleDescriptions["email-client"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onViewChange("email-settings")}
+                  isActive={activeView === "email-settings"}
+                  className={`
+                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                      ${activeView === "email-settings"
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                    }
+                    `}
+                >
+                  <Settings2 className={`mr-3 h-4 w-4 ${activeView === "email-settings" ? 'text-primary' : ''}`} />
+                  <span className="text-sm flex-1">Email Settings</span>
+                  <ModuleInfoButton description={moduleDescriptions["email-settings"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onViewChange("email-health")}
+                  isActive={activeView === "email-health"}
+                  className={`
+                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                      ${activeView === "email-health"
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                    }
+                    `}
+                >
+                  <Activity className={`mr-3 h-4 w-4 ${activeView === "email-health" ? 'text-primary' : ''}`} />
+                  <span className="text-sm flex-1">Email Health</span>
+                  <ModuleInfoButton description={moduleDescriptions["email-health"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="border-t border-sidebar-border p-4 bg-sidebar">
+        {state === "expanded" ? (
+          <div className="flex flex-col gap-4">
+            {/* Quick Actions */}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+
+                {userRole === 'callcenter' && simulateIncomingCall && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 hover:bg-sidebar-accent text-green-600 hover:text-green-700"
+                    onClick={simulateIncomingCall}
+                    title="Simulate Call"
+                  >
+                    <Phone className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="w-full justify-start px-2 hover:bg-sidebar-accent h-auto py-2">
+                  <div className="flex items-center gap-3 text-left">
+                    <Avatar className="h-8 w-8 border border-sidebar-border">
+                      <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-medium">
+                        {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <span className="text-sm font-medium truncate text-sidebar-foreground">{userName}</span>
+                      <span className="text-xs text-muted-foreground truncate capitalize">
+                        {userRole === 'callcenter' ? 'Call Center' : userRole}
+                      </span>
+                    </div>
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56" side="right">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onViewChange("email-settings")}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onViewChange("email-settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-4">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8 border border-sidebar-border">
+                    <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-medium">
+                      {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="right" className="w-48">
+                <DropdownMenuLabel className="truncate">{userName}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onViewChange("email-settings")}>
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onLogout} className="text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+      </SidebarFooter>
     </Sidebar>
   );
 }

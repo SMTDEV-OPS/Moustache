@@ -1,4 +1,4 @@
-## PostcardCRM Backend API (Overview)
+## MoustacheCRM Backend API (Overview)
 
 ### Auth
 - **POST `/auth/login`**: email + password → JWT and basic user info.

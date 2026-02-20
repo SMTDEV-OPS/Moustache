@@ -16,22 +16,27 @@ export function ModuleInfoButton({ description, className }: ModuleInfoButtonPro
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
+        <div
+          role="button"
+          tabIndex={0}
           className={cn(
-            "h-4 w-4 rounded-full p-0 hover:bg-sidebar-accent/50",
+            "h-4 w-4 rounded-full p-0 hover:bg-sidebar-accent/50 inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
             className
           )}
           onClick={(e) => {
             e.stopPropagation();
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.stopPropagation();
+            }
+          }}
         >
           <Info className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-        </Button>
+        </div>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-80 p-4 text-sm" 
+      <PopoverContent
+        className="w-80 p-4 text-sm"
         side="right"
         align="start"
         onClick={(e) => e.stopPropagation()}

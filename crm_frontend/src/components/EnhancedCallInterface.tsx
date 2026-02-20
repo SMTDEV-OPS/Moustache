@@ -55,12 +55,12 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
   const [selectedQueryType, setSelectedQueryType] = useState("");
   const [followUpDate, setFollowUpDate] = useState<Date | undefined>(undefined);
   const [followUpTime, setFollowUpTime] = useState("");
-  
+
   // Communication dialog states
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showWhatsAppDialog, setShowWhatsAppDialog] = useState(false);
   const [showSMSDialog, setShowSMSDialog] = useState(false);
-  
+
   // New Lead Form State
   const [newLeadForm, setNewLeadForm] = useState({
     name: "",
@@ -68,7 +68,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
     email: "",
     property: "",
     checkIn: "",
-    checkOut: "", 
+    checkOut: "",
     guests: 1,
     roomType: "",
     budget: "",
@@ -78,7 +78,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
 
   const dispositionOptions = [
     "New Query",
-    "Call back", 
+    "Call back",
     "Property Request",
     "Property Escalations",
     "Refund Query",
@@ -88,21 +88,21 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
 
   const queryTypeOptions = [
     "Direct Customer",
-    "Referral", 
+    "Referral",
     "Corporate",
     "Others"
   ];
 
   const propertyOptions = [
-    "Postcard Goa",
-    "Postcard Udaipur",
-    "Postcard Munnar",
-    "Postcard Coonoor"
+    "Moustache Goa",
+    "Moustache Udaipur",
+    "Moustache Munnar",
+    "Moustache Coonoor"
   ];
 
   const roomTypeOptions = [
     "Deluxe Room",
-    "Premium Suite", 
+    "Premium Suite",
     "Ocean View Villa",
     "Garden Villa",
     "Presidential Suite"
@@ -171,7 +171,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
     setSelectedQueryType("");
     setFollowUpDate(undefined);
     setFollowUpTime("");
-    
+
     toast.success("Notes saved successfully with disposition");
   };
 
@@ -185,7 +185,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
     // Save both the lead and the interaction
     const newInteraction = {
       date: new Date().toISOString().split('T')[0],
-      type: "Call", 
+      type: "Call",
       channel: "Phone",
       agent: agentName,
       summary: `${notes} - New lead created: ${newLeadForm.name}`
@@ -197,7 +197,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
     setShowDispositionDialog(false);
     setSelectedDisposition("");
     setSelectedQueryType("");
-    
+
     // Reset lead form
     setNewLeadForm({
       name: "",
@@ -212,7 +212,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
       source: "",
       priority: "medium"
     });
-    
+
     toast.success("Lead created and notes saved successfully");
   };
 
@@ -235,7 +235,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                 </CardDescription>
               </div>
             </div>
-            
+
             <div className="flex space-x-2">
               {incomingCall && !callActive && (
                 <Button onClick={handleAnswerCall} className="bg-green-600 hover:bg-green-700">
@@ -271,7 +271,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                   <p className="text-muted-foreground">{guest.phone}</p>
                   <p className="text-muted-foreground">{guest.email}</p>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="font-medium">Loyalty Status:</span>
@@ -343,7 +343,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                 SMS
               </Button>
             </div>
-            
+
             <Textarea
               placeholder="Enter call notes, customer queries, or important information..."
               value={notes}
@@ -398,7 +398,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
               Categorize this interaction and schedule follow-up if needed
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="disposition">Disposition</Label>
@@ -455,7 +455,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                     </PopoverContent>
                   </Popover>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="followuptime">Time</Label>
                   <Input
@@ -488,7 +488,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
               Fill in the lead information to create a new inquiry
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -499,7 +499,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                   placeholder="Guest name"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="leadphone">Phone *</Label>
                 <Input
@@ -520,7 +520,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                   placeholder="guest@email.com"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="leadproperty">Property *</Label>
                 <Select value={newLeadForm.property} onValueChange={(value) => setNewLeadForm(prev => ({ ...prev, property: value }))}>
@@ -545,7 +545,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                   onChange={(e) => setNewLeadForm(prev => ({ ...prev, checkIn: e.target.value }))}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="checkout">Check-out Date</Label>
                 <Input
@@ -566,7 +566,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                   onChange={(e) => setNewLeadForm(prev => ({ ...prev, guests: parseInt(e.target.value) }))}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="roomtype">Room Type</Label>
                 <Select value={newLeadForm.roomType} onValueChange={(value) => setNewLeadForm(prev => ({ ...prev, roomType: value }))}>
@@ -591,7 +591,7 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
                   placeholder="₹10,000 - ₹15,000"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="source">Lead Source</Label>
                 <Select value={newLeadForm.source} onValueChange={(value) => setNewLeadForm(prev => ({ ...prev, source: value }))}>
@@ -644,14 +644,14 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
         guestEmail={guest.email}
         guestName={guest.name}
       />
-      
+
       <WhatsAppDialog
         open={showWhatsAppDialog}
         onOpenChange={setShowWhatsAppDialog}
         guestPhone={guest.phone}
         guestName={guest.name}
       />
-      
+
       <SMSDialog
         open={showSMSDialog}
         onOpenChange={setShowSMSDialog}

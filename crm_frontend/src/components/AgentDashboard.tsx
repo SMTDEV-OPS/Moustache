@@ -27,7 +27,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       id: "FU001",
       leadName: "Rajesh Kumar",
       phone: "+91 98765 43210",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       scheduledTime: "10:00 AM",
       status: "pending",
       temperature: "Hot",
@@ -35,10 +35,10 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       notes: "Interested in premium suite for anniversary"
     },
     {
-      id: "FU002", 
+      id: "FU002",
       leadName: "Priya Sharma",
       phone: "+91 87654 32109",
-      property: "Postcard Udaipur",
+      property: "Moustache Udaipur",
       scheduledTime: "2:00 PM",
       status: "completed",
       temperature: "Warm",
@@ -49,7 +49,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       id: "FU003",
       leadName: "Amit Patel",
       phone: "+91 76543 21098",
-      property: "Postcard Munnar",
+      property: "Moustache Munnar",
       scheduledTime: "4:30 PM",
       status: "pending",
       priority: "low",
@@ -64,7 +64,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       name: "Sunita Reddy",
       phone: "+91 98765 43211",
       email: "sunita.reddy@email.com",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       status: "hot",
       lastInteraction: "2025-01-15",
       workingDays: 5,
@@ -80,7 +80,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       name: "Vikram Singh",
       phone: "+91 87654 32110",
       email: "vikram.singh@email.com",
-      property: "Postcard Udaipur",
+      property: "Moustache Udaipur",
       status: "warm",
       lastInteraction: "2024-01-14",
       workingDays: 8,
@@ -100,7 +100,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       title: "Guest Room Service Issue",
       status: "open",
       priority: "high",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       guestName: "Priya Sharma",
       createdDate: "2025-01-14",
       createdBy: userName,
@@ -112,7 +112,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       title: "Special Dietary Request",
       status: "open",
       priority: "low",
-      property: "Postcard Rajasthan",
+      property: "Moustache Rajasthan",
       guestName: "Meera Gupta",
       createdDate: "2025-01-15",
       createdBy: userName,
@@ -124,7 +124,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       title: "Billing Discrepancy",
       status: "in-progress",
       priority: "medium",
-      property: "Postcard Kerala",
+      property: "Moustache Kerala",
       guestName: "Arjun Patel",
       createdDate: "2025-01-13",
       createdBy: "Another Agent",
@@ -179,7 +179,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -191,7 +191,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -203,7 +203,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -289,7 +289,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
 
                         {/* Action Buttons */}
                         <div className="flex flex-col space-y-2 ml-4">
-                          <Button 
+                          <Button
                             size="sm"
                             onClick={() => {
                               setSelectedLeadForDialog({ name: followup.leadName, phone: followup.phone, email: '' });
@@ -299,8 +299,8 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
                             <Phone className="h-4 w-4 mr-2" />
                             Call
                           </Button>
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => {
                               setSelectedLeadForDialog({ name: followup.leadName, phone: followup.phone, email: '' });
@@ -310,9 +310,9 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
                             <Mail className="h-4 w-4 mr-2" />
                             Email
                           </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => setSelectedLead(selectedLead === followup.id ? null : followup.id)}
                           >
                             <Eye className="h-4 w-4 mr-2" />
@@ -434,8 +434,8 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
 
                     {/* Action Buttons */}
                     <div className="flex flex-col space-y-2 ml-4">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => {
                           setSelectedLeadForDialog(lead);
@@ -445,7 +445,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
                         <Mail className="h-4 w-4 mr-2" />
                         Email
                       </Button>
-                      <Button 
+                      <Button
                         size="sm"
                         onClick={() => {
                           setSelectedLeadForDialog(lead);
@@ -455,9 +455,9 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
                         <Phone className="h-4 w-4 mr-2" />
                         Call
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => setSelectedLead(selectedLead === lead.id ? null : lead.id)}
                       >
                         <Eye className="h-4 w-4 mr-2" />
@@ -574,7 +574,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="lead-name">Lead Name</Label>
-              <Input 
+              <Input
                 id="lead-name"
                 value={selectedLeadForDialog?.name || ''}
                 readOnly
@@ -582,7 +582,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone-number">Phone Number</Label>
-              <Input 
+              <Input
                 id="phone-number"
                 value={selectedLeadForDialog?.phone || ''}
                 readOnly
@@ -590,7 +590,7 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="call-notes">Call Notes</Label>
-              <Textarea 
+              <Textarea
                 id="call-notes"
                 placeholder="Enter call notes..."
                 rows={4}

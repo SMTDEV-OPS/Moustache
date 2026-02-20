@@ -4,15 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Phone, 
-  PhoneCall, 
-  Clock, 
-  CheckCircle, 
-  Calendar, 
-  X, 
-  TrendingUp, 
-  Users, 
+import {
+  Phone,
+  PhoneCall,
+  Clock,
+  CheckCircle,
+  Calendar,
+  X,
+  TrendingUp,
+  Users,
   Ticket,
   Download,
   MapPin,
@@ -42,9 +42,9 @@ const agentData = [
 ];
 
 const propertyCallData = [
-  { property: "Postcard Goa", calls: 423, tickets: 67, avgTAT: "2.4 hrs", fcr: 82 },
-  { property: "Postcard Udaipur", calls: 389, tickets: 52, avgTAT: "1.8 hrs", fcr: 79 },
-  { property: "Postcard Munnar", calls: 377, tickets: 41, avgTAT: "3.1 hrs", fcr: 75 }
+  { property: "Moustache Goa", calls: 423, tickets: 67, avgTAT: "2.4 hrs", fcr: 82 },
+  { property: "Moustache Udaipur", calls: 389, tickets: 52, avgTAT: "1.8 hrs", fcr: 79 },
+  { property: "Moustache Munnar", calls: 377, tickets: 41, avgTAT: "3.1 hrs", fcr: 75 }
 ];
 
 const ticketAnalysis = [
@@ -81,7 +81,7 @@ const CCManagerDashboard = ({ userName }: CCManagerDashboardProps) => {
     let data: any[] = [];
     let filename = "";
 
-    switch(reportType) {
+    switch (reportType) {
       case 'agent-performance':
         data = agentData.map(agent => ({
           Agent: agent.name,
@@ -135,7 +135,7 @@ const CCManagerDashboard = ({ userName }: CCManagerDashboardProps) => {
   };
 
   const getStatusColor = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'Good': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
       case 'Normal': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
       case 'Concern': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
@@ -462,12 +462,11 @@ const CCManagerDashboard = ({ userName }: CCManagerDashboardProps) => {
                     </div>
                     <div className="mt-2">
                       <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className={`h-2 rounded-full ${
-                            ticket.status === 'Good' ? 'bg-green-600' :
-                            ticket.status === 'Normal' ? 'bg-blue-600' :
-                            ticket.status === 'Concern' ? 'bg-yellow-600' : 'bg-red-600'
-                          }`}
+                        <div
+                          className={`h-2 rounded-full ${ticket.status === 'Good' ? 'bg-green-600' :
+                              ticket.status === 'Normal' ? 'bg-blue-600' :
+                                ticket.status === 'Concern' ? 'bg-yellow-600' : 'bg-red-600'
+                            }`}
                           style={{ width: `${Math.min((ticket.count / 50) * 100, 100)}%` }}
                         />
                       </div>

@@ -105,7 +105,7 @@ export const backendLogout = async (): Promise<void> => {
           method: "POST",
           headers: withAuthHeaders(),
         });
-        
+
         if (!response.ok) {
           console.warn("Backend logout returned non-OK status:", response.status);
         }
@@ -121,20 +121,20 @@ export const backendLogout = async (): Promise<void> => {
     // Always clear the auth token from memory and localStorage
     // This will cause WebSocket connections to disconnect (they check for token)
     setAuthToken(null);
-    
+
     // Clear all session-related localStorage items
     if (typeof window !== "undefined") {
       // Clear known session keys
       window.localStorage.removeItem("authToken");
       window.localStorage.removeItem("gcSession");
-      
+
       // Clear any other potential session-related items
       const keysToRemove: string[] = [];
       for (let i = 0; i < window.localStorage.length; i++) {
         const key = window.localStorage.key(i);
         if (key && (
-          key.startsWith("auth") || 
-          key.startsWith("session") || 
+          key.startsWith("auth") ||
+          key.startsWith("session") ||
           key.startsWith("user") ||
           key.startsWith("token")
         )) {

@@ -8,10 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { 
-  Building2, TrendingUp, Phone, DollarSign, Users, CalendarIcon, 
-  Download, RefreshCw, BarChart3, PieChart, LineChart, 
-  MapPin, Star, Clock, AlertTriangle 
+import {
+  Building2, TrendingUp, Phone, DollarSign, Users, CalendarIcon,
+  Download, RefreshCw, BarChart3, PieChart, LineChart,
+  MapPin, Star, Clock, AlertTriangle
 } from "lucide-react";
 
 interface ReportsProps {
@@ -25,7 +25,7 @@ const Reports = ({ userName }: ReportsProps) => {
   // Mock data for property reports
   const propertyData = [
     {
-      name: "Postcard Goa",
+      name: "Moustache Goa",
       totalRevenue: "₹18,50,000",
       occupancy: "92%",
       avgRoomRate: "₹12,500",
@@ -35,9 +35,9 @@ const Reports = ({ userName }: ReportsProps) => {
       repeatGuests: "34%"
     },
     {
-      name: "Postcard Udaipur",
+      name: "Moustache Udaipur",
       totalRevenue: "₹22,30,000",
-      occupancy: "88%", 
+      occupancy: "88%",
       avgRoomRate: "₹15,200",
       guestSatisfaction: 4.9,
       totalBookings: 127,
@@ -45,7 +45,7 @@ const Reports = ({ userName }: ReportsProps) => {
       repeatGuests: "42%"
     },
     {
-      name: "Postcard Munnar",
+      name: "Moustache Munnar",
       totalRevenue: "₹16,80,000",
       occupancy: "85%",
       avgRoomRate: "₹11,800",
@@ -55,8 +55,8 @@ const Reports = ({ userName }: ReportsProps) => {
       repeatGuests: "28%"
     },
     {
-      name: "Postcard Kerala",
-      totalRevenue: "₹19,90,000", 
+      name: "Moustache Kerala",
+      totalRevenue: "₹19,90,000",
       occupancy: "90%",
       avgRoomRate: "₹13,800",
       guestSatisfaction: 4.6,
@@ -79,7 +79,7 @@ const Reports = ({ userName }: ReportsProps) => {
       emailsSent: 156
     },
     {
-      agent: "Rajesh Kumar", 
+      agent: "Rajesh Kumar",
       totalLeads: 92,
       conversions: 28,
       conversionRate: "30.4%",
@@ -106,7 +106,7 @@ const Reports = ({ userName }: ReportsProps) => {
       agent: "Harleen Mehta",
       totalCalls: 245,
       avgCallDuration: "4:32",
-      resolutionRate: "94%", 
+      resolutionRate: "94%",
       customerSat: 4.7,
       ticketsCreated: 18,
       ticketsResolved: 23,
@@ -125,7 +125,7 @@ const Reports = ({ userName }: ReportsProps) => {
     {
       agent: "Kavita Singh",
       totalCalls: 267,
-      avgCallDuration: "3:58", 
+      avgCallDuration: "3:58",
       resolutionRate: "96%",
       customerSat: 4.8,
       ticketsCreated: 15,
@@ -147,7 +147,7 @@ const Reports = ({ userName }: ReportsProps) => {
   // Excel download functions
   const downloadPropertyReport = (property: any) => {
     const workbook = XLSX.utils.book_new();
-    
+
     const propertyDetails = [
       ['Property Name', property.name],
       ['Report Period', `${format(startDate, "PPP")} to ${format(endDate, "PPP")}`],
@@ -172,13 +172,13 @@ const Reports = ({ userName }: ReportsProps) => {
 
     const worksheet = XLSX.utils.aoa_to_sheet(propertyDetails);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Property Report');
-    
+
     XLSX.writeFile(workbook, `${property.name}_Detailed_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
   const downloadSalesReport = (agent: any) => {
     const workbook = XLSX.utils.book_new();
-    
+
     const salesDetails = [
       ['Sales Executive', agent.agent],
       ['Report Period', `${format(startDate, "PPP")} to ${format(endDate, "PPP")}`],
@@ -207,13 +207,13 @@ const Reports = ({ userName }: ReportsProps) => {
 
     const worksheet = XLSX.utils.aoa_to_sheet(salesDetails);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Sales Report');
-    
+
     XLSX.writeFile(workbook, `${agent.agent}_Sales_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
   const downloadCallCenterReport = (agent: any) => {
     const workbook = XLSX.utils.book_new();
-    
+
     const callCenterDetails = [
       ['Call Center Agent', agent.agent],
       ['Report Period', `${format(startDate, "PPP")} to ${format(endDate, "PPP")}`],
@@ -243,7 +243,7 @@ const Reports = ({ userName }: ReportsProps) => {
 
     const worksheet = XLSX.utils.aoa_to_sheet(callCenterDetails);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Call Center Report');
-    
+
     XLSX.writeFile(workbook, `${agent.agent}_CallCenter_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
@@ -368,7 +368,7 @@ const Reports = ({ userName }: ReportsProps) => {
                           <p className="text-sm text-muted-foreground">Total Revenue</p>
                         </div>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-3 bg-blue-50 rounded-lg">
                           <p className="text-sm text-muted-foreground">Occupancy Rate</p>
@@ -401,8 +401,8 @@ const Reports = ({ userName }: ReportsProps) => {
                           <p className="font-semibold">{property.repeatGuests}</p>
                         </div>
                         <div className="text-center">
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => downloadPropertyReport(property)}
                           >
@@ -449,7 +449,7 @@ const Reports = ({ userName }: ReportsProps) => {
                           <p className="text-sm text-muted-foreground">Total Revenue</p>
                         </div>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-3 bg-blue-50 rounded-lg">
                           <p className="text-sm text-muted-foreground">Total Leads</p>
@@ -479,8 +479,8 @@ const Reports = ({ userName }: ReportsProps) => {
                           <p className="font-semibold">{agent.emailsSent}</p>
                         </div>
                         <div className="text-center">
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => downloadSalesReport(agent)}
                           >
@@ -527,7 +527,7 @@ const Reports = ({ userName }: ReportsProps) => {
                           <p className="text-sm text-muted-foreground">Total Calls</p>
                         </div>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-3 bg-green-50 rounded-lg">
                           <p className="text-sm text-muted-foreground">Resolution Rate</p>
@@ -560,8 +560,8 @@ const Reports = ({ userName }: ReportsProps) => {
                           <p className="font-semibold">{agent.ticketsResolved}</p>
                         </div>
                         <div className="text-center">
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => downloadCallCenterReport(agent)}
                           >

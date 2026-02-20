@@ -49,7 +49,7 @@ app.use(requestLogger);
 
 app.get("/", (_req, res) => {
   res.json({
-    message: "PostcardCRM API",
+    message: "MoustacheCRM API",
     version: "1.0.0",
     status: "running",
     endpoints: {

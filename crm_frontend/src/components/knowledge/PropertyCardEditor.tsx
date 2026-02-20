@@ -78,7 +78,7 @@ export const PropertyCardEditor = ({
       setRooms(content.rooms || "");
       setRating(content.rating || "");
       setAmenities(content.amenities || []);
-      
+
       // Convert rates object to array
       if (content.rates) {
         setRates(
@@ -90,8 +90,12 @@ export const PropertyCardEditor = ({
       } else {
         setRates([]);
       }
-      
-      setContact(content.contact || { phone: "", email: "", website: "" });
+
+      setContact({
+        phone: content.contact?.phone || "",
+        email: content.contact?.email || "",
+        website: content.contact?.website || ""
+      });
       setExistingFiles(item.files || []);
     } else {
       setTitle("");
@@ -157,13 +161,13 @@ export const PropertyCardEditor = ({
 
       // Build content object
       const content: PropertyContent = {};
-      
+
       if (location) content.location = location;
       if (type) content.type = type;
       if (rooms) content.rooms = Number(rooms);
       if (rating) content.rating = Number(rating);
       if (amenities.length > 0) content.amenities = amenities;
-      
+
       // Convert rates array to object
       const ratesObj: Record<string, string> = {};
       rates.forEach((rate) => {
@@ -174,7 +178,7 @@ export const PropertyCardEditor = ({
       if (Object.keys(ratesObj).length > 0) {
         content.rates = ratesObj;
       }
-      
+
       // Add contact if any field is filled
       if (contact.phone || contact.email || contact.website) {
         content.contact = {};
@@ -243,14 +247,14 @@ export const PropertyCardEditor = ({
           {/* Basic Information */}
           <div className="space-y-4 border-b border-slate-200 pb-6">
             <h3 className="text-lg font-semibold">Basic Information</h3>
-            
+
             <div className="space-y-2">
               <Label htmlFor="title">Hotel Name *</Label>
               <Input
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., The Postcard Goa"
+                placeholder="e.g., The Moustache Goa"
                 className="rounded-none h-12"
               />
             </div>
@@ -295,7 +299,7 @@ export const PropertyCardEditor = ({
           {/* Key Statistics */}
           <div className="space-y-4 border-b border-slate-200 pb-6">
             <h3 className="text-lg font-semibold">Key Statistics</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="rooms">Number of Rooms</Label>
@@ -327,7 +331,7 @@ export const PropertyCardEditor = ({
           {/* Amenities */}
           <div className="space-y-4 border-b border-slate-200 pb-6">
             <h3 className="text-lg font-semibold">Amenities</h3>
-            
+
             <div className="flex gap-2">
               <Input
                 value={newAmenity}
@@ -425,7 +429,7 @@ export const PropertyCardEditor = ({
           {/* Contact Information */}
           <div className="space-y-4 border-b border-slate-200 pb-6">
             <h3 className="text-lg font-semibold">Contact Information</h3>
-            
+
             <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>
               <Input
@@ -444,7 +448,7 @@ export const PropertyCardEditor = ({
                 type="email"
                 value={contact.email}
                 onChange={(e) => setContact({ ...contact, email: e.target.value })}
-                placeholder="e.g., goa@thepostcardhotel.com"
+                placeholder="e.g., goa@theMoustachehotel.com"
                 className="rounded-none h-12"
               />
             </div>
@@ -455,7 +459,7 @@ export const PropertyCardEditor = ({
                 id="website"
                 value={contact.website}
                 onChange={(e) => setContact({ ...contact, website: e.target.value })}
-                placeholder="e.g., www.thepostcardhotel.com"
+                placeholder="e.g., www.theMoustachehotel.com"
                 className="rounded-none h-12"
               />
             </div>
@@ -534,8 +538,8 @@ export const PropertyCardEditor = ({
               {isSubmitting
                 ? "Saving..."
                 : item
-                ? "Update Property Card"
-                : "Create Property Card"}
+                  ? "Update Property Card"
+                  : "Create Property Card"}
             </Button>
           </div>
         </div>

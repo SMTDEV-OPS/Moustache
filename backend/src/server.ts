@@ -44,7 +44,7 @@ async function start() {
     initializeWebSocket(httpServer);
 
     httpServer.listen(config.port, () => {
-      logger.info(`PostcardCRM API listening on port ${config.port}`);
+      logger.info(`MoustacheCRM API listening on port ${config.port}`);
       logger.info(`WebSocket server running on port ${config.port}`);
     });
   } catch (err) {

@@ -105,10 +105,10 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
 
   const handleWhatsApp = () => {
     const phoneNumber = guest.phone.replace(/[^\d]/g, '');
-    const message = `Hello ${guest.name}, this is from Postcard Hotels. How can we assist you today?`;
+    const message = `Hello ${guest.name}, this is from Moustache Hotels. How can we assist you today?`;
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
-    
+
     // Add to interaction history
     const newInteraction = {
       date: new Date().toISOString().split('T')[0],
@@ -117,7 +117,7 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
       agent: "Call Center Agent",
       summary: "WhatsApp conversation initiated from call interface"
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -138,7 +138,7 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
       agent: "Call Center Agent",
       summary: `Email sent: "${data.subject}"`
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -161,7 +161,7 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
       agent: "Call Center Agent",
       summary: `SMS sent: "${data.message.substring(0, 50)}..."`
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -184,7 +184,7 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
       agent: "Call Center Agent",
       summary: `Note added: "${data.note.substring(0, 50)}..."`
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -297,10 +297,9 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
               <CardTitle className="flex items-center space-x-2">
                 <User className="h-5 w-5 text-blue-600" />
                 <span>Guest Profile</span>
-                <Badge className={`ml-auto ${
-                  guest.loyaltyStatus === 'Gold' ? 'bg-yellow-500' : 
-                  guest.loyaltyStatus === 'Silver' ? 'bg-gray-400' : 'bg-blue-500'
-                }`}>
+                <Badge className={`ml-auto ${guest.loyaltyStatus === 'Gold' ? 'bg-yellow-500' :
+                    guest.loyaltyStatus === 'Silver' ? 'bg-gray-400' : 'bg-blue-500'
+                  }`}>
                   {guest.loyaltyStatus}
                 </Badge>
               </CardTitle>
@@ -371,7 +370,7 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
                     <MessageCircle className="h-4 w-4 mr-2" />
                     WhatsApp
                   </Button>
-                  
+
                   <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
                     <DialogTrigger asChild>
                       <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
@@ -442,11 +441,11 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
                               <FormItem>
                                 <FormLabel>Message</FormLabel>
                                 <FormControl>
-                                  <Textarea 
-                                    placeholder="Your SMS message..." 
-                                    rows={3} 
+                                  <Textarea
+                                    placeholder="Your SMS message..."
+                                    rows={3}
                                     maxLength={160}
-                                    {...field} 
+                                    {...field}
                                   />
                                 </FormControl>
                                 <p className="text-xs text-gray-500">{field.value?.length || 0}/160 characters</p>

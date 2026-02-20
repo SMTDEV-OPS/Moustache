@@ -13,7 +13,7 @@ async function seed() {
   logger.info("Connected to MongoDB for seeding");
 
   const adminRoleName = "Admin";
-  const adminEmail = "admin@postcardcrm.local";
+  const adminEmail = "admin@moustachecrm.local";
   const adminPassword = "Admin@123";
 
   const permissions = [

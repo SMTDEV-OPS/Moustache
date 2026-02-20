@@ -41,13 +41,13 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [notes, setNotes] = useState<Array<{date: string, note: string, agent: string}>>([
+  const [notes, setNotes] = useState<Array<{ date: string, note: string, agent: string }>>([
     { date: "2024-06-11", note: "Guest prefers early check-in when possible", agent: "Harleen Mehta" },
     { date: "2024-06-10", note: "Requested room with ocean view for anniversary", agent: "Harleen Mehta" }
   ]);
 
   const { toast } = useToast();
-  
+
   const noteForm = useForm({
     defaultValues: {
       note: ""
@@ -105,7 +105,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       agent: "Harleen Mehta",
       summary: `Sent: "${data.subject}"`
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -128,7 +128,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       agent: "Harleen Mehta",
       summary: `New booking created at ${data.property} from ${data.checkIn} to ${data.checkOut}`
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -151,7 +151,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       property: data.property,
       preferences: data.preferences.split(",").map((p: string) => p.trim()).filter((p: string) => p)
     };
-    
+
     setGuest(updatedGuest);
     setIsEditDialogOpen(false);
     toast({
@@ -162,10 +162,10 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
 
   const handleWhatsApp = () => {
     const phoneNumber = guest.phone.replace(/[^\d]/g, '');
-    const message = `Hello ${guest.name}, this is Harleen from Postcard Hotels. How can we assist you today?`;
+    const message = `Hello ${guest.name}, this is Harleen from Moustache Hotels. How can we assist you today?`;
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
-    
+
     // Add to interaction history
     const newInteraction = {
       date: new Date().toISOString().split('T')[0],
@@ -174,7 +174,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       agent: "Harleen Mehta",
       summary: "WhatsApp conversation initiated"
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -195,7 +195,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       agent: "Harleen Mehta",
       summary: `Outbound call to ${guest.phone}`
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -215,7 +215,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       agent: "System",
       summary: "Inquiry received: 'Interested in weekend packages for family of 4'"
     };
-    
+
     setGuest(prev => ({
       ...prev,
       interactionHistory: [newInteraction, ...prev.interactionHistory]
@@ -255,7 +255,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       totalStays: 5,
       lastStay: "2024-04-22",
       phone: "+91 98765 43210",
-      property: "Postcard Goa"
+      property: "Moustache Goa"
     },
     {
       id: "G003",
@@ -264,7 +264,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       totalStays: 2,
       lastStay: "2024-03-15",
       phone: "+91 87654 32109",
-      property: "Postcard Kerala"
+      property: "Moustache Kerala"
     },
     {
       id: "G004",
@@ -273,7 +273,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       totalStays: 12,
       lastStay: "2024-06-01",
       phone: "+91 76543 21098",
-      property: "Postcard Rajasthan"
+      property: "Moustache Rajasthan"
     }
   ];
 
@@ -291,10 +291,9 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
               <Badge className="bg-white text-blue-600">
                 {guest.property}
               </Badge>
-              <Badge className={`${
-                guest.loyaltyStatus === 'Gold' ? 'bg-yellow-500' : 
-                guest.loyaltyStatus === 'Silver' ? 'bg-gray-400' : 'bg-orange-500'
-              }`}>
+              <Badge className={`${guest.loyaltyStatus === 'Gold' ? 'bg-yellow-500' :
+                  guest.loyaltyStatus === 'Silver' ? 'bg-gray-400' : 'bg-orange-500'
+                }`}>
                 {guest.loyaltyStatus} Member
               </Badge>
             </div>
@@ -404,10 +403,10 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                                    <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                                    <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                                    <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
+                                    <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
+                                    <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
+                                    <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
+                                    <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -581,10 +580,10 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                                  <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                                  <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                                  <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
+                                  <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
+                                  <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
+                                  <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
+                                  <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />
@@ -702,8 +701,8 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
                     <span>{guest.totalStays}/15 stays</span>
                   </div>
                   <div className="w-full bg-yellow-200 rounded-full h-2">
-                    <div 
-                      className="bg-yellow-500 h-2 rounded-full" 
+                    <div
+                      className="bg-yellow-500 h-2 rounded-full"
                       style={{ width: `${(guest.totalStays / 15) * 100}%` }}
                     ></div>
                   </div>
@@ -728,10 +727,9 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
               <div key={index} className="p-4 border rounded-lg hover:shadow-md transition-shadow cursor-pointer">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-semibold">{additionalGuest.name}</h4>
-                  <Badge variant="outline" className={`${
-                    additionalGuest.loyaltyStatus === 'Gold' ? 'bg-yellow-50 text-yellow-700' : 
-                    additionalGuest.loyaltyStatus === 'Silver' ? 'bg-gray-50 text-gray-700' : 'bg-orange-50 text-orange-700'
-                  }`}>
+                  <Badge variant="outline" className={`${additionalGuest.loyaltyStatus === 'Gold' ? 'bg-yellow-50 text-yellow-700' :
+                      additionalGuest.loyaltyStatus === 'Silver' ? 'bg-gray-50 text-gray-700' : 'bg-orange-50 text-orange-700'
+                    }`}>
                     {additionalGuest.loyaltyStatus}
                   </Badge>
                 </div>

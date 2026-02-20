@@ -5,12 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, Area, AreaChart
 } from 'recharts';
-import { 
-  TrendingUp, TrendingDown, Users, Target, MapPin, Building2, 
+import {
+  TrendingUp, TrendingDown, Users, Target, MapPin, Building2,
   Trophy, Calendar, Filter, Download
 } from 'lucide-react';
 
@@ -100,11 +100,11 @@ const SalesHeadDashboard = ({ userName }: SalesHeadDashboardProps) => {
   ];
 
   const propertyData = [
-    { property: 'Postcard Goa', sales: 45, revenue: 90000000, target: 50, achievement: 90 },
-    { property: 'Postcard Coonoor', sales: 38, revenue: 76000000, target: 42, achievement: 90.5 },
-    { property: 'Postcard Shimla', sales: 42, revenue: 84000000, target: 45, achievement: 93.3 },
-    { property: 'Postcard Munnar', sales: 35, revenue: 70000000, target: 40, achievement: 87.5 },
-    { property: 'Postcard Udaipur', sales: 28, revenue: 56000000, target: 32, achievement: 87.5 }
+    { property: 'Moustache Goa', sales: 45, revenue: 90000000, target: 50, achievement: 90 },
+    { property: 'Moustache Coonoor', sales: 38, revenue: 76000000, target: 42, achievement: 90.5 },
+    { property: 'Moustache Shimla', sales: 42, revenue: 84000000, target: 45, achievement: 93.3 },
+    { property: 'Moustache Munnar', sales: 35, revenue: 70000000, target: 40, achievement: 87.5 },
+    { property: 'Moustache Udaipur', sales: 28, revenue: 56000000, target: 32, achievement: 87.5 }
   ];
 
   const monthlyTrendData = [
@@ -254,7 +254,7 @@ const SalesHeadDashboard = ({ userName }: SalesHeadDashboardProps) => {
                         {person.status.charAt(0).toUpperCase() + person.status.slice(1)}
                       </Badge>
                     </div>
-                    
+
                     <div className="grid grid-cols-5 gap-6 text-center">
                       <div>
                         <div className="text-sm text-muted-foreground">Target</div>
@@ -471,11 +471,11 @@ const SalesHeadDashboard = ({ userName }: SalesHeadDashboardProps) => {
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip />
-                  <Area 
-                    type="monotone" 
-                    dataKey="gap" 
-                    stroke="#ef4444" 
-                    fill="#fef2f2" 
+                  <Area
+                    type="monotone"
+                    dataKey="gap"
+                    stroke="#ef4444"
+                    fill="#fef2f2"
                     name="Gap"
                   />
                 </AreaChart>

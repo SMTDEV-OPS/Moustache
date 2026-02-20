@@ -33,8 +33,8 @@ async function callApi(
     headers: withAuthHeaders(
       hasBody
         ? {
-            "Content-Type": "application/json",
-          }
+          "Content-Type": "application/json",
+        }
         : {}
     ),
     body: hasBody ? JSON.stringify(body) : undefined,
@@ -203,7 +203,7 @@ export const AdminApiConsole = () => {
   const [propertyCreateJson, setPropertyCreateJson] = useState(
     JSON.stringify(
       {
-        name: "Postcard Demo",
+        name: "Moustache Demo",
         code: "PCD",
         location: {
           city: "Goa",
@@ -407,7 +407,7 @@ export const AdminApiConsole = () => {
         <div>
           <h1 className="text-2xl font-bold">Admin API Console</h1>
           <p className="text-sm text-muted-foreground">
-            Full access to PostcardCRM backend features using your admin
+            Full access to MoustacheCRM backend features using your admin
             session.
           </p>
         </div>
@@ -515,8 +515,7 @@ export const AdminApiConsole = () => {
                         "leads-list",
                         "GET /leads",
                         "GET",
-                        `/leads${
-                          params.toString() ? `?${params.toString()}` : ""
+                        `/leads${params.toString() ? `?${params.toString()}` : ""
                         }`
                       );
                     }}
@@ -879,8 +878,7 @@ export const AdminApiConsole = () => {
                         "guests-search",
                         "GET /guests/search",
                         "GET",
-                        `/guests/search${
-                          params.toString() ? `?${params.toString()}` : ""
+                        `/guests/search${params.toString() ? `?${params.toString()}` : ""
                         }`
                       );
                     }}
@@ -998,8 +996,7 @@ export const AdminApiConsole = () => {
                         "accounts-list",
                         "GET /accounts",
                         "GET",
-                        `/accounts${
-                          params.toString() ? `?${params.toString()}` : ""
+                        `/accounts${params.toString() ? `?${params.toString()}` : ""
                         }`
                       );
                     }}
@@ -1351,8 +1348,7 @@ export const AdminApiConsole = () => {
                         "reservations-list",
                         "GET /reservations",
                         "GET",
-                        `/reservations${
-                          params.toString() ? `?${params.toString()}` : ""
+                        `/reservations${params.toString() ? `?${params.toString()}` : ""
                         }`
                       );
                     }}
@@ -1483,8 +1479,7 @@ export const AdminApiConsole = () => {
                         "tasks-list",
                         "GET /tasks",
                         "GET",
-                        `/tasks${
-                          params.toString() ? `?${params.toString()}` : ""
+                        `/tasks${params.toString() ? `?${params.toString()}` : ""
                         }`
                       );
                     }}
@@ -1883,8 +1878,7 @@ export const AdminApiConsole = () => {
                       "reports-daily-activity",
                       "GET /reports/daily-activity",
                       "GET",
-                      `/reports/daily-activity${
-                        params.toString() ? `?${params.toString()}` : ""
+                      `/reports/daily-activity${params.toString() ? `?${params.toString()}` : ""
                       }`
                     );
                   }}

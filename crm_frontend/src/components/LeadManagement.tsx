@@ -46,10 +46,10 @@ const LeadManagement = () => {
   ];
 
   const propertyRoomCategories = {
-    "Postcard Goa": ["Deluxe Ocean View", "Premium Sea Facing", "Luxury Villa", "Standard Room"],
-    "Postcard Kerala": ["Backwater Suite", "Garden View", "Pool Villa", "Heritage Room"],
-    "Postcard Rajasthan": ["Royal Suite", "Palace View", "Courtyard Room", "Desert Villa"],
-    "Postcard Mumbai": ["City View", "Executive Suite", "Business Room", "Premium Floor"]
+    "Moustache Goa": ["Deluxe Ocean View", "Premium Sea Facing", "Luxury Villa", "Standard Room"],
+    "Moustache Kerala": ["Backwater Suite", "Garden View", "Pool Villa", "Heritage Room"],
+    "Moustache Rajasthan": ["Royal Suite", "Palace View", "Courtyard Room", "Desert Villa"],
+    "Moustache Mumbai": ["City View", "Executive Suite", "Business Room", "Premium Floor"]
   };
 
   const [leads, setLeads] = useState<any[]>([
@@ -65,7 +65,7 @@ const LeadManagement = () => {
       source: "Website",
       status: "Query",
       value: "$3,200",
-      hotelName: "Postcard Goa",
+      hotelName: "Moustache Goa",
       checkInDate: "2025-01-20",
       checkOutDate: "2025-01-23",
       roomCategory: "Deluxe Ocean View",
@@ -106,7 +106,7 @@ const LeadManagement = () => {
       source: "Email Campaign",
       status: "Proposal",
       value: "$1,800",
-      hotelName: "Postcard Kerala",
+      hotelName: "Moustache Kerala",
       checkInDate: "2025-01-18",
       checkOutDate: "2025-01-21",
       roomCategory: "Backwater Suite",
@@ -145,7 +145,7 @@ const LeadManagement = () => {
       source: "Event",
       status: "Tentative",
       value: "$950",
-      hotelName: "Postcard Rajasthan",
+      hotelName: "Moustache Rajasthan",
       checkInDate: "2025-01-16",
       checkOutDate: "2025-01-18",
       roomCategory: "Palace View",
@@ -185,7 +185,7 @@ const LeadManagement = () => {
       source: "Social Media",
       status: "Query",
       value: "$2,400",
-      hotelName: "Postcard Kerala",
+      hotelName: "Moustache Kerala",
       checkInDate: "2025-01-25",
       checkOutDate: "2025-01-28",
       roomCategory: "Pool Villa",
@@ -224,7 +224,7 @@ const LeadManagement = () => {
       source: "Corporate Referral",
       status: "Proposal",
       value: "$5,200",
-      hotelName: "Postcard Rajasthan",
+      hotelName: "Moustache Rajasthan",
       checkInDate: "2025-02-15",
       checkOutDate: "2025-02-18",
       roomCategory: "Royal Suite",
@@ -263,7 +263,7 @@ const LeadManagement = () => {
       source: "Website Chat",
       status: "Tentative",
       value: "$1,200",
-      hotelName: "Postcard Mumbai",
+      hotelName: "Moustache Mumbai",
       checkInDate: "2025-03-10",
       checkOutDate: "2025-03-12",
       roomCategory: "City View",
@@ -335,7 +335,7 @@ const LeadManagement = () => {
     const today = new Date();
     const checkIn = new Date(checkInDate);
     const diffDays = Math.ceil((checkIn.getTime() - today.getTime()) / (1000 * 3600 * 24));
-    
+
     if (status === "Open" || status === "Query" || status === "Proposal") {
       if (diffDays <= 1) return "critical";
       if (diffDays <= 5) return "urgent";
@@ -356,55 +356,55 @@ const LeadManagement = () => {
     if (filterForm.guestName && !`${lead.firstName} ${lead.lastName}`.toLowerCase().includes(filterForm.guestName.toLowerCase())) {
       return false;
     }
-    
+
     // Booker Name filter
     if (filterForm.bookerName && !lead.bookerName.toLowerCase().includes(filterForm.bookerName.toLowerCase())) {
       return false;
     }
-    
+
     // Hotel filter
     if (filterForm.hotel && filterForm.hotel !== "all" && lead.hotelName !== filterForm.hotel) {
       return false;
     }
-    
+
     // Status filter
     if (filterForm.status && filterForm.status !== "all" && lead.status !== filterForm.status) {
       return false;
     }
-    
+
     // Team filter - check if assigned team member belongs to the selected department
     if (filterForm.assignedTeam && filterForm.assignedTeam !== "all" && !lead.assignedTo.toLowerCase().includes(filterForm.assignedTeam.toLowerCase())) {
       return false;
     }
-    
+
     // Source filter
     if (filterForm.source && !lead.source.toLowerCase().includes(filterForm.source.toLowerCase())) {
       return false;
     }
-    
+
     // Priority filter
     if (filterForm.priority && filterForm.priority !== "all" && lead.priority !== filterForm.priority) {
       return false;
     }
-    
+
     // Date filters
     if (filterForm.checkInFrom && lead.checkInDate < filterForm.checkInFrom) {
       return false;
     }
-    
+
     if (filterForm.checkInTo && lead.checkInDate > filterForm.checkInTo) {
       return false;
     }
-    
+
     // Lead Creation Date filters
     if (filterForm.leadCreationFrom && lead.created < filterForm.leadCreationFrom) {
       return false;
     }
-    
+
     if (filterForm.leadCreationTo && lead.created > filterForm.leadCreationTo) {
       return false;
     }
-    
+
     return true;
   });
 
@@ -438,7 +438,7 @@ const LeadManagement = () => {
   const onSubmit = (data: any) => {
     // Get the first hotel for backward compatibility with lead list display
     const primaryHotel = data.hotels[0] || {};
-    
+
     const newLead = {
       id: `L${String(leads.length + 1).padStart(3, '0')}`,
       firstName: data.firstName,
@@ -559,7 +559,7 @@ const LeadManagement = () => {
           <h2 className="text-2xl font-bold text-gray-900">Sales Leads from All Reps</h2>
           <p className="text-gray-600">Manage and track leads from all sales representatives across India</p>
         </div>
-        
+
         <div className="flex space-x-3">
           <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
             <PopoverTrigger asChild>
@@ -582,38 +582,38 @@ const LeadManagement = () => {
                     <Input
                       placeholder="Search by guest name..."
                       value={filterForm.guestName}
-                      onChange={(e) => setFilterForm({...filterForm, guestName: e.target.value})}
+                      onChange={(e) => setFilterForm({ ...filterForm, guestName: e.target.value })}
                     />
                   </div>
-                  
+
                   <div>
                     <label className="text-sm font-medium mb-1 block">Booker Name</label>
                     <Input
                       placeholder="Search by booker name..."
                       value={filterForm.bookerName}
-                      onChange={(e) => setFilterForm({...filterForm, bookerName: e.target.value})}
+                      onChange={(e) => setFilterForm({ ...filterForm, bookerName: e.target.value })}
                     />
                   </div>
-                  
+
                   <div>
                     <label className="text-sm font-medium mb-1 block">Hotel</label>
-                    <Select value={filterForm.hotel} onValueChange={(value) => setFilterForm({...filterForm, hotel: value})}>
+                    <Select value={filterForm.hotel} onValueChange={(value) => setFilterForm({ ...filterForm, hotel: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select Hotel" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Hotels</SelectItem>
-                        <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                        <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                        <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                        <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
+                        <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
+                        <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
+                        <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
+                        <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div>
                     <label className="text-sm font-medium mb-1 block">Status</label>
-                    <Select value={filterForm.status} onValueChange={(value) => setFilterForm({...filterForm, status: value})}>
+                    <Select value={filterForm.status} onValueChange={(value) => setFilterForm({ ...filterForm, status: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select Status" />
                       </SelectTrigger>
@@ -627,10 +627,10 @@ const LeadManagement = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div>
                     <label className="text-sm font-medium mb-1 block">Assigned Team</label>
-                    <Select value={filterForm.assignedTeam} onValueChange={(value) => setFilterForm({...filterForm, assignedTeam: value})}>
+                    <Select value={filterForm.assignedTeam} onValueChange={(value) => setFilterForm({ ...filterForm, assignedTeam: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select Team" />
                       </SelectTrigger>
@@ -640,19 +640,19 @@ const LeadManagement = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div>
                     <label className="text-sm font-medium mb-1 block">Source</label>
                     <Input
                       placeholder="Website, Email, etc..."
                       value={filterForm.source}
-                      onChange={(e) => setFilterForm({...filterForm, source: e.target.value})}
+                      onChange={(e) => setFilterForm({ ...filterForm, source: e.target.value })}
                     />
                   </div>
-                  
+
                   <div>
                     <label className="text-sm font-medium mb-1 block">Priority</label>
-                    <Select value={filterForm.priority} onValueChange={(value) => setFilterForm({...filterForm, priority: value})}>
+                    <Select value={filterForm.priority} onValueChange={(value) => setFilterForm({ ...filterForm, priority: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select Priority" />
                       </SelectTrigger>
@@ -671,7 +671,7 @@ const LeadManagement = () => {
                       <Input
                         type="date"
                         value={filterForm.checkInFrom}
-                        onChange={(e) => setFilterForm({...filterForm, checkInFrom: e.target.value})}
+                        onChange={(e) => setFilterForm({ ...filterForm, checkInFrom: e.target.value })}
                       />
                     </div>
                     <div>
@@ -679,7 +679,7 @@ const LeadManagement = () => {
                       <Input
                         type="date"
                         value={filterForm.checkInTo}
-                        onChange={(e) => setFilterForm({...filterForm, checkInTo: e.target.value})}
+                        onChange={(e) => setFilterForm({ ...filterForm, checkInTo: e.target.value })}
                       />
                     </div>
                   </div>
@@ -690,7 +690,7 @@ const LeadManagement = () => {
                       <Input
                         type="date"
                         value={filterForm.leadCreationFrom}
-                        onChange={(e) => setFilterForm({...filterForm, leadCreationFrom: e.target.value})}
+                        onChange={(e) => setFilterForm({ ...filterForm, leadCreationFrom: e.target.value })}
                       />
                     </div>
                     <div>
@@ -698,7 +698,7 @@ const LeadManagement = () => {
                       <Input
                         type="date"
                         value={filterForm.leadCreationTo}
-                        onChange={(e) => setFilterForm({...filterForm, leadCreationTo: e.target.value})}
+                        onChange={(e) => setFilterForm({ ...filterForm, leadCreationTo: e.target.value })}
                       />
                     </div>
                   </div>
@@ -771,9 +771,9 @@ const LeadManagement = () => {
                         <Hotel className="h-5 w-5" />
                         Hotel Bookings
                       </h3>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
+                      <Button
+                        type="button"
+                        variant="outline"
                         size="sm"
                         onClick={addNewHotel}
                         className="flex items-center gap-2"
@@ -782,7 +782,7 @@ const LeadManagement = () => {
                         Add Another Hotel
                       </Button>
                     </div>
-                    
+
                     {hotelFields.map((hotel, index) => (
                       <div key={hotel.id} className="relative p-4 border rounded-lg bg-gray-50/50 space-y-4">
                         {hotelFields.length > 1 && (
@@ -799,7 +799,7 @@ const LeadManagement = () => {
                             </Button>
                           </div>
                         )}
-                        
+
                         <FormField
                           control={form.control}
                           name={`hotels.${index}.hotelName`}
@@ -813,10 +813,10 @@ const LeadManagement = () => {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                                  <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                                  <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                                  <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
+                                  <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
+                                  <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
+                                  <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
+                                  <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />
@@ -921,7 +921,7 @@ const LeadManagement = () => {
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    {form.watch(`hotels.${index}.hotelName`) && 
+                                    {form.watch(`hotels.${index}.hotelName`) &&
                                       propertyRoomCategories[form.watch(`hotels.${index}.hotelName`) as keyof typeof propertyRoomCategories]?.map((category) => (
                                         <SelectItem key={category} value={category}>{category}</SelectItem>
                                       ))
@@ -1075,10 +1075,10 @@ const LeadManagement = () => {
                       <FormItem>
                         <FormLabel>Special Requests</FormLabel>
                         <FormControl>
-                          <Textarea 
-                            placeholder="Any special requirements, dietary restrictions, accessibility needs..." 
+                          <Textarea
+                            placeholder="Any special requirements, dietary restrictions, accessibility needs..."
                             className="min-h-[80px]"
-                            {...field} 
+                            {...field}
                           />
                         </FormControl>
                         <FormMessage />
@@ -1211,10 +1211,10 @@ const LeadManagement = () => {
                       <FormItem>
                         <FormLabel>Notes</FormLabel>
                         <FormControl>
-                          <Textarea 
-                            placeholder="Enter any additional notes..." 
+                          <Textarea
+                            placeholder="Enter any additional notes..."
                             className="min-h-[100px]"
-                            {...field} 
+                            {...field}
                           />
                         </FormControl>
                         <FormMessage />
@@ -1242,7 +1242,7 @@ const LeadManagement = () => {
             const urgency = getUrgencyStatus(lead.checkInDate, lead.status);
             return (
               <Card key={lead.id} className="hover:shadow-lg transition-shadow cursor-pointer"
-                    onClick={() => setSelectedLead(selectedLead?.id === lead.id ? null : lead)}>
+                onClick={() => setSelectedLead(selectedLead?.id === lead.id ? null : lead)}>
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-4">
@@ -1276,7 +1276,7 @@ const LeadManagement = () => {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="text-right">
                       <div className="text-2xl font-bold text-green-600">{lead.value}</div>
                       <div className="flex items-center space-x-2 text-sm text-gray-500">
@@ -1297,7 +1297,7 @@ const LeadManagement = () => {
                       <p className="text-gray-600">{lead.email}</p>
                       {lead.companyName && <p className="text-gray-600">{lead.companyName}</p>}
                     </div>
-                    
+
                     <div className="space-y-1">
                       <p className="text-gray-500 font-medium">Booking Details</p>
                       <p className="font-medium">{lead.hotelName}</p>
@@ -1312,7 +1312,7 @@ const LeadManagement = () => {
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="space-y-1">
                       <p className="text-gray-500 font-medium">Stay Period</p>
                       <p className="font-medium">{lead.checkInDate}</p>
@@ -1323,7 +1323,7 @@ const LeadManagement = () => {
                         </Badge>
                       )}
                     </div>
-                    
+
                     <div className="space-y-1">
                       <p className="text-gray-500 font-medium">Lead Info</p>
                       <p className="font-medium">₹{lead.rateQuoted} quoted</p>
@@ -1393,7 +1393,7 @@ const LeadManagement = () => {
                             notes: "Guest mentioned they are celebrating their anniversary. Recommended our honeymoon package."
                           },
                           {
-                            date: "2024-12-11 16:45", 
+                            date: "2024-12-11 16:45",
                             agent: lead.assignedTo.split(' - ')[0],
                             type: "Email",
                             summary: "Sent detailed brochure and pricing for room categories",

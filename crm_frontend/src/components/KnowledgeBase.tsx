@@ -3,15 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Building2, 
-  FileText, 
-  Download, 
-  MapPin, 
-  Bed, 
-  Utensils, 
-  Wifi, 
-  Car, 
+import {
+  Building2,
+  FileText,
+  Download,
+  MapPin,
+  Bed,
+  Utensils,
+  Wifi,
+  Car,
   Waves,
   Coffee,
   Users,
@@ -28,7 +28,7 @@ const KnowledgeBase = () => {
   const properties = [
     {
       id: 1,
-      name: "The Postcard Goa",
+      name: "The Moustache Goa",
       location: "Betalbatim, Goa",
       type: "Beach Resort",
       rooms: 84,
@@ -37,8 +37,8 @@ const KnowledgeBase = () => {
       amenities: ["Private Beach", "Spa", "Pool", "Restaurant", "Bar", "WiFi", "Parking"],
       contact: {
         phone: "+91 832 287 1234",
-        email: "goa@thepostcardhotel.com",
-        website: "www.thepostcardhotel.com"
+        email: "goa@themoustachehotel.com",
+        website: "www.themoustachehotel.com"
       },
       rates: {
         deluxe: "₹12,000 - ₹18,000",
@@ -48,7 +48,7 @@ const KnowledgeBase = () => {
     },
     {
       id: 2,
-      name: "The Postcard Cuelim",
+      name: "The Moustache Cuelim",
       location: "Cuelim, Goa",
       type: "Heritage Property",
       rooms: 20,
@@ -57,8 +57,8 @@ const KnowledgeBase = () => {
       amenities: ["Heritage Architecture", "Garden", "Pool", "Restaurant", "Library", "WiFi"],
       contact: {
         phone: "+91 832 287 5678",
-        email: "cuelim@thepostcardhotel.com",
-        website: "www.thepostcardhotel.com"
+        email: "cuelim@themoustachehotel.com",
+        website: "www.themoustachehotel.com"
       },
       rates: {
         heritage: "₹15,000 - ₹22,000",
@@ -120,7 +120,7 @@ const KnowledgeBase = () => {
 
   const factSheets = [
     {
-      property: "The Postcard Goa",
+      property: "The Moustache Goa",
       details: {
         "Total Rooms": "84",
         "Check-in": "3:00 PM",
@@ -135,7 +135,7 @@ const KnowledgeBase = () => {
       }
     },
     {
-      property: "The Postcard Cuelim",
+      property: "The Moustache Cuelim",
       details: {
         "Total Rooms": "20",
         "Check-in": "2:00 PM",
@@ -157,7 +157,7 @@ const KnowledgeBase = () => {
         <Building2 className="h-8 w-8 text-blue-600" />
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Knowledge Base</h1>
-          <p className="text-gray-600">Comprehensive information about Postcard Hotels properties, templates, and resources</p>
+          <p className="text-gray-600">Comprehensive information about Moustache Hotels properties, templates, and resources</p>
         </div>
       </div>
 
@@ -199,7 +199,7 @@ const KnowledgeBase = () => {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-gray-700 text-sm">{property.description}</p>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex items-center">
                       <Bed className="h-4 w-4 text-gray-500 mr-2" />
@@ -296,7 +296,7 @@ const KnowledgeBase = () => {
                         <h3 className="text-lg font-semibold text-gray-900">{template.name}</h3>
                         <Badge variant={
                           template.category === 'Proposals' ? 'default' :
-                          template.category === 'Quotations' ? 'secondary' : 'outline'
+                            template.category === 'Quotations' ? 'secondary' : 'outline'
                         }>
                           {template.category}
                         </Badge>

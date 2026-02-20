@@ -4,9 +4,11 @@ import { z } from "zod";
 import { UserModel } from "../models/user";
 import { UserRoleModel } from "../models/userRole";
 import { RoleModel } from "../models/role";
+import { TeamType } from "../models/common";
 import { requireAuth, requirePermissions } from "../middleware/auth";
 import { badRequest, forbidden, notFound, unauthorized } from "../utils/httpError";
 import { AccessControlService } from "../services/auth/AccessControlService";
+import { PERMISSIONS } from "../constants/permissions";
 
 export const usersRouter = Router();
 
@@ -15,7 +17,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   phone: z.string().nullish(),
   password: z.string().min(6),
-  teamType: z.string(),
+  teamType: z.nativeEnum(TeamType),
   regions: z.array(z.string()).nullish(),
   roleId: z.string().nullish(),
   reportsTo: z.string().nullish(), // ID of the manager
@@ -25,7 +27,7 @@ const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
   phone: z.string().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
-  teamType: z.string().optional(),
+  teamType: z.nativeEnum(TeamType).optional(),
   regions: z.array(z.string()).optional(),
   roleId: z.string().optional(),
   password: z.string().min(6).optional(),
@@ -33,7 +35,7 @@ const updateUserSchema = z.object({
 });
 
 usersRouter.use(requireAuth);
-usersRouter.use(requirePermissions(["users.manage"]));
+
 
 // Get entire user hierarchy
 usersRouter.get("/hierarchy", async (req, res, next) => {
@@ -85,7 +87,7 @@ usersRouter.get("/:id/roles", async (req, res, next) => {
     }
 
     const isSelf = req.user.id === req.params.id;
-    const hasManageUsers = req.user.permissions?.includes("users.manage");
+    const hasManageUsers = req.user.permissions?.includes(PERMISSIONS.USERS.MANAGE);
 
     if (!isSelf && !hasManageUsers) {
       throw forbidden("Not allowed to view roles for this user");
@@ -110,13 +112,14 @@ usersRouter.get("/:id/roles", async (req, res, next) => {
 
 usersRouter.post(
   "/",
-  requirePermissions(["users.manage"]),
+  requirePermissions([PERMISSIONS.USERS.MANAGE]),
   async (req, res, next) => {
     try {
+      console.log("Users Create Route Hit - Body:", JSON.stringify(req.body));
       const parsed = createUserSchema.safeParse(req.body);
       if (!parsed.success) {
         console.error("User Validation Error:", JSON.stringify(parsed.error.format(), null, 2));
-        throw badRequest(`Invalid user payload: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(", ")}`);
+        throw badRequest(`VALIDATION FAILED: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(", ")}`);
       }
       const { name, email, phone, password, teamType, regions, roleId, reportsTo } =
         parsed.data;

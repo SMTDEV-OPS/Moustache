@@ -1,6 +1,6 @@
 /**
  * Seed script for NEW HOTEL CRM - use this for a fresh, separate database.
- * Does NOT seed any Postcard-specific data.
+ * Does NOT seed any Moustache-specific data.
  *
  * Usage:
  *   1. Set MONGO_URI to your new hotel's database (e.g. mongodb://localhost:27017/newhotelcrm)

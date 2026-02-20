@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { 
-  MessageSquare, Clock, AlertTriangle, CheckCircle, 
+import {
+  MessageSquare, Clock, AlertTriangle, CheckCircle,
   Send, User, Phone, MapPin, Calendar, Tag
 } from "lucide-react";
 
@@ -18,16 +18,16 @@ interface PropertyManagerDashboardProps {
 const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboardProps) => {
   // Get property from user role
   const getPropertyFromRole = (role: string) => {
-    switch(role) {
-      case 'propertymanager1': return 'Postcard Goa';
-      case 'propertymanager2': return 'Postcard Udaipur';
-      case 'propertymanager3': return 'Postcard Munnar';
-      default: return 'Postcard Goa';
+    switch (role) {
+      case 'propertymanager1': return 'Moustache Goa';
+      case 'propertymanager2': return 'Moustache Udaipur';
+      case 'propertymanager3': return 'Moustache Munnar';
+      default: return 'Moustache Goa';
     }
   };
 
   const currentProperty = getPropertyFromRole(userRole);
-  
+
   const [tickets, setTickets] = useState([
     {
       id: "T001",
@@ -38,7 +38,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
       priority: "High",
       status: "Open",
       category: "Reservation",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       assignedTo: "Property Manager - Goa",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-15 10:30 AM",
@@ -53,22 +53,22 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
       ]
     },
     {
-      id: "T002", 
+      id: "T002",
       title: "Billing Inquiry - Spa Charges",
       description: "Guest questions about spa charges on their bill",
       guest: "Rajesh Kumar",
       guestPhone: "+91 87654 32109",
       priority: "Medium",
-      status: "In Progress", 
+      status: "In Progress",
       category: "Billing",
-      property: "Postcard Rajasthan",
+      property: "Moustache Rajasthan",
       assignedTo: "Property Manager - Rajasthan",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-14 2:15 PM",
       responses: [
         {
           id: 1,
-          author: "Harleen Mehta - Call Center", 
+          author: "Harleen Mehta - Call Center",
           message: "Guest called about unexpected spa charges of ₹5,500 on checkout bill. Guest claims they only had a 30-minute massage. Please verify with spa team.",
           timestamp: "2024-12-14 2:15 PM",
           type: "create"
@@ -77,7 +77,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
           id: 2,
           author: "Property Manager - Rajasthan",
           message: "Checked with spa team. Guest had 30-min massage (₹2,500) + 60-min full body treatment (₹3,000). Both services were confirmed. Will call guest to explain.",
-          timestamp: "2024-12-14 4:20 PM", 
+          timestamp: "2024-12-14 4:20 PM",
           type: "response"
         }
       ]
@@ -91,7 +91,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
       priority: "High",
       status: "Open",
       category: "Maintenance",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       assignedTo: "Property Manager - Goa",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-15 3:45 PM",
@@ -114,7 +114,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
       priority: "Medium",
       status: "Open",
       category: "Service",
-      property: "Postcard Kerala",
+      property: "Moustache Kerala",
       assignedTo: "Property Manager - Kerala",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-15 1:20 PM",
@@ -154,7 +154,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
     }));
 
     setReplyText("");
-    
+
     // Update selected ticket if it's the one being replied to
     if (selectedTicket?.id === ticketId) {
       const updatedTicket = tickets.find(t => t.id === ticketId);
@@ -207,7 +207,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'High': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 animate-pulse';
-      case 'Medium': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'; 
+      case 'Medium': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
       case 'Low': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
       default: return 'bg-muted text-muted-foreground';
     }
@@ -326,7 +326,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
 
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">{ticket.title}</h3>
                     <p className="text-gray-600 mb-4 line-clamp-2">{ticket.description}</p>
-                    
+
                     <div className="grid grid-cols-2 gap-4 text-sm text-gray-500 mb-4">
                       <div className="flex items-center space-x-2">
                         <User className="h-4 w-4" />
@@ -350,16 +350,16 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
                       <span><strong>Created by:</strong> {ticket.createdBy}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-2 ml-6">
                     <Badge variant="secondary" className="text-xs">
                       {ticket.responses.length} messages
                     </Badge>
-                    
+
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => setSelectedTicket(ticket)}
                         >
@@ -381,7 +381,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
                             </div>
                           </DialogTitle>
                         </DialogHeader>
-                        
+
                         <div className="space-y-4 max-h-[60vh] overflow-y-auto">
                           {/* Ticket Details */}
                           <div className="bg-gray-50 p-4 rounded-lg">
@@ -392,15 +392,14 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
                               <div><span className="font-medium">Category:</span> {ticket.category}</div>
                             </div>
                           </div>
-                          
+
                           {/* Conversation */}
                           <div className="space-y-3">
                             {ticket.responses.map((response) => (
-                              <div key={response.id} className={`p-4 rounded-lg ${
-                                response.author.includes('Property Manager') ? 'bg-blue-50 border-l-4 border-blue-500 ml-8' : 
+                              <div key={response.id} className={`p-4 rounded-lg ${response.author.includes('Property Manager') ? 'bg-blue-50 border-l-4 border-blue-500 ml-8' :
                                 response.type === 'close' ? 'bg-green-50 border-l-4 border-green-500' :
-                                'bg-gray-50 border-l-4 border-gray-500'
-                              }`}>
+                                  'bg-gray-50 border-l-4 border-gray-500'
+                                }`}>
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="font-medium text-sm">{response.author}</span>
                                   <span className="text-xs text-gray-500">{response.timestamp}</span>
@@ -409,7 +408,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
                               </div>
                             ))}
                           </div>
-                          
+
                           {/* Reply Section */}
                           {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
                             <div className="border-t pt-4">
@@ -424,7 +423,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
                                   className="min-h-[100px]"
                                 />
                                 <div className="flex justify-end space-x-3">
-                                  <Button 
+                                  <Button
                                     variant="outline"
                                     onClick={() => handleResolveTicket(ticket.id)}
                                   >
@@ -447,7 +446,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
               </CardContent>
             </Card>
           ))}
-          
+
           {openTickets.length === 0 && (
             <Card>
               <CardContent className="p-8 text-center">
@@ -468,154 +467,153 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
             </Badge>
           </div>
 
-        {myTickets.map((ticket) => (
-          <Card key={ticket.id} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <Badge variant="secondary" className="font-mono text-xs">
-                      {ticket.id}
-                    </Badge>
-                    <Badge className={getStatusColor(ticket.status)}>
-                      {getStatusIcon(ticket.status)}
-                      <span className="ml-1">{ticket.status}</span>
-                    </Badge>
-                    <Badge className={getPriorityColor(ticket.priority)}>
-                      {ticket.priority} Priority
-                    </Badge>
-                    <Badge variant="outline" className="flex items-center">
-                      <Tag className="h-3 w-3 mr-1" />
-                      {ticket.category}
-                    </Badge>
-                  </div>
+          {myTickets.map((ticket) => (
+            <Card key={ticket.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        {ticket.id}
+                      </Badge>
+                      <Badge className={getStatusColor(ticket.status)}>
+                        {getStatusIcon(ticket.status)}
+                        <span className="ml-1">{ticket.status}</span>
+                      </Badge>
+                      <Badge className={getPriorityColor(ticket.priority)}>
+                        {ticket.priority} Priority
+                      </Badge>
+                      <Badge variant="outline" className="flex items-center">
+                        <Tag className="h-3 w-3 mr-1" />
+                        {ticket.category}
+                      </Badge>
+                    </div>
 
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">{ticket.title}</h3>
-                  <p className="text-gray-600 mb-4 line-clamp-2">{ticket.description}</p>
-                  
-                  <div className="grid grid-cols-2 gap-4 text-sm text-gray-500 mb-4">
-                    <div className="flex items-center space-x-2">
-                      <User className="h-4 w-4" />
-                      <span><strong>Guest:</strong> {ticket.guest}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Phone className="h-4 w-4" />
-                      <span>{ticket.guestPhone}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <MapPin className="h-4 w-4" />
-                      <span><strong>Property:</strong> {ticket.property}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="h-4 w-4" />
-                      <span><strong>Created:</strong> {ticket.created}</span>
-                    </div>
-                  </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{ticket.title}</h3>
+                    <p className="text-gray-600 mb-4 line-clamp-2">{ticket.description}</p>
 
-                  <div className="text-sm text-gray-600">
-                    <span><strong>Created by:</strong> {ticket.createdBy}</span>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-2 ml-6">
-                  <Badge variant="secondary" className="text-xs">
-                    {ticket.responses.length} messages
-                  </Badge>
-                  
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => setSelectedTicket(ticket)}
-                      >
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        Respond
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl">
-                      <DialogHeader>
-                        <DialogTitle>
-                          <div className="flex items-center space-x-3">
-                            <span>Ticket {ticket.id} - {ticket.title}</span>
-                            <Badge className={getStatusColor(ticket.status)}>
-                              {ticket.status}
-                            </Badge>
-                            <Badge className={getPriorityColor(ticket.priority)}>
-                              {ticket.priority}
-                            </Badge>
-                          </div>
-                        </DialogTitle>
-                      </DialogHeader>
-                      
-                      <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                        {/* Ticket Details */}
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div><span className="font-medium">Guest:</span> {ticket.guest}</div>
-                            <div><span className="font-medium">Phone:</span> {ticket.guestPhone}</div>
-                            <div><span className="font-medium">Property:</span> {ticket.property}</div>
-                            <div><span className="font-medium">Category:</span> {ticket.category}</div>
-                          </div>
-                        </div>
-                        
-                        {/* Conversation */}
-                        <div className="space-y-3">
-                          {ticket.responses.map((response) => (
-                            <div key={response.id} className={`p-4 rounded-lg ${
-                              response.author.includes('Property Manager') ? 'bg-blue-50 border-l-4 border-blue-500 ml-8' : 
-                              response.type === 'close' ? 'bg-green-50 border-l-4 border-green-500' :
-                              'bg-gray-50 border-l-4 border-gray-500'
-                            }`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="font-medium text-sm">{response.author}</span>
-                                <span className="text-xs text-gray-500">{response.timestamp}</span>
-                              </div>
-                              <p className="text-gray-700">{response.message}</p>
-                            </div>
-                          ))}
-                        </div>
-                        
-                        {/* Reply Section */}
-                        {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
-                          <div className="border-t pt-4">
-                            <div className="space-y-3">
-                              <label className="block text-sm font-medium text-gray-700">
-                                Reply to Call Center
-                              </label>
-                              <Textarea
-                                placeholder="Type your response here..."
-                                value={replyText}
-                                onChange={(e) => setReplyText(e.target.value)}
-                                className="min-h-[100px]"
-                              />
-                              <div className="flex justify-end space-x-3">
-                                <Button 
-                                  variant="outline"
-                                  onClick={() => handleResolveTicket(ticket.id)}
-                                >
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                  Mark Resolved
-                                </Button>
-                                <Button 
-                                  onClick={() => handleReply(ticket.id)}
-                                  disabled={!replyText.trim()}
-                                >
-                                  <Send className="h-4 w-4 mr-2" />
-                                  Send Reply
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
+                    <div className="grid grid-cols-2 gap-4 text-sm text-gray-500 mb-4">
+                      <div className="flex items-center space-x-2">
+                        <User className="h-4 w-4" />
+                        <span><strong>Guest:</strong> {ticket.guest}</span>
                       </div>
-                    </DialogContent>
-                  </Dialog>
+                      <div className="flex items-center space-x-2">
+                        <Phone className="h-4 w-4" />
+                        <span>{ticket.guestPhone}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <MapPin className="h-4 w-4" />
+                        <span><strong>Property:</strong> {ticket.property}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Calendar className="h-4 w-4" />
+                        <span><strong>Created:</strong> {ticket.created}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-gray-600">
+                      <span><strong>Created by:</strong> {ticket.createdBy}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 ml-6">
+                    <Badge variant="secondary" className="text-xs">
+                      {ticket.responses.length} messages
+                    </Badge>
+
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedTicket(ticket)}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          Respond
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-4xl">
+                        <DialogHeader>
+                          <DialogTitle>
+                            <div className="flex items-center space-x-3">
+                              <span>Ticket {ticket.id} - {ticket.title}</span>
+                              <Badge className={getStatusColor(ticket.status)}>
+                                {ticket.status}
+                              </Badge>
+                              <Badge className={getPriorityColor(ticket.priority)}>
+                                {ticket.priority}
+                              </Badge>
+                            </div>
+                          </DialogTitle>
+                        </DialogHeader>
+
+                        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                          {/* Ticket Details */}
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div><span className="font-medium">Guest:</span> {ticket.guest}</div>
+                              <div><span className="font-medium">Phone:</span> {ticket.guestPhone}</div>
+                              <div><span className="font-medium">Property:</span> {ticket.property}</div>
+                              <div><span className="font-medium">Category:</span> {ticket.category}</div>
+                            </div>
+                          </div>
+
+                          {/* Conversation */}
+                          <div className="space-y-3">
+                            {ticket.responses.map((response) => (
+                              <div key={response.id} className={`p-4 rounded-lg ${response.author.includes('Property Manager') ? 'bg-blue-50 border-l-4 border-blue-500 ml-8' :
+                                response.type === 'close' ? 'bg-green-50 border-l-4 border-green-500' :
+                                  'bg-gray-50 border-l-4 border-gray-500'
+                                }`}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-medium text-sm">{response.author}</span>
+                                  <span className="text-xs text-gray-500">{response.timestamp}</span>
+                                </div>
+                                <p className="text-gray-700">{response.message}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Reply Section */}
+                          {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
+                            <div className="border-t pt-4">
+                              <div className="space-y-3">
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Reply to Call Center
+                                </label>
+                                <Textarea
+                                  placeholder="Type your response here..."
+                                  value={replyText}
+                                  onChange={(e) => setReplyText(e.target.value)}
+                                  className="min-h-[100px]"
+                                />
+                                <div className="flex justify-end space-x-3">
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => handleResolveTicket(ticket.id)}
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Mark Resolved
+                                  </Button>
+                                  <Button
+                                    onClick={() => handleReply(ticket.id)}
+                                    disabled={!replyText.trim()}
+                                  >
+                                    <Send className="h-4 w-4 mr-2" />
+                                    Send Reply
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          ))}
         </TabsContent>
       </Tabs>
     </div>

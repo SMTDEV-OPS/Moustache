@@ -15,9 +15,28 @@ interface Role {
     permissions: string[];
 }
 
-const RESOURCES = ["leads", "bookings", "users", "roles", "reports", "tasks"];
+const RESOURCES = [
+    "leads",
+    "users",
+    "roles",
+    "reports",
+    "accounts",
+    "contacts",
+    "properties",
+    "tasks",
+    "tickets",
+    "guests",
+    "reservations",
+    "communications",
+    "quotations",
+    "payment-links",
+    "workflows",
+    "templates",
+    "knowledge-base",
+    "settings"
+];
 const ACTIONS = ["create", "read", "update", "delete", "manage"];
-const SCOPES = ["global", "region", "team", "own", "none"];
+const SCOPES = ["global", "team", "own", "none"];
 
 export const RoleBuilder = () => {
     const [roles, setRoles] = useState<Role[]>([]);
@@ -51,11 +70,55 @@ export const RoleBuilder = () => {
         setRoleName(role.name);
 
         // Parse permissions into map
+        // Parse permissions into map
         const map: Record<string, string> = {};
         role.permissions.forEach(p => {
-            const [res, act, scope] = p.split(":");
-            if (res && act) {
-                map[`${res}:${act}`] = scope || "global";
+            // Handle dot notation: leads.view.own, leads.manage, leads.read
+            // Mapping strategy:
+            // leads.manage -> leads:manage:global
+            // leads.view.all -> leads:read:global
+            // leads.view.team -> leads:read:team
+            // leads.view.own -> leads:read:own
+            // leads.create -> leads:create:global
+            // leads.update -> leads:update:global
+            // leads.delete -> leads:delete:global
+            // default: resource.action -> resource:action:global
+
+            const parts = p.split(".");
+            if (parts.length >= 2) {
+                const resource = parts[0];
+                const actionSuffix = parts.slice(1).join(".");
+
+                let action = "read";
+                let scope = "global";
+
+                if (actionSuffix === "manage") {
+                    action = "manage";
+                } else if (actionSuffix === "create") {
+                    action = "create";
+                } else if (actionSuffix === "update" || actionSuffix === "write") {
+                    action = "update";
+                } else if (actionSuffix === "delete") {
+                    action = "delete";
+                } else if (actionSuffix === "view.all") {
+                    action = "read";
+                    scope = "global";
+                } else if (actionSuffix === "view.team") {
+                    action = "read";
+                    scope = "team";
+                } else if (actionSuffix === "view.own") {
+                    action = "read";
+                    scope = "own";
+                } else if (actionSuffix === "read") {
+                    action = "read";
+                    scope = "global"; // Default read to global or handle strict read?
+                    // If we have specific view.* permissions, basic .read might differ.
+                    // But for UI simplicity, map .read to global read.
+                }
+
+                if (RESOURCES.includes(resource)) {
+                    map[`${resource}:${action}`] = scope;
+                }
             }
         });
         setPermissionMap(map);
@@ -89,9 +152,32 @@ export const RoleBuilder = () => {
             const url = editingRole ? `${API_BASE_URL}/roles/${editingRole._id}` : `${API_BASE_URL}/roles`;
 
             // Reconstruct permissions array from map
+            // Reconstruct permissions array from map
             const permissions = Object.entries(permissionMap).map(([key, scope]) => {
                 const [res, act] = key.split(":");
-                return `${res}:${act}:${scope}`;
+
+                // Reverse mapping: UI (res:act:scope) -> Backend (res.string)
+
+                if (act === "manage") return `${res}.manage`;
+
+                if (act === "read") {
+                    if (scope === "global") return `${res}.view.all`; // or ${res}.read for some?
+                    // For consistency with leads, we use view.all/team/own for READ actions on main resources
+                    // For others like settings, maybe just settings.read?
+                    // Let's use the explicit scoped ones for resources that support it, or falback.
+                    if (res === "leads" || res === "tickets") {
+                        if (scope === "global") return `${res}.view.all`;
+                        if (scope === "team") return `${res}.view.team`;
+                        if (scope === "own") return `${res}.view.own`;
+                    }
+                    if (scope === "global") return `${res}.read`;
+                }
+
+                if (act === "create") return `${res}.create`;
+                if (act === "update") return `${res}.update`;
+                if (act === "delete") return `${res}.delete`;
+
+                return `${res}.${act}`;
             });
 
             const res = await fetch(url, {

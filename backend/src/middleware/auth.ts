@@ -178,21 +178,20 @@ export function hasPermission(
     return true;
   }
 
-  // Special-case: `leads.manage` acts as a super-permission for all `leads.*` permissions.
-  if (
-    permission.startsWith("leads.") &&
-    userPerms.includes("leads.manage")
-  ) {
-    return true;
+  // Wildcard / Super-permission check
+  // If user has `${resource}.manage`, they implicitly have all permissions for that resource.
+  // e.g., `leads.manage` grants `leads.read`, `leads.create`, `leads.delete`, etc.
+
+  if (permission.includes(".")) {
+    const [resourceStr] = permission.split(".");
+    const managePermission = `${resourceStr}.manage`;
+    if (userPerms.includes(managePermission)) {
+      return true;
+    }
   }
 
-  // Special-case: `tickets.manage` acts as a super-permission for all `tickets.*` permissions.
-  if (
-    permission.startsWith("tickets.") &&
-    userPerms.includes("tickets.manage")
-  ) {
-    return true;
-  }
+  // Fallback for any legacy special cases if needed, but the above generic check covers 
+  // leads.manage -> leads.* and tickets.manage -> tickets.*
 
   return false;
 }

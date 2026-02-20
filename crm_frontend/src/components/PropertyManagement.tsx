@@ -426,7 +426,7 @@ export const PropertyManagement = () => {
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
-                  placeholder="e.g., The Postcard Goa"
+                  placeholder="e.g., The Moustache Goa"
                   className="rounded-none h-12"
                 />
               </div>
@@ -439,7 +439,7 @@ export const PropertyManagement = () => {
                   onChange={(e) =>
                     setFormData({ ...formData, code: e.target.value.toUpperCase() })
                   }
-                  placeholder="e.g., POSTCARD-GOA"
+                  placeholder="e.g., MOUSTACHE-GOA"
                   className="rounded-none h-12 font-mono"
                 />
                 <p className="text-xs text-muted-foreground">

@@ -52,7 +52,7 @@ export const FactSheetEditor = ({
       setTitle(item.title);
       setDescription(item.description || "");
       const content = (item.content || {}) as Record<string, string>;
-      
+
       // Convert content object to array of key-value pairs
       if (content && Object.keys(content).length > 0) {
         setDetails(
@@ -64,7 +64,7 @@ export const FactSheetEditor = ({
       } else {
         setDetails([]);
       }
-      
+
       setExistingFiles(item.files || []);
     } else {
       setTitle("");
@@ -194,14 +194,14 @@ export const FactSheetEditor = ({
           {/* Basic Information */}
           <div className="space-y-4 border-b border-slate-200 pb-6">
             <h3 className="text-lg font-semibold">Basic Information</h3>
-            
+
             <div className="space-y-2">
               <Label htmlFor="title">Fact Sheet Title *</Label>
               <Input
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., The Postcard Goa - Fact Sheet"
+                placeholder="e.g., The Moustache Goa - Fact Sheet"
                 className="rounded-none h-12"
               />
             </div>
@@ -416,8 +416,8 @@ export const FactSheetEditor = ({
               {isSubmitting
                 ? "Saving..."
                 : item
-                ? "Update Fact Sheet"
-                : "Create Fact Sheet"}
+                  ? "Update Fact Sheet"
+                  : "Create Fact Sheet"}
             </Button>
           </div>
         </div>

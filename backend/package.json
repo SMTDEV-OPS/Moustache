@@ -1,7 +1,7 @@
 {
-  "name": "postcardcrm-backend",
+  "name": "moustachecrm-backend",
   "version": "1.0.0",
-  "description": "PostcardCRM backend (Express + TypeScript + MongoDB/Mongoose)",
+  "description": "MoustacheCRM backend (Express + TypeScript + MongoDB/Mongoose)",
   "private": true,
   "main": "dist/server.js",
   "scripts": {
@@ -24,7 +24,7 @@
     "express",
     "typescript"
   ],
-  "author": "PostcardCRM",
+  "author": "MoustacheCRM",
   "license": "MIT",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.986.0",

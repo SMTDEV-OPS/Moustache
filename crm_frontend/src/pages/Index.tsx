@@ -66,7 +66,7 @@ const Index = () => {
     totalStays: 8,
     lastStay: "2024-05-15",
     preferences: ["Ocean view", "Late checkout", "Quiet room"],
-    property: "Postcard Goa",
+    property: "Moustache Goa",
     interactionHistory: [
       { date: "2024-06-10", type: "Call", channel: "Phone", agent: "Harleen Mehta", summary: "Inquiry about booking for July" },
       { date: "2024-06-08", type: "Email", channel: "Email", agent: "Harleen Mehta", summary: "Follow-up on spa services" },

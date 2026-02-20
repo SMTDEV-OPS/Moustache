@@ -8,8 +8,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Plus, Search, Filter, Clock, AlertTriangle, CheckCircle, 
+import {
+  Plus, Search, Filter, Clock, AlertTriangle, CheckCircle,
   MessageSquare, User, MapPin, Calendar, Phone
 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -27,7 +27,7 @@ const TicketingSystem = () => {
       priority: "High",
       status: "Open",
       category: "Reservation",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       assignedTo: "Property Manager - Goa",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-15 10:30 AM",
@@ -42,22 +42,22 @@ const TicketingSystem = () => {
       ]
     },
     {
-      id: "T002", 
+      id: "T002",
       title: "Billing Inquiry - Spa Charges",
       description: "Guest questions about spa charges on their bill",
       guest: "Rajesh Kumar",
       guestPhone: "+91 87654 32109",
       priority: "Medium",
-      status: "In Progress", 
+      status: "In Progress",
       category: "Billing",
-      property: "Postcard Rajasthan",
+      property: "Moustache Rajasthan",
       assignedTo: "Property Manager - Rajasthan",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-14 2:15 PM",
       responses: [
         {
           id: 1,
-          author: "Harleen Mehta - Call Center", 
+          author: "Harleen Mehta - Call Center",
           message: "Guest called about unexpected spa charges of ₹5,500 on checkout bill. Guest claims they only had a 30-minute massage. Please verify with spa team.",
           timestamp: "2024-12-14 2:15 PM",
           type: "create"
@@ -66,7 +66,7 @@ const TicketingSystem = () => {
           id: 2,
           author: "Property Manager - Rajasthan",
           message: "Checked with spa team. Guest had 30-min massage (₹2,500) + 60-min full body treatment (₹3,000). Both services were confirmed. Will call guest to explain.",
-          timestamp: "2024-12-14 4:20 PM", 
+          timestamp: "2024-12-14 4:20 PM",
           type: "response"
         }
       ]
@@ -76,11 +76,11 @@ const TicketingSystem = () => {
       title: "Special Dietary Request",
       description: "Guest has severe nut allergy, needs special meal arrangements",
       guest: "Meera Gupta",
-      guestPhone: "+91 76543 21098", 
+      guestPhone: "+91 76543 21098",
       priority: "High",
       status: "Resolved",
       category: "Service",
-      property: "Postcard Kerala",
+      property: "Moustache Kerala",
       assignedTo: "Property Manager - Kerala",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-13 11:45 AM",
@@ -89,7 +89,7 @@ const TicketingSystem = () => {
           id: 1,
           author: "Harleen Mehta - Call Center",
           message: "Guest has severe nut allergy (anaphylaxis risk). Check-in tomorrow. Need kitchen team to prepare nut-free meals and ensure no cross-contamination.",
-          timestamp: "2024-12-13 11:45 AM", 
+          timestamp: "2024-12-13 11:45 AM",
           type: "create"
         },
         {
@@ -97,7 +97,7 @@ const TicketingSystem = () => {
           author: "Property Manager - Kerala",
           message: "Informed executive chef. Separate cooking area prepared for guest meals. All restaurant staff briefed on allergy severity. Room service menu customized.",
           timestamp: "2024-12-13 3:30 PM",
-          type: "response" 
+          type: "response"
         },
         {
           id: 3,
@@ -123,15 +123,15 @@ const TicketingSystem = () => {
   });
 
   const properties = [
-    "Postcard Goa",
-    "Postcard Kerala", 
-    "Postcard Rajasthan",
-    "Postcard Mumbai"
+    "Moustache Goa",
+    "Moustache Kerala",
+    "Moustache Rajasthan",
+    "Moustache Mumbai"
   ];
 
   const categories = [
     "Reservation",
-    "Billing", 
+    "Billing",
     "Service",
     "Maintenance",
     "Complaint",
@@ -182,7 +182,7 @@ const TicketingSystem = () => {
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'High': return 'bg-red-100 text-red-800';
-      case 'Medium': return 'bg-yellow-100 text-yellow-800'; 
+      case 'Medium': return 'bg-yellow-100 text-yellow-800';
       case 'Low': return 'bg-green-100 text-green-800';
       default: return 'bg-gray-100 text-gray-800';
     }
@@ -347,10 +347,10 @@ const TicketingSystem = () => {
                         <FormItem>
                           <FormLabel>Description</FormLabel>
                           <FormControl>
-                            <Textarea 
-                              placeholder="Provide detailed information about the issue or request..." 
-                              className="min-h-[100px]" 
-                              {...field} 
+                            <Textarea
+                              placeholder="Provide detailed information about the issue or request..."
+                              className="min-h-[100px]"
+                              {...field}
                             />
                           </FormControl>
                           <FormMessage />
@@ -391,7 +391,7 @@ const TicketingSystem = () => {
                       </div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">{ticket.title}</h3>
                       <p className="text-gray-600 mb-3 line-clamp-2">{ticket.description}</p>
-                      
+
                       <div className="flex items-center space-x-6 text-sm text-gray-500">
                         <div className="flex items-center space-x-1">
                           <User className="h-4 w-4" />
@@ -410,13 +410,13 @@ const TicketingSystem = () => {
                           <span>{ticket.created}</span>
                         </div>
                       </div>
-                      
+
                       <div className="mt-3 text-sm">
                         <span className="text-gray-600">Assigned to:</span>
                         <span className="ml-1 font-medium text-blue-600">{ticket.assignedTo}</span>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center space-x-2 ml-4">
                       <Badge variant="secondary" className="text-xs">
                         {ticket.responses.length} responses
@@ -442,7 +442,7 @@ const TicketingSystem = () => {
                               </div>
                             </DialogTitle>
                           </DialogHeader>
-                          
+
                           <div className="space-y-4">
                             <div className="bg-gray-50 p-4 rounded-lg">
                               <h4 className="font-semibold text-gray-900 mb-2">{ticket.title}</h4>
@@ -465,15 +465,14 @@ const TicketingSystem = () => {
                                 </div>
                               </div>
                             </div>
-                            
+
                             <div className="space-y-3">
                               <h5 className="font-medium text-gray-900">Conversation</h5>
                               {ticket.responses.map((response) => (
-                                <div key={response.id} className={`p-4 rounded-lg ${
-                                  response.type === 'response' ? 'bg-blue-50 border-l-4 border-blue-500' : 
+                                <div key={response.id} className={`p-4 rounded-lg ${response.type === 'response' ? 'bg-blue-50 border-l-4 border-blue-500' :
                                   response.type === 'close' ? 'bg-green-50 border-l-4 border-green-500' :
-                                  'bg-gray-50 border-l-4 border-gray-500'
-                                }`}>
+                                    'bg-gray-50 border-l-4 border-gray-500'
+                                  }`}>
                                   <div className="flex items-center justify-between mb-2">
                                     <span className="font-medium text-sm text-gray-900">{response.author}</span>
                                     <span className="text-xs text-gray-500">{response.timestamp}</span>
@@ -624,10 +623,10 @@ const TicketingSystem = () => {
                       <FormItem>
                         <FormLabel>Description *</FormLabel>
                         <FormControl>
-                          <Textarea 
-                            placeholder="Provide detailed information about the issue or request..." 
-                            className="min-h-[120px]" 
-                            {...field} 
+                          <Textarea
+                            placeholder="Provide detailed information about the issue or request..."
+                            className="min-h-[120px]"
+                            {...field}
                           />
                         </FormControl>
                         <FormMessage />

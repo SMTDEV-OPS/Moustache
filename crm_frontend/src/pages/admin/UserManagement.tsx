@@ -37,7 +37,7 @@ export const UserManagement = () => {
         name: "",
         email: "",
         password: "",
-        teamType: "management",
+        teamType: "MANAGEMENT",
         roleId: "",
         reportsTo: "none"
     });
@@ -128,7 +128,7 @@ export const UserManagement = () => {
             name: "",
             email: "",
             password: "",
-            teamType: "management",
+            teamType: "MANAGEMENT",
             roleId: "",
             reportsTo: "none"
         });
@@ -173,10 +173,10 @@ export const UserManagement = () => {
                             <Select value={formData.teamType} onValueChange={v => setFormData({ ...formData, teamType: v })}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="management">Management</SelectItem>
-                                    <SelectItem value="sales">Sales</SelectItem>
-                                    <SelectItem value="callcenter">Call Center</SelectItem>
-                                    <SelectItem value="property">Property</SelectItem>
+                                    <SelectItem value="MANAGEMENT">Management</SelectItem>
+                                    <SelectItem value="SALES">Sales</SelectItem>
+                                    <SelectItem value="CALL_CENTER">Call Center</SelectItem>
+                                    <SelectItem value="PROPERTY">Property</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

@@ -5,14 +5,9 @@ import { AgentDashboard } from "@/components/AgentDashboard";
 import { EnhancedCallInterface } from "@/components/EnhancedCallInterface";
 import ProfessionalLeadManagement from "@/components/ProfessionalLeadManagement";
 import { ProfessionalTicketManagement } from "@/components/ProfessionalTicketManagement";
-import KnowledgeBase from "@/components/KnowledgeBase";
 import { KnowledgeBaseMain } from "@/components/knowledge/KnowledgeBaseMain";
-import CCManagerDashboard from "@/components/CCManagerDashboard";
-import ManagementDashboard from "@/components/ManagementDashboard";
-import SalesExecutiveDashboard from "@/components/SalesExecutiveDashboard";
-import SalesHeadDashboard from "@/components/SalesHeadDashboard";
-import PropertyManagerDashboard from "@/components/PropertyManagerDashboard";
 import Dashboard from "@/components/Dashboard";
+import SalesExecutiveDashboard from "@/components/SalesExecutiveDashboard";
 import Reports from "@/components/Reports";
 import { RoleBuilder as RoleDefinition } from "@/pages/admin/RoleBuilder";
 import { UserManagement as UserRoleManagement } from "@/pages/admin/UserManagement";
@@ -30,33 +25,11 @@ import { EmailClient } from "@/components/EmailClient";
 import { EmailProviderSettings } from "@/components/EmailProviderSettings";
 import { TodaysFollowUps } from "@/components/TodaysFollowUps";
 import { PersonalCalendar } from "@/components/PersonalCalendar";
-import { FollowUpReminder } from "@/components/FollowUpReminder";
 import { LeadDetailPage } from "@/components/LeadDetailPage";
 import NotificationsPage from "@/components/NotificationsPage";
 import { BuddyManagement } from "@/components/BuddyManagement";
 import { TicketManagement } from "@/components/TicketManagement";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  LogOut,
-  Phone,
-  Search,
-  User,
-  Settings,
-  ChevronDown,
-  Menu
-} from "lucide-react";
-import { NotificationBell } from "@/components/NotificationBell";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
 
 interface ProfessionalCRMProps {
   userRole: string;
@@ -105,7 +78,7 @@ export const ProfessionalCRM = ({
     totalStays: 8,
     lastStay: "2024-05-15",
     preferences: ["Ocean view", "Late checkout", "Quiet room"],
-    property: "Postcard Goa",
+    property: "Moustache Goa",
     interactionHistory: [
       { date: "2024-06-10", type: "Call", channel: "Phone", agent: "Harleen Mehta", summary: "Inquiry about booking for July" },
       { date: "2024-06-08", type: "Email", channel: "Email", agent: "Harleen Mehta", summary: "Follow-up on spa services" },
@@ -434,125 +407,17 @@ export const ProfessionalCRM = ({
           activeView={activeView}
           onViewChange={setActiveView}
           incomingCall={incomingCall}
+          userName={userName}
+          onLogout={onLogout}
+          simulateIncomingCall={simulateIncomingCall}
         />
 
-        <div className="flex-1 flex flex-col">
-          {/* Professional Header */}
-          <header className="h-16 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 flex items-center justify-between sticky top-0 z-40">
-            <div className="flex items-center flex-1 gap-6">
-              {/* Logo - Hidden on mobile, shown on desktop */}
-              <div className="hidden md:flex items-center gap-3">
-                <img
-                  src="/lovable-uploads/e26310ec-726d-4063-b241-25a7abbba814.png"
-                  alt="Postcard CRM"
-                  className="h-8 w-auto"
-                />
-                <Badge variant="outline" className="text-xs font-medium">
-                  CRM - DEMO
-                </Badge>
-              </div>
-
-              {/* Global Search */}
-              <div className="flex-1 max-w-xl">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="search"
-                    placeholder="Search leads, contacts, tasks..."
-                    className="pl-10 h-9 w-full bg-muted/50 border-muted focus:bg-background"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* Call Center Simulate Call Button */}
-              {userRole === 'callcenter' && (
-                <Button
-                  onClick={simulateIncomingCall}
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  <Phone className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Simulate Call</span>
-                </Button>
-              )}
-
-              {/* Follow-up Reminder */}
-              <FollowUpReminder
-                onViewLead={(leadId) => {
-                  setActiveView("admin-leads");
-                }}
-                onNavigateToFollowUps={() => {
-                  setActiveView("todays-followups");
-                }}
-              />
-
-              {/* Notifications */}
-              <NotificationBell />
-
-              {/* User Menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="h-9 px-2 gap-2 hover:bg-muted"
-                  >
-                    <Avatar className="h-7 w-7">
-                      <AvatarFallback className="bg-primary text-primary-foreground text-xs font-medium">
-                        {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="hidden md:flex flex-col items-start">
-                      <span className="text-sm font-medium leading-none">{userName}</span>
-                      <span className="text-xs text-muted-foreground capitalize leading-none mt-0.5">
-                        {userRole === 'callcenter' ? 'Call Center Agent' :
-                          userRole === 'ccmanager' ? 'CC Manager' :
-                            userRole === 'salesexecutive' ? 'Sales Executive' :
-                              userRole === 'saleshead' ? 'Sales Head' :
-                                userRole === 'management' ? 'Management' :
-                                  userRole.startsWith('propertymanager') ? 'Property Manager' : userRole}
-                      </span>
-                    </div>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground hidden md:block" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium">{userName}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        {userRole === 'callcenter' ? 'Call Center Agent' :
-                          userRole === 'ccmanager' ? 'CC Manager' :
-                            userRole === 'salesexecutive' ? 'Sales Executive' :
-                              userRole === 'saleshead' ? 'Sales Head' :
-                                userRole === 'management' ? 'Management' :
-                                  userRole.startsWith('propertymanager') ? 'Property Manager' : userRole}
-                      </p>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setActiveView("email-settings")}>
-                    <User className="mr-2 h-4 w-4" />
-                    <span>Profile Settings</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setActiveView("email-settings")}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>Preferences</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    <span>Logout</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </header>
-
+        <div className="flex-1 flex flex-col h-screen overflow-hidden">
           {/* Main Content */}
-          <main className="flex-1 p-6">
-            {renderContent()}
+          <main className="flex-1 overflow-auto bg-background">
+            <div className="p-6">
+              {renderContent()}
+            </div>
           </main>
         </div>
       </div>

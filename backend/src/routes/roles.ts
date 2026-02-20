@@ -3,6 +3,7 @@ import { z } from "zod";
 import { RoleModel } from "../models/role";
 import { requireAuth, requirePermissions } from "../middleware/auth";
 import { badRequest, notFound } from "../utils/httpError";
+import { PERMISSIONS } from "../constants/permissions";
 
 export const rolesRouter = Router();
 
@@ -19,7 +20,7 @@ const updateRoleSchema = z.object({
 });
 
 rolesRouter.use(requireAuth);
-rolesRouter.use(requirePermissions(["roles.manage"]));
+rolesRouter.use(requirePermissions([PERMISSIONS.ROLES.MANAGE]));
 
 // List all roles
 rolesRouter.get("/", async (req, res, next) => {

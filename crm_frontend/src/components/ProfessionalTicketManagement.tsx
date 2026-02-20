@@ -40,7 +40,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
       createdBy: "Front Desk",
       guestName: "Rajesh Kumar",
       roomNumber: "204",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       createdDate: "2024-01-18",
       updatedDate: "2024-01-18",
       dueDate: "2024-01-19",
@@ -62,7 +62,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
       createdBy: "Guest Services",
       guestName: "Priya Sharma",
       roomNumber: "315",
-      property: "Postcard Udaipur",
+      property: "Moustache Udaipur",
       createdDate: "2024-01-17",
       updatedDate: "2024-01-18",
       dueDate: "2024-01-20",
@@ -85,7 +85,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
       createdBy: "Concierge",
       guestName: "Amit Patel",
       roomNumber: "128",
-      property: "Postcard Munnar",
+      property: "Moustache Munnar",
       createdDate: "2024-01-15",
       updatedDate: "2024-01-16",
       dueDate: "2024-01-16",
@@ -108,7 +108,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
       createdBy: "Night Manager",
       guestName: "Sunita Reddy",
       roomNumber: "302",
-      property: "Postcard Goa",
+      property: "Moustache Goa",
       createdDate: "2024-01-18",
       updatedDate: "2024-01-18",
       dueDate: "2024-01-18",
@@ -129,10 +129,10 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
     }
 
     // Search query filter
-    if (searchQuery && !ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !ticket.guestName.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !ticket.description.toLowerCase().includes(searchQuery.toLowerCase())) {
+    if (searchQuery && !ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !ticket.guestName.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !ticket.description.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
 
@@ -218,10 +218,10 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
 
   // Property agents mapping
   const propertyAgents = {
-    "Postcard Goa": ["Harleen Mehta", "Rahul Singh", "Priya Kumar"],
-    "Postcard Kerala": ["Amit Sharma", "Neha Patel", "Ravi Kumar"],
-    "Postcard Rajasthan": ["Sanju Verma", "Meera Singh", "Vikram Rao"],
-    "Postcard Mumbai": ["Anjali Shah", "Karan Malhotra", "Deepa Joshi"],
+    "Moustache Goa": ["Harleen Mehta", "Rahul Singh", "Priya Kumar"],
+    "Moustache Kerala": ["Amit Sharma", "Neha Patel", "Ravi Kumar"],
+    "Moustache Rajasthan": ["Sanju Verma", "Meera Singh", "Vikram Rao"],
+    "Moustache Mumbai": ["Anjali Shah", "Karan Malhotra", "Deepa Joshi"],
   };
 
   const getTicketStats = () => {
@@ -229,7 +229,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
     const inProgress = filteredTickets.filter(t => t.status === 'in-progress').length;
     const resolved = filteredTickets.filter(t => t.status === 'resolved').length;
     const total = filteredTickets.length;
-    
+
     return { open, inProgress, resolved, total };
   };
 
@@ -244,13 +244,13 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
             {userRole === 'callcenter' ? 'My Tickets' : 'Ticket Management'}
           </h1>
           <p className="text-muted-foreground">
-            {userRole === 'callcenter' 
+            {userRole === 'callcenter'
               ? 'Manage your assigned support tickets'
               : 'Comprehensive ticket management and assignment'
             }
           </p>
         </div>
-        
+
         <Dialog open={isCreateTicketOpen} onOpenChange={setIsCreateTicketOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -304,10 +304,10 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
                     <SelectValue placeholder="Select property" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
-                    <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
-                    <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
-                    <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
+                    <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
+                    <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
+                    <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
+                    <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -370,7 +370,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -382,7 +382,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -394,7 +394,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -486,7 +486,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
               </Button>
             </div>
           </div>
-          
+
           <div className="mt-4 text-sm text-muted-foreground">
             Showing {filteredTickets.length} of {allTickets.length} tickets
           </div>
@@ -509,26 +509,26 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
                         {ticket.id}
                       </Badge>
                     </div>
-                    
+
                     <p className="text-muted-foreground text-sm mb-3">{ticket.description}</p>
-                    
+
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                       <div>
                         <span className="font-medium">Guest:</span>
                         <p className="text-muted-foreground">{ticket.guestName}</p>
                         <p className="text-muted-foreground">Room {ticket.roomNumber}</p>
                       </div>
-                      
+
                       <div>
                         <span className="font-medium">Property:</span>
                         <p className="text-muted-foreground">{ticket.property}</p>
                       </div>
-                      
+
                       <div>
                         <span className="font-medium">Assigned to:</span>
                         <p className="text-muted-foreground">{ticket.assignedTo}</p>
                       </div>
-                      
+
                       <div>
                         <span className="font-medium">Time:</span>
                         <p className="text-muted-foreground">Est: {ticket.estimatedHours}h</p>
@@ -547,7 +547,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
                         {ticket.priority}
                       </Badge>
                     </div>
-                    
+
                     <div className="text-right text-xs text-muted-foreground">
                       <p>Due: {ticket.dueDate}</p>
                       <p>Created: {ticket.createdDate}</p>
