@@ -29,7 +29,7 @@ import { LeadDetailPage } from "@/components/LeadDetailPage";
 import NotificationsPage from "@/components/NotificationsPage";
 import { BuddyManagement } from "@/components/BuddyManagement";
 import { TicketManagement } from "@/components/TicketManagement";
-
+import { IntegrationSettings } from "@/components/IntegrationSettings";
 
 interface ProfessionalCRMProps {
   userRole: string;
@@ -272,6 +272,15 @@ export const ProfessionalCRM = ({
           );
         }
         return <AdminApiConsole />;
+      case 'integration-settings':
+        if (!isAdmin && !permissions?.includes("users.manage")) { // Use a high-level admin check
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage integrations.
+            </div>
+          );
+        }
+        return <IntegrationSettings />;
       case 'admin-leads':
         // Lead CRM – available to any backend user with lead view/control permissions.
         if (

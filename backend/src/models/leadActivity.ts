@@ -14,6 +14,10 @@ export enum LeadActivityType {
   MANUAL_ASSIGNED = "MANUAL_ASSIGNED",
   REASSIGNED = "REASSIGNED",
   CLIENT_RESPONSE = "CLIENT_RESPONSE",
+  INBOUND_CALL = "INBOUND_CALL",
+  INBOUND_WHATSAPP = "INBOUND_WHATSAPP",
+  INBOUND_EMAIL = "INBOUND_EMAIL",
+  INBOUND_SOCIAL = "INBOUND_SOCIAL",
 }
 
 export interface ILeadActivity extends Document {
@@ -30,6 +34,7 @@ export interface ILeadActivity extends Document {
   toUserId?: any;
   assignedByUserId?: any;
   employeeGroupId?: any;
+  metadata?: Record<string, any>;
 }
 
 const leadActivitySchema = new Schema<ILeadActivity>(
@@ -52,6 +57,7 @@ const leadActivitySchema = new Schema<ILeadActivity>(
     toUserId: UserRef,
     assignedByUserId: UserRef,
     employeeGroupId: { type: Schema.Types.ObjectId, ref: "EmployeeGroup" },
+    metadata: { type: Schema.Types.Mixed },
   },
   { timestamps: true }
 );

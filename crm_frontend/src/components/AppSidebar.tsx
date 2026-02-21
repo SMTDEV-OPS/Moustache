@@ -22,6 +22,7 @@ import {
   Bell,
   UserCheck,
   Activity,
+  Plug
 } from "lucide-react";
 
 import {
@@ -112,6 +113,7 @@ export function AppSidebar({
     "email-settings": "Configure personal email settings, signatures, and preferences. Customize your email experience within the CRM system.",
     "email-health": "Monitor email health metrics and delivery status. Track email open rates, bounce rates, and overall email system performance.",
     "notifications": "View system notifications and alerts. Stay updated on important events, follow-up reminders, and system messages.",
+    "integration-settings": "Configure Webhooks and External APIs for capturing leads into the CRM.",
   };
 
   useEffect(() => {
@@ -597,6 +599,23 @@ export function AppSidebar({
                     <Mail className={`mr-3 h-4 w-4 ${activeView === "email-provider-settings" ? 'text-primary' : ''}`} />
                     <span className="text-sm flex-1">Email Provider Settings</span>
                     <ModuleInfoButton description={moduleDescriptions["email-provider-settings"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => onViewChange("integration-settings")}
+                    isActive={activeView === "integration-settings"}
+                    className={`
+                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                          ${activeView === "integration-settings"
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                      }
+                        `}
+                  >
+                    <Plug className={`mr-3 h-4 w-4 ${activeView === "integration-settings" ? 'text-primary' : ''}`} />
+                    <span className="text-sm flex-1">Integrations</span>
+                    <ModuleInfoButton description={moduleDescriptions["integration-settings"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>

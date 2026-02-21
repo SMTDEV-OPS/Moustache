@@ -8,6 +8,7 @@ import {
   LeadSource,
   LeadStatus,
   LeadType,
+  CallStatus
 } from "../models/common";
 import { LeadModel, ILead } from "../models/lead";
 import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
@@ -16,9 +17,10 @@ import { badRequest, notFound, forbidden } from "../utils/httpError";
 import { createLead, reassignLead } from "../services/leadService";
 import { getEligibleUsersForManualAssignment } from "../services/assignmentService";
 import { UserModel } from "../models/user";
-import { CallStatus } from "../models/common";
 import { getCommunicationTimeline } from "../services/communicationService";
 import { PERMISSIONS } from "../constants/permissions";
+import { uploadResource } from "../middleware/upload";
+import { parse } from "csv-parse/sync";
 
 export const leadsRouter = Router();
 
@@ -233,6 +235,86 @@ leadsRouter.post("/", async (req, res, next) => {
     // Note: Activity logging is now handled in leadService.createLead
 
     res.status(201).json(lead);
+  } catch (err) {
+    next(err);
+  }
+});
+
+leadsRouter.post("/bulk-upload", uploadResource.single("file"), async (req, res, next) => {
+  try {
+    if (
+      !req.user ||
+      !(
+        hasPermission(req.user, PERMISSIONS.LEADS.CREATE) ||
+        hasPermission(req.user, PERMISSIONS.LEADS.MANAGE)
+      )
+    ) {
+      throw forbidden("Insufficient permissions to create leads from CSV");
+    }
+
+    if (!req.file) {
+      throw badRequest("CSV file is required");
+    }
+
+    // Parse CSV from memory buffer
+    const csvData = req.file.buffer.toString("utf-8");
+    const records = parse(csvData, {
+      columns: true,
+      skip_empty_lines: true,
+      relax_column_count: true,
+      trim: true,
+    });
+
+    if (records.length === 0) {
+      throw badRequest("No valid data found in CSV file.");
+    }
+
+    // Prepare success and failure tracking
+    let successCount = 0;
+    const errors = [];
+
+    // Process row by row
+    for (let i = 0; i < records.length; i++) {
+      const row: any = records[i];
+      try {
+        // Map common CSV columns to our schema
+        const name = row.Name || row.name || row.GuestName;
+        const phone = row.Phone || row.phone || row.Contact;
+        const email = row.Email || row.email;
+        const notes = row.Notes || row.notes || "Imported via CSV Bulk Upload";
+
+        if (!name) {
+          throw new Error("Name is required");
+        }
+
+        await createLead({
+          guestContact: {
+            name,
+            phone,
+            email,
+          },
+          source: LeadSource.CSV_UPLOAD,
+          leadType: LeadType.STAY, // default
+          notes,
+          assignmentMode: "auto",
+          createdByUserId: req.user.id,
+        });
+
+        successCount++;
+      } catch (err: any) {
+        // If Active Lead exists (duplicate check fail), log it specifically
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push({ row: i + 1, data: row, error: errorMsg });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Processed ${records.length} records.`,
+      successCount,
+      failureCount: errors.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
   } catch (err) {
     next(err);
   }

@@ -10,6 +10,7 @@ import { LeadModel } from "../models/lead";
 import { CommunicationModel } from "../models/communication";
 import { CommunicationChannel, CommunicationDirection } from "../models/common";
 import { handleClientResponse } from "./clientResponseService";
+import { processInboundEmailForLeads } from "./emailLeadParser";
 
 /**
  * Get email provider instance based on account type
@@ -46,13 +47,13 @@ async function linkEmailToCRM(email: Partial<IEmailMessage>) {
     if (guest) {
       linkedGuestId = guest._id as Types.ObjectId;
       email.linkedGuestId = linkedGuestId;
-      
+
       // Find lead for this guest (prefer most recent active lead)
-      const lead = await LeadModel.findOne({ 
+      const lead = await LeadModel.findOne({
         guestId: guest._id,
         status: { $nin: ["LOST", "CLOSED_AUTO"] }
       }).sort({ createdAt: -1 }).lean();
-      
+
       if (!lead) {
         // Fallback to any lead if no active lead found
         const anyLead = await LeadModel.findOne({ guestId: guest._id }).sort({ createdAt: -1 }).lean();
@@ -123,7 +124,7 @@ export async function connectGmail(
 
   // Check if account already exists
   let account = await EmailAccountModel.findOne({ userId, email }).exec();
-  
+
   if (account) {
     account.oauth = {
       accessToken,
@@ -169,7 +170,7 @@ export async function connectOutlook(
   const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
   let account = await EmailAccountModel.findOne({ userId, email }).exec();
-  
+
   if (account) {
     account.oauth = {
       accessToken,
@@ -223,7 +224,7 @@ export async function connectSMTP(
   }
 ): Promise<IEmailAccount> {
   let account = await EmailAccountModel.findOne({ userId, email }).exec();
-  
+
   if (account) {
     account.smtp = smtpConfig;
     account.imap = imapConfig;
@@ -298,7 +299,7 @@ function getErrorCode(error: Error | unknown): string {
   }
 
   const message = error.message.toLowerCase();
-  
+
   if (message.includes("token") || message.includes("expired") || message.includes("invalid_grant")) {
     return "TOKEN_EXPIRED";
   }
@@ -317,7 +318,7 @@ function getErrorCode(error: Error | unknown): string {
   if (message.includes("not found") || message.includes("inactive")) {
     return "ACCOUNT_NOT_FOUND";
   }
-  
+
   return "SYNC_ERROR";
 }
 
@@ -357,7 +358,7 @@ export async function syncEmails(accountId: string): Promise<{ syncedCount: numb
 
         for (const msg of messages) {
           let emailData: Partial<IEmailMessage>;
-          
+
           if (account.provider === "GMAIL") {
             emailData = GmailProvider.gmailMessageToEmailMessage(msg, account._id.toString(), folder);
           } else if (account.provider === "OUTLOOK") {
@@ -377,12 +378,25 @@ export async function syncEmails(accountId: string): Promise<{ syncedCount: numb
             // Link email after saving to get the _id
             emailData._id = savedEmail._id;
             await linkEmailToCRM(emailData);
-            
+
             // Check if this is a client response and handle it
             if (savedEmail.folder !== "SENT" && savedEmail.linkedLeadId) {
               await handleClientResponse(savedEmail);
             }
-            
+
+            // 🔥 NEW: Run LLM-based lead extraction for new INBOX emails
+            if (savedEmail.folder === "INBOX" && !savedEmail.linkedLeadId) {
+              // Only run on unmapped emails (no linked lead yet = unknown sender)
+              // For known senders who already have a lead, handleClientResponse above is sufficient
+              const bodyText = savedEmail.bodyText || savedEmail.bodyHtml?.replace(/<[^>]+>/g, " ") || "";
+              await processInboundEmailForLeads({
+                fromName: savedEmail.from?.name || null,
+                fromEmail: savedEmail.from?.email || null,
+                subject: savedEmail.subject || null,
+                body: bodyText,
+              }, savedEmail._id.toString());
+            }
+
             syncedCount++;
           }
         }
@@ -411,17 +425,17 @@ export async function syncEmails(accountId: string): Promise<{ syncedCount: numb
   } catch (error) {
     const errorCode = getErrorCode(error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    
+
     account.syncStatus = "ERROR";
     account.syncError = `${errorCode}: ${errorMessage}`;
     await account.save();
-    
+
     logger.error("Email sync failed", {
       accountId: account._id.toString(),
       email: account.email,
       errorCode,
     }, error instanceof Error ? error : new Error(String(error)));
-    
+
     const syncError = new Error(errorMessage);
     (syncError as any).errorCode = errorCode;
     throw syncError;
