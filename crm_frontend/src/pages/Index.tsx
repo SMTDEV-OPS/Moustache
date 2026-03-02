@@ -11,7 +11,6 @@ import LeadManagement from "@/components/LeadManagement";
 import { ProfessionalCRM } from "@/components/ProfessionalCRM";
 import Dashboard from "@/components/Dashboard";
 import Login from "@/components/Login";
-import Landing from "@/components/Landing";
 import DetailedDashboard from "@/components/DetailedDashboard";
 import TicketingSystem from "@/components/TicketingSystem";
 import PropertyManagerDashboard from "@/components/PropertyManagerDashboard";
@@ -24,10 +23,7 @@ import KnowledgeBase from "@/components/KnowledgeBase";
 const Index = () => {
   const { user, isAuthenticated, logout, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [incomingCall, setIncomingCall] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
-
-  // Effect to set initial tab based on role when user logs in
+  const [incomingCall, setIncomingCall] = useState(false);  // Effect to set initial tab based on role when user logs in
   useEffect(() => {
     if (user) {
       // Determine role string for UI logic
@@ -84,11 +80,6 @@ const Index = () => {
   const handleLogout = async () => {
     await logout();
     setActiveTab("dashboard");
-    setShowLogin(false);
-  };
-
-  const handleGetStarted = () => {
-    setShowLogin(true);
   };
 
   if (isLoading) {
@@ -96,10 +87,7 @@ const Index = () => {
   }
 
   if (!isAuthenticated) {
-    if (showLogin) {
-      return <Login />;
-    }
-    return <Landing onGetStarted={handleGetStarted} />;
+    return <Login />;
   }
 
   // Use Professional CRM for all users now
