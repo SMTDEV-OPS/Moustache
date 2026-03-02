@@ -43,9 +43,6 @@ export type ActionType = (typeof ACTIONS)[keyof typeof ACTIONS];
 export const PERMISSIONS = {
     LEADS: {
         READ: "leads.read",
-        READ_OWN: "leads.view.own",
-        READ_TEAM: "leads.view.team",
-        READ_ALL: "leads.view.all",
         WRITE: "leads.write",
         UPDATE: "leads.update",
         DELETE: "leads.delete",
@@ -111,7 +108,7 @@ export const PERMISSIONS = {
         DELETE: "reservations.delete",
         MANAGE: "reservations.manage",
     },
-    COMMUNICATIONS: { // Calls, logs, etc.
+    COMMUNICATIONS: {
         READ: "communications.read",
         WRITE: "communications.write",
         MANAGE: "communications.manage",
@@ -148,11 +145,10 @@ export const PERMISSIONS = {
     PMS: {
         READ: "pms.read",
         WRITE: "pms.write",
-        MANAGE: "pms.manage", // Configuration, etc.
+        MANAGE: "pms.manage",
     },
-    // Admin/Settings related
     SETTINGS: {
-        MANAGE: "settings.manage", // General settings access
+        MANAGE: "settings.manage",
     },
     REGIONS: {
         READ: "regions.read",
@@ -167,11 +163,11 @@ export const PERMISSIONS = {
         MANAGE: "assignment-rules.manage",
     },
     NOTIFICATIONS: {
-        MANAGE: "notifications.manage" // Send global notifications?
+        MANAGE: "notifications.manage",
     },
     EMAIL: {
         READ: "email.read",
-        WRITE: "email.write", // Send emails
+        WRITE: "email.write",
     },
     BUDDIES: {
         READ: "buddies.read",
@@ -190,8 +186,8 @@ export const PERMISSIONS = {
     },
     HOTEL_BRANDS: {
         READ: "hotel-brands.read",
-        MANAGE: "hotel-brands.manage"
-    }
+        MANAGE: "hotel-brands.manage",
+    },
 } as const;
 
 
@@ -210,7 +206,7 @@ export const DEFAULT_ROLES_CONFIG = {
     SALES_REP: {
         name: "Sales Representative",
         permissions: [
-            PERMISSIONS.LEADS.READ_OWN,
+            PERMISSIONS.LEADS.READ,
             PERMISSIONS.LEADS.CREATE,
             PERMISSIONS.TASKS.READ,
             PERMISSIONS.TASKS.WRITE,

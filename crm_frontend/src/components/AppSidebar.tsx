@@ -114,6 +114,7 @@ export function AppSidebar({
     "email-health": "Monitor email health metrics and delivery status. Track email open rates, bounce rates, and overall email system performance.",
     "notifications": "View system notifications and alerts. Stay updated on important events, follow-up reminders, and system messages.",
     "integration-settings": "Configure Webhooks and External APIs for capturing leads into the CRM.",
+    "profile-definition": "Define feature access profiles. These profiles dictate what actions users can perform across different modules.",
   };
 
   useEffect(() => {
@@ -415,213 +416,7 @@ export function AppSidebar({
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        {(isAdminLike || canManageAccounts) && (
-          <SidebarGroup className="mb-4 pb-4 border-b border-sidebar-border">
-            <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
-              Administration
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu className="space-y-1">
-                {isAdminLike && (
-                  <>
-                    {/* Admin API Console hidden per user request */}
-                    {/* <SidebarMenuItem>
-                        <SidebarMenuButton
-                          onClick={() => onViewChange("admin-console")}
-                          isActive={activeView === "admin-console"}
-                          className={`
-                            w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                            ${activeView === "admin-console" 
-                              ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary' 
-                              : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                            }
-                          `}
-                        >
-                          <LayoutDashboard className={`mr-3 h-4 w-4 ${activeView === "admin-console" ? 'text-primary' : ''}`} />
-                          <span className="text-sm flex-1">Admin API Console</span>
-                          <ModuleInfoButton description={moduleDescriptions["admin-console"] || "Module information"} />
-                        </SidebarMenuButton>
-                      </SidebarMenuItem> */}
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => onViewChange("role-definition")}
-                        isActive={activeView === "role-definition"}
-                        className={`
-                            group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                            ${activeView === "role-definition"
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                            : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                          }
-                          `}
-                      >
-                        <Settings2 className={`mr-3 h-4 w-4 ${activeView === "role-definition" ? 'text-primary' : ''}`} />
-                        <span className="text-sm flex-1">Role Definition</span>
-                        <ModuleInfoButton description={moduleDescriptions["role-definition"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => onViewChange("user-role-management")}
-                        isActive={activeView === "user-role-management"}
-                        className={`
-                            group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                            ${activeView === "user-role-management"
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                            : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                          }
-                          `}
-                      >
-                        <UserPlus className={`mr-3 h-4 w-4 ${activeView === "user-role-management" ? 'text-primary' : ''}`} />
-                        <span className="text-sm flex-1">User Role Management</span>
-                        <ModuleInfoButton description={moduleDescriptions["user-role-management"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => onViewChange("employee-groups")}
-                        isActive={activeView === "employee-groups"}
-                        className={`
-                            group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                            ${activeView === "employee-groups"
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                            : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                          }
-                          `}
-                      >
-                        <Users className={`mr-3 h-4 w-4 ${activeView === "employee-groups" ? 'text-primary' : ''}`} />
-                        <span className="text-sm flex-1">Employee Groups</span>
-                        <ModuleInfoButton description={moduleDescriptions["employee-groups"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </>
-                )}
-                {canManageAccounts && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      onClick={() => onViewChange("account-management")}
-                      isActive={activeView === "account-management"}
-                      className={`
-                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                          ${activeView === "account-management"
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                        }
-                        `}
-                    >
-                      <Building2 className={`mr-3 h-4 w-4 ${activeView === "account-management" ? 'text-primary' : ''}`} />
-                      <span className="text-sm flex-1">Account Management</span>
-                      <ModuleInfoButton description={moduleDescriptions["account-management"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
-                {(isAdminLike || permissions?.includes("properties.manage")) && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      onClick={() => onViewChange("property-management")}
-                      isActive={activeView === "property-management"}
-                      className={`
-                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                          ${activeView === "property-management"
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                        }
-                        `}
-                    >
-                      <Building2 className={`mr-3 h-4 w-4 ${activeView === "property-management" ? 'text-primary' : ''}`} />
-                      <span className="text-sm flex-1">Property Management</span>
-                      <ModuleInfoButton description={moduleDescriptions["property-management"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => onViewChange("assignment-rules")}
-                    isActive={activeView === "assignment-rules"}
-                    className={`
-                        group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                        ${activeView === "assignment-rules"
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                      }
-                      `}
-                  >
-                    <GitBranch className={`mr-3 h-4 w-4 ${activeView === "assignment-rules" ? 'text-primary' : ''}`} />
-                    <span className="text-sm flex-1">Lead Assignment Rules</span>
-                    <ModuleInfoButton description={moduleDescriptions["assignment-rules"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => onViewChange("workflow-management")}
-                    isActive={activeView === "workflow-management"}
-                    className={`
-                        group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                        ${activeView === "workflow-management"
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                      }
-                      `}
-                  >
-                    <Workflow className={`mr-3 h-4 w-4 ${activeView === "workflow-management" ? 'text-primary' : ''}`} />
-                    <span className="text-sm flex-1">Follow-up Workflows</span>
-                    <ModuleInfoButton description={moduleDescriptions["workflow-management"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => onViewChange("message-templates")}
-                    isActive={activeView === "message-templates"}
-                    className={`
-                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                          ${activeView === "message-templates"
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                      }
-                        `}
-                  >
-                    <Mail className={`mr-3 h-4 w-4 ${activeView === "message-templates" ? 'text-primary' : ''}`} />
-                    <span className="text-sm flex-1">Message Templates</span>
-                    <ModuleInfoButton description={moduleDescriptions["message-templates"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => onViewChange("email-provider-settings")}
-                    isActive={activeView === "email-provider-settings"}
-                    className={`
-                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                          ${activeView === "email-provider-settings"
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                      }
-                        `}
-                  >
-                    <Mail className={`mr-3 h-4 w-4 ${activeView === "email-provider-settings" ? 'text-primary' : ''}`} />
-                    <span className="text-sm flex-1">Email Provider Settings</span>
-                    <ModuleInfoButton description={moduleDescriptions["email-provider-settings"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => onViewChange("integration-settings")}
-                    isActive={activeView === "integration-settings"}
-                    className={`
-                          group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                          ${activeView === "integration-settings"
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                      }
-                        `}
-                  >
-                    <Plug className={`mr-3 h-4 w-4 ${activeView === "integration-settings" ? 'text-primary' : ''}`} />
-                    <span className="text-sm flex-1">Integrations</span>
-                    <ModuleInfoButton description={moduleDescriptions["integration-settings"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+
 
         {/* Email - Available to all users */}
         <SidebarGroup className="mb-0">
@@ -732,9 +527,9 @@ export function AppSidebar({
                   <User className="mr-2 h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange("email-settings")}>
+                <DropdownMenuItem onClick={() => onViewChange("settings")}>
                   <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
+                  <span>Setup / Settings</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
@@ -763,6 +558,11 @@ export function AppSidebar({
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onViewChange("settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Setup / Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onLogout} className="text-destructive">
                   <LogOut className="mr-2 h-4 w-4" />
                   Log out

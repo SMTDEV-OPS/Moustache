@@ -38,6 +38,7 @@ import { contactsRouter } from "./routes/contacts";
 import { accountPotentialsRouter } from "./routes/accountPotentials";
 import { hotelBrandsRouter } from "./routes/hotelBrands";
 import { pmsRouter } from "./routes/pms";
+import profilesRouter from "./routes/profiles";
 
 export const app = express();
 
@@ -87,8 +88,11 @@ app.use("/workflows", workflowsRouter);
 app.use("/templates", templatesRouter);
 app.use("/leads", leadWorkflowRouter);
 app.use("/email", emailRouter);
+import { dataSharingRouter } from "./routes/dataSharing";
+
 app.use("/roles", rolesRouter);
 app.use("/groups", groupsRouter);
+app.use("/data-sharing", dataSharingRouter);
 app.use("/assignment-rules", assignmentRulesRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/knowledge-base", knowledgeBaseRouter);
@@ -98,6 +102,7 @@ app.use("/contacts", contactsRouter);
 app.use("/account-potentials", accountPotentialsRouter);
 app.use("/hotel-brands", hotelBrandsRouter);
 app.use("/pms", pmsRouter);
+app.use("/profiles", profilesRouter);
 
 // Public endpoints (no authentication required)
 app.use("/api/public/website-leads", publicWebsiteLeadsRouter);

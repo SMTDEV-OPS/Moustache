@@ -14,6 +14,7 @@ export interface EmailAccount {
   email: string;
   isActive: boolean;
   isPrimary: boolean;
+  isLeadCaptureEnabled: boolean;
   lastSyncAt?: string;
   syncStatus: SyncStatus;
   syncError?: string;
@@ -451,7 +452,31 @@ export const disconnectEmailAccount = async (accountId: string): Promise<void> =
   }
 };
 
-export const syncEmailAccount = async (accountId: string): Promise<{ syncedCount: number }> => {
+export const updateEmailAccount = async (accountId: string, updates: { isLeadCaptureEnabled?: boolean }): Promise<{ account: EmailAccount }> => {
+  const response = await fetch(`${API_BASE_URL}/email/accounts/${accountId}`, {
+    method: "PATCH",
+    headers: withAuthHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(updates),
+  });
+
+  if (!response.ok) {
+    let message = "Unable to update email account";
+    try {
+      const data = await response.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const data = await response.json();
+  return { account: mapEmailAccount(data.account) };
+};
+
+export const syncEmailAccount = async (accountId: string): Promise<{ syncedCount: number; errorCode?: string }> => {
   const response = await fetch(`${API_BASE_URL}/email/accounts/${accountId}/sync`, {
     method: "POST",
     headers: withAuthHeaders(),

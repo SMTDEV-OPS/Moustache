@@ -13,8 +13,12 @@ groupsRouter.use(requireAuth, requirePermissions(["users.manage"]));
 const baseGroupSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
-  teamType: z.string().optional(),
+  teamType: z.string().optional(), // Legacy
   isActive: z.boolean().optional(),
+  memberUserIds: z.array(z.string()).optional(),
+  memberRoleIds: z.array(z.string()).optional(),
+  includeSubordinates: z.boolean().optional(),
+  subGroupIds: z.array(z.string()).optional(),
 });
 
 const createGroupSchema = baseGroupSchema;
@@ -79,6 +83,10 @@ groupsRouter.post("/", async (req, res, next) => {
       name,
       description,
       teamType,
+      memberUserIds: parsed.data.memberUserIds || [],
+      memberRoleIds: parsed.data.memberRoleIds || [],
+      includeSubordinates: parsed.data.includeSubordinates || false,
+      subGroupIds: parsed.data.subGroupIds || [],
       isActive: isActive ?? true,
     });
 
@@ -281,6 +289,32 @@ groupsRouter.delete("/:id/roles/:roleId", async (req, res, next) => {
     await group.save();
 
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Calculate and preview all resolved members (users) for a group
+groupsRouter.get("/:id/members/preview", async (req, res, next) => {
+  try {
+    const group = await EmployeeGroupModel.findById(req.params.id)
+      .populate('memberUserIds', 'name email status')
+      .populate('memberRoleIds', 'name')
+      .populate('subGroupIds', 'name')
+      .lean();
+
+    if (!group) {
+      throw notFound("Group not found");
+    }
+
+    // This is a naive preview implementation. In a real scenario, you would recursively 
+    // resolve subGroupIds, memberRoleIds, and includeSubordinates to get the full list
+    // of unique user IDs, and then fetch those users.
+
+    // For now, returning the populated group data which the UI can render as "Direct Members"
+    // and we will build the full resolver in the DataSharingService later.
+
+    res.json(group);
   } catch (err) {
     next(err);
   }

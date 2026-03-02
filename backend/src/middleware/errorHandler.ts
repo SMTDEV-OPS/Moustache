@@ -14,7 +14,7 @@ export function errorHandler(
   const userId = req.user?.id;
 
   if (err instanceof HttpError) {
-    logger.error("HTTP error occurred", {
+    const logDetails = {
       requestId,
       userId,
       method: req.method,
@@ -22,8 +22,16 @@ export function errorHandler(
       status: err.status,
       code: err.code,
       message: err.message,
-    }, err);
-    
+    };
+
+    if (err.status === 401 || err.status === 403) {
+      // For expected auth errors, a warning without a stack trace is sufficient
+      logger.warn("HTTP auth error occurred", logDetails);
+    } else {
+      // For other client/server errors, log as error with stack trace if appropriate
+      logger.error("HTTP error occurred", logDetails, err);
+    }
+
     return res.status(err.status).json({
       error: {
         message: err.message,
@@ -35,7 +43,7 @@ export function errorHandler(
   const message =
     err instanceof Error ? err.message : "Unexpected error occurred";
   const error = err instanceof Error ? err : new Error(String(err));
-  
+
   logger.error("Unhandled error occurred", {
     requestId,
     userId,

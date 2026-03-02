@@ -397,6 +397,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     occasion: "",
     heatLevel: "WARM",
     accountId: "",
+    customerType: "",
+    bookingWindow: "",
+    budget: "",
   });
 
   // Assignment mode state
@@ -706,6 +709,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
         notes: form.notes || undefined,
         roomCategory: primaryHotel?.roomCategory || undefined,
         roomPreference: primaryHotel?.roomPreference || undefined,
+        customerType: form.customerType || undefined,
+        bookingWindow: form.bookingWindow || undefined,
+        budget: form.budget ? Number(form.budget) : undefined,
         // Assignment options
         assignmentMode: assignmentMode,
         assignedToUserId: assignmentMode === "manual" && manualAssigneeId ? manualAssigneeId : undefined,
@@ -733,8 +739,10 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
         companyName: "",
         gstin: "",
         estimatedValue: "",
-        occasion: "",
         notes: "",
+        customerType: "",
+        bookingWindow: "",
+        budget: "",
       }));
       // Reset hotels
       setHotels([{ ...emptyHotel }]);
@@ -1854,6 +1862,55 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            {/* Tag Dimensions (SOP 1.2, 1.3, 1.5 fields) */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Customer Type</label>
+                <Select
+                  value={form.customerType}
+                  onValueChange={(value) => onChange("customerType", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="B2C">B2C</SelectItem>
+                    <SelectItem value="B2B">B2B</SelectItem>
+                    <SelectItem value="Corporate">Corporate</SelectItem>
+                    <SelectItem value="Influencer">Influencer</SelectItem>
+                    <SelectItem value="NRI">NRI</SelectItem>
+                    <SelectItem value="HNI">HNI</SelectItem>
+                    <SelectItem value="Reference">Reference</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Booking Window</label>
+                <Select
+                  value={form.bookingWindow}
+                  onValueChange={(value) => onChange("bookingWindow", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Booking Window" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Within 5 hrs">Within 5 hrs</SelectItem>
+                    <SelectItem value="Within 24 hrs">Within 24 hrs</SelectItem>
+                    <SelectItem value="Yet to decide final plan">Yet to decide final plan</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Auto-Tag Budget</label>
+                <Input
+                  type="number"
+                  value={form.budget}
+                  onChange={(e) => onChange("budget", e.target.value)}
+                  placeholder="e.g. 15000"
+                />
               </div>
             </div>
 

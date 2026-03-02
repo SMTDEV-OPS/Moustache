@@ -127,6 +127,7 @@ export interface Lead {
   budget?: number;    // New field
   bookingWindow?: string; // New field
   customerType?: string;  // New field
+  tags?: string[];
   checkInDate?: string;
   checkOutDate?: string;
   roomsRequested?: number;
@@ -179,9 +180,13 @@ export interface CreateLeadPayload {
   leadType: string;
   checkInDate?: string;
   checkOutDate?: string;
+  budget?: number;
+  bookingWindow?: string;
+  customerType?: string;
   roomsRequested?: number;
   guests?: LeadGuests;
   occasion?: string;
+  isFirstTimeGuest?: boolean;
   heatLevel?: HeatLevel;
   // Additional form fields
   alternateContact?: string;
@@ -230,6 +235,8 @@ export interface LeadCommunication {
   direction: string;
   disposition?: string;
   summary?: string;
+  messageContent?: string;
+  emailMessageId?: string;
   createdAt?: string;
   performedByUserId?: string;
 }

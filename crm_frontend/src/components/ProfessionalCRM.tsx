@@ -9,8 +9,13 @@ import { KnowledgeBaseMain } from "@/components/knowledge/KnowledgeBaseMain";
 import Dashboard from "@/components/Dashboard";
 import SalesExecutiveDashboard from "@/components/SalesExecutiveDashboard";
 import Reports from "@/components/Reports";
-import { RoleBuilder as RoleDefinition } from "@/pages/admin/RoleBuilder";
+import { ProfileBuilder } from "@/pages/admin/ProfileBuilder";
+import { RoleBuilder } from "@/pages/admin/RoleBuilder";
 import { UserManagement as UserRoleManagement } from "@/pages/admin/UserManagement";
+import { RolesManager } from "./settings/security/RolesManager";
+import { ProfilesManager } from "./settings/security/ProfilesManager";
+import { GroupsManager } from "./settings/security/GroupsManager";
+import { DataSharingManager } from "./settings/security/DataSharingManager";
 import { EmployeeGroupsManagement } from "@/components/EmployeeGroupsManagement";
 import { AccountManagement } from "@/components/AccountManagement";
 import { PropertyManagement } from "@/components/PropertyManagement";
@@ -30,6 +35,9 @@ import NotificationsPage from "@/components/NotificationsPage";
 import { BuddyManagement } from "@/components/BuddyManagement";
 import { TicketManagement } from "@/components/TicketManagement";
 import { IntegrationSettings } from "@/components/IntegrationSettings";
+import { SettingsDashboard } from "@/components/SettingsDashboard";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ProfessionalCRMProps {
   userRole: string;
@@ -216,9 +224,16 @@ export const ProfessionalCRM = ({
       case 'knowledge-properties':
       case 'knowledge-factsheets':
       case 'knowledge-templates':
-      case 'knowledge-resources':
-        return <KnowledgeBaseMain isAdmin={isAdmin} permissions={permissions} />;
-      case 'role-definition':
+      case 'settings':
+        return (
+          <SettingsDashboard
+            onViewChange={setActiveView}
+            isAdmin={!!isAdmin}
+            permissions={permissions || []}
+            userRole={userRole}
+          />
+        );
+      case 'security/roles':
         if (!canManageUsers) {
           return (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -226,25 +241,34 @@ export const ProfessionalCRM = ({
             </div>
           );
         }
-        return <RoleDefinition />;
-      case 'user-role-management':
+        return <RolesManager />;
+      case 'security/profiles':
         if (!canManageUsers) {
           return (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              You do not have permission to manage users.
+              You do not have permission to manage profiles.
             </div>
           );
         }
-        return <UserRoleManagement />;
-      case 'employee-groups':
+        return <ProfilesManager />;
+      case 'security/groups':
         if (!canManageUsers) {
           return (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              You do not have permission to manage employee groups.
+              You do not have permission to manage groups.
             </div>
           );
         }
-        return <EmployeeGroupsManagement />;
+        return <GroupsManager />;
+      case 'security/data-sharing':
+        if (!canManageUsers) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage data sharing.
+            </div>
+          );
+        }
+        return <DataSharingManager />;
       case 'account-management':
         if (!canManageAccounts) {
           return (
@@ -406,6 +430,13 @@ export const ProfessionalCRM = ({
     }
   };
 
+  const isSettingsView = [
+    'security/roles', 'security/profiles', 'security/groups', 'security/data-sharing',
+    'account-management', 'property-management',
+    'assignment-rules', 'workflow-management', 'message-templates',
+    'email-provider-settings', 'integration-settings'
+  ].includes(activeView);
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
@@ -424,6 +455,19 @@ export const ProfessionalCRM = ({
         <div className="flex-1 flex flex-col h-screen overflow-hidden">
           {/* Main Content */}
           <main className="flex-1 overflow-auto bg-background">
+            {isSettingsView && (
+              <div className="px-6 pt-6 -mb-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActiveView('settings')}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to Settings
+                </Button>
+              </div>
+            )}
             <div className="p-6">
               {renderContent()}
             </div>

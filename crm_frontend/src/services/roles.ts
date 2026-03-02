@@ -4,11 +4,7 @@ export interface Role {
   id: string;
   name: string;
   description?: string;
-  memberPermissions?: string[]; // Permissions for group members (users in groups mapped to this role)
-  ownerPermissions?: string[]; // Permissions for role owners (SPOCs)
-  ownerUserId?: string; // Legacy single owner
-  ownerUserIds?: string[]; // Multiple owners (SPOCs)
-  permissions?: string[]; // Legacy field - kept for backward compatibility
+  parentRoleId?: string | null;
   isSystemRole?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -23,21 +19,13 @@ export interface RoleUser {
 export interface CreateRolePayload {
   name: string;
   description?: string;
-  memberPermissions: string[]; // Permissions for group members (required)
-  ownerPermissions: string[]; // Permissions for role owners (required)
-  ownerUserId?: string; // Legacy - kept for backward compatibility
-  ownerUserIds?: string[]; // Multiple owners (SPOCs)
-  permissions?: string[]; // Legacy field - kept for backward compatibility
+  parentRoleId?: string | null;
 }
 
 export interface UpdateRolePayload {
   name?: string;
   description?: string;
-  memberPermissions?: string[]; // Permissions for group members
-  ownerPermissions?: string[]; // Permissions for role owners
-  ownerUserId?: string; // Legacy - kept for backward compatibility
-  ownerUserIds?: string[]; // Multiple owners (SPOCs)
-  permissions?: string[]; // Legacy field - kept for backward compatibility
+  parentRoleId?: string | null;
 }
 
 export const listRoles = async (): Promise<Role[]> => {

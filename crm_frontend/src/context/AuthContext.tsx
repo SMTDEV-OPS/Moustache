@@ -93,60 +93,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     /**
-     * Check permissions.
-     * Format: resource:action:scope
-     * Logic matches backend AccessControlService
+     * Check permissions (Zoho style: resource.action.scope)
      */
-    const can = (resource: string, action: string, scope?: string, dataContext?: any): boolean => {
+    const can = (permission: string): boolean => {
         if (!user) return false;
         if (user.isAdmin) return true;
-        if (user.permissions?.includes("*:*:*")) return true;
 
-        // Filter relevant permissions
-        const permissions = user.permissions || [];
-        const relevant = permissions.filter(p => {
-            const parts = p.split(":");
-            // parts[0] is resource, parts[1] is action
-            return parts[0] === resource && (parts[1] === action || parts[1] === "*");
-        });
+        const userPerms = user.permissions || [];
 
-        if (relevant.length === 0) return false;
+        // 1. Direct match
+        if (userPerms.includes(permission)) return true;
 
-        // Check scopes
-        for (const perm of relevant) {
-            const parts = perm.split(":");
-            const permScope = parts[2] || "global";
-
-            // precise match if scope arg is provided (e.g. checking if user has "team" access)
-            // OR if typical dataContext check is needed.
-            // Frontend "can" usually checks "Do I have ANY permission to view leads?" 
-            // OR "Can I view THIS lead?"
-
-            if (scope) {
-                // Strict check: User must have specific scope
-                if (permScope === scope || permScope === "global") return true;
-            } else if (dataContext) {
-                // Data context check
-                if (permScope === "global") return true;
-
-                if (permScope === "region") {
-                    // Check if dataContext.regionId is in user.regions (need to have regions in user object)
-                    // For now, simplistically:
-                    return true; // We might need to strictly validate, but frontend validation is soft.
-                    // Backend enforces hard validation.
-                }
-                if (permScope === "team") {
-                    if (dataContext.teamType && user.teamType === dataContext.teamType) return true;
-                }
-                if (permScope === "own") {
-                    if (dataContext.ownerId === user.id) return true;
-                    // Check subordinates (if we have usage)
-                }
-            } else {
-                // No scope/context requested -> "Does user have access generally?"
-                // If user has any permission (even 'own'), return true
-                return true;
-            }
+        // 2. Wildcard resource match (e.g. leads.manage -> leads.read)
+        const [resource] = permission.split(".");
+        if (resource && userPerms.includes(`${resource}.manage`)) {
+            return true;
         }
 
         return false;

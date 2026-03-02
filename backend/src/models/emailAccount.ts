@@ -34,6 +34,7 @@ export interface IEmailAccount extends Document {
   email: string;
   isActive: boolean;
   isPrimary: boolean;
+  isLeadCaptureEnabled: boolean; // TRUE for Company emails, FALSE for personal/agent emails
 
   // OAuth (Gmail/Outlook)
   oauth?: IOAuthCredentials;
@@ -113,6 +114,7 @@ const emailAccountSchema = new Schema<IEmailAccount>(
     email: { type: String, required: true, index: true },
     isActive: { type: Boolean, default: true, index: true },
     isPrimary: { type: Boolean, default: false },
+    isLeadCaptureEnabled: { type: Boolean, default: false },
     oauth: { type: oauthCredentialsSchema },
     smtp: { type: smtpConfigSchema },
     imap: { type: imapConfigSchema },

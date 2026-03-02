@@ -277,7 +277,7 @@ export const EmployeeGroupsManagement = () => {
         <div>
           <h2 className="text-xl font-semibold">Employee Groups</h2>
           <p className="text-sm text-muted-foreground">
-            Define employee groups (teams), manage their members, and map roles. 
+            Define employee groups (teams), manage their members, and map roles.
             When a role is mapped to a group, all group members automatically receive that role.
           </p>
         </div>
@@ -310,13 +310,11 @@ export const EmployeeGroupsManagement = () => {
               ) : (
                 <div className="space-y-2">
                   {groups.map((group) => (
-                    <button
+                    <div
                       key={group.id}
-                      type="button"
                       onClick={() => setSelectedGroupId(group.id)}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm flex items-center justify-between ${
-                        selectedGroupId === group.id ? "border-primary bg-primary/5" : "border-border"
-                      }`}
+                      className={`w-full rounded-md border px-3 py-2 text-left text-sm flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors ${selectedGroupId === group.id ? "border-primary bg-primary/5" : "border-border"
+                        }`}
                     >
                       <div>
                         <div className="font-medium">{group.name}</div>
@@ -352,7 +350,7 @@ export const EmployeeGroupsManagement = () => {
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -500,24 +498,6 @@ export const EmployeeGroupsManagement = () => {
                                     {role.description}
                                   </div>
                                 )}
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {((role.memberPermissions && role.memberPermissions.length > 0 
-                                    ? role.memberPermissions 
-                                    : role.permissions || []).slice(0, 3)).map((perm) => (
-                                    <Badge key={perm} variant="secondary" className="text-xs">
-                                      {perm}
-                                    </Badge>
-                                  ))}
-                                  {((role.memberPermissions && role.memberPermissions.length > 0 
-                                    ? role.memberPermissions 
-                                    : role.permissions || []).length > 3) && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      +{((role.memberPermissions && role.memberPermissions.length > 0 
-                                        ? role.memberPermissions 
-                                        : role.permissions || []).length - 3)} more
-                                    </Badge>
-                                  )}
-                                </div>
                               </div>
                             </div>
                           ))}
@@ -614,7 +594,7 @@ export const EmployeeGroupsManagement = () => {
                     <CardHeader>
                       <CardTitle>Roles for Group</CardTitle>
                       <CardDescription>
-                        Roles mapped to this group determine its permissions and accountability. 
+                        Roles mapped to this group determine its permissions and accountability.
                         All members of this group automatically receive these roles.
                       </CardDescription>
                     </CardHeader>

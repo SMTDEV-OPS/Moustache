@@ -85,6 +85,7 @@ async function runEmailSyncJob() {
     const activeAccounts = await EmailAccountModel.find({
       isActive: true,
       syncStatus: { $ne: "SYNCING" },
+      provider: { $ne: "SMTP_IMAP" }, // Skip IMAP accounts as they now use the real-time IDLE listener
     }).lean();
 
     for (const account of activeAccounts) {
@@ -147,11 +148,11 @@ async function runSMSFollowUpJob() {
         // Generate follow-up message
         const checkInDate = lead.checkInDate
           ? new Date(lead.checkInDate).toLocaleDateString("en-IN", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })
           : "your stay";
 
         const message = `Dear ${guest.name},\n\nThis is a friendly reminder about your upcoming reservation. Check-in: ${checkInDate}.\n\nPlease complete your payment to confirm your booking. If you have any questions, feel free to contact us.\n\nThank you!`;

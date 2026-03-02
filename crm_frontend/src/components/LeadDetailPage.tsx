@@ -968,6 +968,18 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                   {lead.createdAt ? format(new Date(lead.createdAt), "MM/dd/yyyy") : "—"}
                 </p>
               </div>
+              {lead.tags && lead.tags.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase mt-2 mb-1">Tags</p>
+                  <div className="flex flex-wrap gap-1">
+                    {lead.tags.map((tag, idx) => (
+                      <Badge key={idx} variant="secondary" className="text-[10px] bg-slate-100 text-slate-600 border-slate-200">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1029,44 +1041,56 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                   <div className="space-y-3">
                     {timelineItems
                       .filter((item) => {
-                        // Only show activities, filter out REMINDER_TRIGGERED and communications
+                        // Filter out REMINDER_TRIGGERED, but keep other activities and communications
                         if (item.type === "activity") {
                           const activity = item.data as LeadActivity;
                           return activity.type !== "REMINDER_TRIGGERED";
                         }
-                        // Don't show communications in activity log, only activities
-                        return false;
+                        return true;
                       })
                       .map((item, index) => {
                         const isActivity = item.type === "activity";
+                        const isCommunication = item.type === "communication" || item.type === "email";
+
                         const activity = isActivity ? (item.data as LeadActivity) : null;
+                        const comm = isCommunication ? (item.data as LeadCommunication) : null;
 
-                        if (!isActivity || !activity) return null;
+                        if (!activity && !comm) return null;
 
-                        const performedByName = getUserName(activity.performedByUserId, users);
+                        const performedByName = isActivity && activity
+                          ? getUserName(activity.performedByUserId, users)
+                          : isCommunication && comm
+                            ? getUserName(comm.performedByUserId, users)
+                            : "System";
 
                         return (
-                          <div key={(activity as any)._id || (activity as any).id || index} className="flex items-start gap-3 text-sm">
+                          <div key={item.timestamp + index} className="flex items-start gap-3 text-sm">
                             <div className="mt-0.5 flex-shrink-0">
-                              {getActivityIcon(activity.type)}
+                              {isActivity && activity ? getActivityIcon(activity.type) : null}
+                              {isCommunication && comm ? getCommunicationIcon(comm.channel) : null}
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="font-medium">
-                                {formatTimelineMessage(activity, users)}
+                                {isActivity && activity ? formatTimelineMessage(activity, users) : ""}
+                                {isCommunication && comm ? formatCommunicationMessage(comm, users) : ""}
                               </p>
-                              {activity.note && activity.type !== "NOTE" && (
+                              {isActivity && activity && activity.note && activity.type !== "NOTE" && (
                                 <p className="text-muted-foreground mt-1 text-sm">{activity.note}</p>
+                              )}
+                              {isCommunication && comm && comm.messageContent && (
+                                <p className="text-muted-foreground mt-1 text-sm line-clamp-3 overflow-hidden text-ellipsis bg-muted/30 p-2 rounded border border-muted/50 mt-2">
+                                  {comm.messageContent.replace(/<[^>]*>?/gm, ' ').substring(0, 150)}
+                                  {comm.messageContent.length > 150 ? "..." : ""}
+                                </p>
                               )}
                               <div className="flex items-center gap-2 mt-1">
                                 <p className="text-xs text-muted-foreground">
                                   {performedByName !== "System" && (
                                     <span className="font-medium text-slate-600">by {performedByName}</span>
                                   )}
-                                  {activity.performedAt && (
-                                    <span className={performedByName !== "System" ? "ml-2" : ""}>
-                                      {formatDistanceToNow(new Date(activity.performedAt), { addSuffix: true })}
-                                    </span>
-                                  )}
+                                  <span className={performedByName !== "System" ? "ml-2" : ""}>
+                                    {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+                                  </span>
                                 </p>
                               </div>
                             </div>

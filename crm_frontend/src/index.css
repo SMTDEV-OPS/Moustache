@@ -7,16 +7,16 @@
 /* LuxeLead Hotel CRM Design System */
 
 :root {
-    --font-heading: 'Playfair Display', serif;
-    --font-body: 'Manrope', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
-    
-    /* LuxeLead Color Palette */
-    --midnight-slate: #0F172A;
-    --royal-emerald: #059669;
-    --champagne-gold: #B45309;
-    --alabaster: #F8FAFC;
-    --pure-white: #FFFFFF;
+  --font-heading: 'Playfair Display', serif;
+  --font-body: 'Manrope', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* LuxeLead Color Palette */
+  --midnight-slate: #0F172A;
+  --royal-emerald: #059669;
+  --champagne-gold: #B45309;
+  --alabaster: #F8FAFC;
+  --pure-white: #FFFFFF;
 }
 
 @layer base {
@@ -32,7 +32,7 @@
 
     /* Emerald primary palette (LuxeLead) */
     --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%; 
+    --primary-foreground: 210 40% 98%;
     --primary-glow: 160 84% 45%;
     --primary-variant: 160 84% 35%;
 
@@ -64,7 +64,7 @@
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 214.3 31.8% 20%;
     --sidebar-ring: 160 84% 39%;
-    
+
     /* Semantic colors */
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
@@ -97,17 +97,23 @@
 
     /* Smooth transitions */
     --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    
+
     /* Typography scale */
     --font-sans: var(--font-body);
-    
+
     /* Spacing scale (4px base unit) */
-    --spacing-xs: 0.25rem;   /* 4px */
-    --spacing-sm: 0.5rem;    /* 8px */
-    --spacing-md: 1rem;      /* 16px */
-    --spacing-lg: 1.5rem;    /* 24px */
-    --spacing-xl: 2rem;      /* 32px */
-    --spacing-2xl: 3rem;     /* 48px */
+    --spacing-xs: 0.25rem;
+    /* 4px */
+    --spacing-sm: 0.5rem;
+    /* 8px */
+    --spacing-md: 1rem;
+    /* 16px */
+    --spacing-lg: 1.5rem;
+    /* 24px */
+    --spacing-xl: 2rem;
+    /* 32px */
+    --spacing-2xl: 3rem;
+    /* 48px */
   }
 
   .dark {
@@ -149,7 +155,7 @@
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 214.3 31.8% 20%;
     --sidebar-ring: 160 84% 39%;
-    
+
     /* Semantic colors for dark mode */
     --success: 142 71% 55%;
     --success-foreground: 0 0% 100%;
@@ -194,7 +200,12 @@
   }
 
   /* Typography improvements */
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-heading);
     @apply tracking-tight;
     line-height: 1.2;
@@ -216,7 +227,9 @@
     @apply text-lg;
   }
 
-  code, pre, .mono {
+  code,
+  pre,
+  .mono {
     font-family: var(--font-mono);
   }
 
@@ -236,67 +249,67 @@
   .text-balance {
     text-wrap: balance;
   }
-  
+
   /* Font utility classes */
   .font-heading {
     font-family: var(--font-heading);
   }
-  
+
   .font-body {
     font-family: var(--font-body);
   }
-  
+
   .font-mono {
     font-family: var(--font-mono);
   }
-  
+
   /* Label styling - uppercase tracking */
   .label-text {
     font-family: var(--font-body);
     @apply text-xs font-bold tracking-[0.2em] uppercase text-slate-500;
   }
-  
+
   /* Sidebar noise texture */
   .sidebar-texture {
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
   }
-  
+
   /* Glass effect for headers */
   .glass-header {
     @apply bg-white/80 backdrop-blur-md border-b border-white/20;
   }
-  
+
   /* Status colors */
   .status-hot {
     @apply text-rose-600 bg-rose-50 border-rose-200;
   }
-  
+
   .status-warm {
     @apply text-amber-600 bg-amber-50 border-amber-200;
   }
-  
+
   .status-cold {
     @apply text-slate-500 bg-slate-100 border-slate-200;
   }
-  
+
   /* Membership badges */
   .badge-gold {
     @apply bg-gradient-to-r from-amber-400 to-amber-600 text-white;
   }
-  
+
   .badge-platinum {
     @apply bg-gradient-to-r from-slate-400 to-slate-600 text-white;
   }
-  
+
   .badge-black {
     @apply bg-gradient-to-r from-slate-800 to-slate-950 text-white;
   }
-  
+
   /* Card hover effect */
   .card-hover {
     @apply transition-shadow duration-300 hover:shadow-md;
   }
-  
+
   /* Button press effect */
   .btn-press {
     @apply transition-all hover:-translate-y-0.5 active:translate-y-0;
@@ -323,9 +336,12 @@
 
 /* Animation for alerts */
 @keyframes pulse-alert {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.7;
   }

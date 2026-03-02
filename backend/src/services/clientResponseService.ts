@@ -11,8 +11,11 @@ import { logger } from "../config/logger";
  */
 export async function handleClientResponse(email: IEmailMessage): Promise<void> {
   try {
+    logger.info("[handleClientResponse] Fired for email", { id: email._id?.toString(), folder: email.folder, linked: email.linkedLeadId?.toString() });
+
     // Only process inbound emails (not in SENT folder) that are linked to a lead
     if (email.folder === "SENT" || !email.linkedLeadId) {
+      logger.info("[handleClientResponse] Skipping: Either SENT folder or missing linkedLeadId");
       return;
     }
 
@@ -25,21 +28,23 @@ export async function handleClientResponse(email: IEmailMessage): Promise<void> 
       return;
     }
 
+    logger.info(`[handleClientResponse] Found Lead ${lead.leadNumber}`);
+
     // Check if this is a reply to a sent email (has inReplyTo)
     const isReply = !!email.inReplyTo;
-    
+
     // Check if this is a response to a quotation by checking subject
-    const isQuotationResponse = email.subject?.toLowerCase().includes("quotation") || 
-                                email.subject?.toLowerCase().includes("quote");
+    const isQuotationResponse = email.subject?.toLowerCase().includes("quotation") ||
+      email.subject?.toLowerCase().includes("quote");
 
     // Determine response type
     let responseType = "Email";
     let responseNote = `Client responded via email: "${email.subject || "No subject"}"`;
-    
+
     if (isQuotationResponse) {
       responseType = "Quotation";
       responseNote = `Client responded to quotation: "${email.subject || "No subject"}"`;
-      
+
       // Try to find the quotation this might be responding to
       const quotations = await QuotationModel.find({
         leadId: lead._id,
@@ -47,7 +52,7 @@ export async function handleClientResponse(email: IEmailMessage): Promise<void> 
         .sort({ createdAt: -1 })
         .limit(1)
         .lean();
-      
+
       if (quotations.length > 0) {
         const latestQuote = quotations[0];
         responseNote = `Client responded to Quotation V${latestQuote.versionNumber}: "${email.subject || "No subject"}"`;
@@ -65,9 +70,12 @@ export async function handleClientResponse(email: IEmailMessage): Promise<void> 
     }).lean();
 
     if (existingActivity) {
+      logger.info("[handleClientResponse] Skipping: Activity already exists", { activityId: existingActivity._id.toString() });
       // Already processed this email
       return;
     }
+
+    logger.info("[handleClientResponse] Creating new LeadActivity");
 
     // Create activity log
     await LeadActivityModel.create({
@@ -76,6 +84,8 @@ export async function handleClientResponse(email: IEmailMessage): Promise<void> 
       note: `${responseNote}${email.snippet ? ` - ${email.snippet.substring(0, 100)}` : ""}`,
       performedAt: email.receivedAt || new Date(),
     });
+
+    logger.info(`[handleClientResponse] Checking notify assigned to userid: ${lead.assignedToUserId}`);
 
     // Notify assigned user if lead has an assignee
     if (lead.assignedToUserId) {

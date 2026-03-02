@@ -51,7 +51,7 @@ function sendOAuthCallback(res: any, isPopup: boolean, success: boolean, data: {
     const message = success
       ? { type: "OAUTH_SUCCESS", email: data.email, accountId: data.accountId }
       : { type: "OAUTH_ERROR", error: data.error, errorCode: data.errorCode };
-    
+
     return res.send(`
       <!DOCTYPE html>
       <html>
@@ -131,7 +131,7 @@ emailRouter.get("/accounts/connect/gmail/callback", async (req, res, next) => {
     logger.info("Gmail OAuth state verified", { userId });
 
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:4000/email/accounts/connect/gmail/callback";
-    
+
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -139,7 +139,7 @@ emailRouter.get("/accounts/connect/gmail/callback", async (req, res, next) => {
     );
 
     const { tokens } = await oauth2Client.getToken(code as string);
-    
+
     if (!tokens.access_token || !tokens.refresh_token) {
       return sendOAuthCallback(res, isPopup, false, { error: "Failed to obtain access tokens", errorCode: "TOKEN_FETCH_FAILED" });
     }
@@ -270,7 +270,7 @@ emailRouter.get("/accounts", async (req, res, next) => {
     }
 
     const accounts = await EmailAccountModel.find({ userId }).sort({ isPrimary: -1, createdAt: -1 }).lean();
-    
+
     // Don't expose sensitive data
     const sanitized = accounts.map((acc) => ({
       id: acc._id,
@@ -278,6 +278,7 @@ emailRouter.get("/accounts", async (req, res, next) => {
       email: acc.email,
       isActive: acc.isActive,
       isPrimary: acc.isPrimary,
+      isLeadCaptureEnabled: acc.isLeadCaptureEnabled ?? false,
       lastSyncAt: acc.lastSyncAt,
       syncStatus: acc.syncStatus,
       syncError: acc.syncError,
@@ -309,7 +310,7 @@ emailRouter.post("/accounts/connect/gmail", async (req, res, next) => {
     const usePopup = req.body?.popup === true;
     const baseRedirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:4000/email/accounts/connect/gmail/callback";
     const redirectUri = usePopup ? `${baseRedirectUri}?popup=true` : baseRedirectUri;
-    
+
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -479,6 +480,36 @@ emailRouter.delete("/accounts/:id", async (req, res, next) => {
   }
 });
 
+// PATCH /email/accounts/:id - Update email account settings
+const updateAccountSchema = z.object({
+  isLeadCaptureEnabled: z.boolean().optional(),
+});
+
+emailRouter.patch("/accounts/:id", async (req, res, next) => {
+  try {
+    const userId = (req as any).user?.id;
+    const accountId = req.params.id;
+    const parsed = updateAccountSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest("Invalid update payload");
+    }
+
+    const account = await EmailAccountModel.findOne({ _id: accountId, userId }).exec();
+    if (!account) {
+      throw notFound("Email account not found");
+    }
+
+    if (parsed.data.isLeadCaptureEnabled !== undefined) {
+      account.isLeadCaptureEnabled = parsed.data.isLeadCaptureEnabled;
+    }
+
+    await account.save();
+    res.json({ message: "Email account updated", account });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /email/accounts/:id/sync - Trigger manual sync
 emailRouter.post("/accounts/:id/sync", async (req, res, next) => {
   try {
@@ -491,10 +522,10 @@ emailRouter.post("/accounts/:id/sync", async (req, res, next) => {
     }
 
     const result = await syncEmails(accountId);
-    res.json({ 
-      syncedCount: result.syncedCount, 
+    res.json({
+      syncedCount: result.syncedCount,
       errorCode: result.errorCode,
-      message: `Synced ${result.syncedCount} emails` 
+      message: `Synced ${result.syncedCount} emails`
     });
   } catch (err) {
     const error = err as any;
@@ -693,8 +724,8 @@ emailRouter.post("/reply/:messageId", async (req, res, next) => {
 
     // Build reply
     const replyTo = originalMessage.from.email;
-    const subject = originalMessage.subject.startsWith("Re:") 
-      ? originalMessage.subject 
+    const subject = originalMessage.subject.startsWith("Re:")
+      ? originalMessage.subject
       : `Re: ${originalMessage.subject}`;
 
     const replyBody = parsed.data.bodyHtml || parsed.data.bodyText || "";
@@ -748,8 +779,8 @@ emailRouter.post("/forward/:messageId", async (req, res, next) => {
       throw notFound("Email account not found");
     }
 
-    const subject = originalMessage.subject.startsWith("Fwd:") 
-      ? originalMessage.subject 
+    const subject = originalMessage.subject.startsWith("Fwd:")
+      ? originalMessage.subject
       : `Fwd: ${originalMessage.subject}`;
 
     const forwardedBody = (parsed.data.bodyHtml || parsed.data.bodyText || "") +
@@ -920,9 +951,9 @@ emailRouter.patch("/settings/allowed-providers", requirePermissions(["email.mana
       { upsert: true, new: true, setDefaultsOnInsert: true }
     ).exec();
 
-    logger.info("Email allowed providers updated", { 
-      userId, 
-      allowedProviders: settings.allowedProviders 
+    logger.info("Email allowed providers updated", {
+      userId,
+      allowedProviders: settings.allowedProviders
     });
 
     res.json({

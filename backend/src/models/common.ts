@@ -167,6 +167,4 @@ export const LeadRef = { type: Schema.Types.ObjectId, ref: "Lead", index: true }
 export const AccountRef = { type: Schema.Types.ObjectId, ref: "Account", index: true };
 export const RegionRef = { type: Schema.Types.ObjectId, ref: "Region", index: true };
 export const TicketRef = { type: Schema.Types.ObjectId, ref: "Ticket", index: true };
-
-
-
+export const ProfileRef = { type: Schema.Types.ObjectId, ref: "Profile", index: true };

@@ -2,6 +2,7 @@ import { UserModel, IUser } from "../../models/user";
 import { RoleModel } from "../../models/role";
 import { UserRoleModel } from "../../models/userRole";
 import { EmployeeGroupModel } from "../../models/employeeGroup";
+import { IProfile } from "../../models/profile";
 import { logger } from "../../config/logger";
 import { AuthUser } from "../../middleware/auth";
 import { ObjectId } from "mongoose";
@@ -11,16 +12,17 @@ import { ObjectId } from "mongoose";
 
 export class AccessControlService {
     /**
-     * Parse a permission string into its components
+     * Parse a permission string into its components (Zoho dot notation)
      */
     static parsePermission(permission: string) {
-        const parts = permission.split(":");
+        // e.g. "leads.view.own" -> resource: leads, action: view, scope: own
+        // e.g. "leads.manage"  -> resource: leads, action: manage, scope: global
+        // e.g. "users.manage"  -> resource: users, action: manage, scope: global
+        const parts = permission.split(".");
         return {
             resource: parts[0],
             action: parts[1],
-            scope: parts[2] || "global", // Default to global if not specified? Or restrictive? 
-            // Actually, usually 3 parts are required for this new system.
-            // But for legacy support, we might see 2 parts.
+            scope: parts[2] || "global",
         };
     }
 
@@ -39,37 +41,38 @@ export class AccessControlService {
             [key: string]: any;
         }
     ): Promise<boolean> {
-        if (!user || !user.permissions) return false;
+        if (!user || (!user.permissions && !user.isAdmin)) return false;
 
         // 1. Super Admin Check
-        if (user.isAdmin || user.permissions.includes("*:*:*")) return true;
+        if (user.isAdmin || user.permissions?.includes("users.manage")) return true;
+
+        if (!user.permissions) return false;
 
         // 2. Check for matching permissions
-        // We look for permissions that match "resource:action:*"
+        // We look for permissions that match "resource.action" or "resource.manage"
         const relevantPermissions = user.permissions.filter(p => {
-            const parts = p.split(":");
-            // Handle wildcards if we want to support them, e.g. "leads:*:*"
-            // For now constant exact match on resource and action is safest
-            return parts[0] === resource && (parts[1] === action || parts[1] === "*");
+            const parsed = this.parsePermission(p);
+            return parsed.resource === resource && (parsed.action === action || parsed.action === "manage");
         });
 
         if (relevantPermissions.length === 0) return false;
 
-        // 3. Evaluate Scopes
+        // 3. Evaluate Scopes (If any permission grants access, return true)
         for (const perm of relevantPermissions) {
-            const { scope } = this.parsePermission(perm);
+            const { scope, action: permAction } = this.parsePermission(perm);
+
+            // "manage" action implicitly has global scope unless otherwise specified.
+            if (permAction === "manage" && scope === "global") {
+                return true;
+            }
 
             switch (scope) {
                 case "global":
+                case "all":
                     return true; // Global access allows everything
 
                 case "region":
                     if (!dataContext?.regionId) continue; // Cannot validate without context
-                    // Fetch user's regions if not in token (usually they should be in user object)
-                    // For now assuming we might need to fetch if complex, but let's assume valid comparison
-                    // TODO: Ensure user.regions is available.
-                    // For MVP, we'll assume we check against what's known.
-                    // Note: AccessControlService might need to fetch full User if AuthUser is slim.
                     const userRegions = await this.getUserRegions(user.id);
                     if (userRegions.map(r => r.toString()).includes(dataContext.regionId.toString())) {
                         return true;
@@ -85,7 +88,15 @@ export class AccessControlService {
                     break;
 
                 case "own":
+                    // If no data context is provided, we can only answer True 
+                    // if it's a structural check (e.g. Can I show the create button?)
+                    // For actual CRUD operations on specific rows, a context MUST be provided
+                    // For structural checks the frontend usually doesn't pass a dataContext
+                    if (!dataContext) {
+                        return true;
+                    }
                     if (!dataContext?.ownerId) continue;
+
                     // 1. Direct ownership
                     if (dataContext.ownerId.toString() === user.id) return true;
 
@@ -122,20 +133,21 @@ export class AccessControlService {
      * Returns array of User IDs.
      */
     static async getDescendants(managerId: string): Promise<string[]> {
-        // efficient query using hierarchyPath regex
-        // hierarchyPath format: /CEO_ID/VP_ID/MANAGER_ID/
-        // We look for paths that CONTAIN the managerId
+        // We look for direct reports, then recursively find their reports
+        const subordinates = await UserModel.find({ reportsTo: managerId }).select("_id").lean();
 
-        // Note: If hierarchyPath is implemented, we use it.
-        // Otherwise fallback to recursive graph lookup?
-        // Let's rely on hierarchyPath as per plan.
+        const descendantIds: string[] = [];
 
-        const managerPattern = new RegExp(`/${managerId}/`);
-        const subordinates = await UserModel.find({
-            hierarchyPath: managerPattern
-        }).select("_id").lean();
+        for (const subordinate of subordinates) {
+            const subordinateId = subordinate._id.toString();
+            descendantIds.push(subordinateId);
 
-        return subordinates.map(u => u._id.toString());
+            // Recursively find descendants of this subordinate
+            const subDescendants = await this.getDescendants(subordinateId);
+            descendantIds.push(...subDescendants);
+        }
+
+        return descendantIds;
     }
 
     /**
@@ -168,13 +180,12 @@ export class AccessControlService {
     }
 
     /**
-     * Calculate effective permissions for a user based on:
-     * 1. Explicit Role Assignments
-     * 2. Group Memberships
-     * 3. Owned Roles (SPOC)
+     * Calculate effective permissions for a user based on their Profile
+     * In the Zoho model, Profiles define feature access (what you can do).
      */
     static async getUserPermissions(userId: string | ObjectId): Promise<{ permissions: string[], isAdmin: boolean }> {
-        const user = await UserModel.findById(userId);
+        const user = await UserModel.findById(userId).populate<{ profileId: IProfile }>("profileId");
+
         if (!user || user.status !== "ACTIVE") {
             return { permissions: [], isAdmin: false };
         }
@@ -182,75 +193,56 @@ export class AccessControlService {
         let isAdmin = false;
         const permsSet = new Set<string>();
 
-        // 1. Explicit Role Assignments
-        const explicitAssignments = await UserRoleModel.find({ userId: user._id }).lean();
-        const explicitRoleIds = explicitAssignments.map((a) => a.roleId);
+        // New system: Check Profile
+        if (user.profileId) {
+            const profile = user.profileId;
 
-        // 2. Roles from Groups
-        const groups = await EmployeeGroupModel.find({
-            memberUserIds: user._id,
-            isActive: true,
-        }).lean();
-        const groupRoleIds = groups.flatMap((g) => g.roleIds ?? []);
+            console.log("DEBUG AccessControlService user profile:", profile.name);
 
-        // 3. Roles where user is an owner (SPOC)
-        const ownedRoles = await RoleModel.find({
-            $or: [
-                { ownerUserId: user._id },
-                { ownerUserIds: user._id },
-            ],
-        }).lean();
-
-        const ownerRoleIds = ownedRoles.map((r) => r._id);
-
-        // Combine standard roles (Explicit + Group)
-        let roleIds = [...explicitRoleIds, ...groupRoleIds];
-
-        // Fallback to legacy single roleId on user if no other roles
-        if (roleIds.length === 0 && user.roleId) {
-            roleIds = [user.roleId];
-        }
-
-        // Process Standard Roles
-        if (roleIds.length > 0) {
-            const uniqueIds = Array.from(new Set(roleIds.map((id) => id.toString())));
-            const roles = await RoleModel.find({ _id: { $in: uniqueIds } }).lean();
-
-            for (const role of roles) {
-                // Use memberPermissions if available, fallback to legacy
-                const memberPerms = role.permissions && role.permissions.length > 0
-                    ? role.permissions // New standard field
-                    : (role.memberPermissions && role.memberPermissions.length > 0
-                        ? role.memberPermissions
-                        : role.permissions ?? []); // Fallback
-
-                for (const p of memberPerms) {
+            // Handle legacy flat permissions array if it still exists before migration
+            if ((profile as any).permissions && Array.isArray((profile as any).permissions)) {
+                for (const p of (profile as any).permissions) {
                     permsSet.add(p);
                 }
+            }
 
-                if (role.name?.toLowerCase() === "admin" || role.isSystemRole) {
-                    isAdmin = true;
+            // New structured permissions: Module Permissions
+            if (profile.modulePermissions && Array.isArray(profile.modulePermissions)) {
+                for (const mp of profile.modulePermissions) {
+                    // Create legacy flat equivalents for backward compatibility in routing middleware
+                    if (mp.view) permsSet.add(`${mp.module}.read`);
+                    if (mp.create) permsSet.add(`${mp.module}.create`);
+                    if (mp.edit) permsSet.add(`${mp.module}.update`);
+                    if (mp.edit || mp.create) permsSet.add(`${mp.module}.write`);
+                    if (mp.delete) permsSet.add(`${mp.module}.delete`);
+
+                    // Specific edge-case: If they have everything, give them manage to be safe
+                    if (mp.view && mp.create && mp.edit && mp.delete) {
+                        permsSet.add(`${mp.module}.manage`);
+                    }
                 }
             }
-        }
 
-        // Process Owned Roles (Additional Owner Permissions)
-        // NOTE: In new system we prefer "Own" scope in standard permissions
-        // but for legacy we maintain this check.
-        for (const role of ownedRoles) {
-            const ownerPerms = role.ownerPermissions && role.ownerPermissions.length > 0
-                ? role.ownerPermissions
-                : [];
-
-            for (const p of ownerPerms) {
-                permsSet.add(p);
+            // New structured permissions: Setup Permissions
+            if (profile.setupPermissions && Array.isArray(profile.setupPermissions)) {
+                for (const sp of profile.setupPermissions) {
+                    if (sp.enabled) {
+                        permsSet.add(sp.key); // e.g., "users.manage", "roles.manage"
+                    }
+                }
             }
 
-            if (role.name?.toLowerCase() === "admin" || role.isSystemRole) {
+            if (profile.name?.toLowerCase() === "admin" || profile.isSystemProfile) {
                 isAdmin = true;
+                // Admins effectively have settings.manage
+                permsSet.add("settings.manage");
+                permsSet.add("users.manage");
             }
+        } else {
+            console.log("DEBUG AccessControlService user has no profileId", userId);
         }
 
+        console.log("DEBUG AccessControlService returning:", { isAdmin, permsCount: permsSet.size });
         return {
             permissions: Array.from(permsSet),
             isAdmin

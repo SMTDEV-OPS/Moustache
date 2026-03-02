@@ -1,36 +1,22 @@
 import { Schema, model, Document } from "mongoose";
-import { ObjectId, UserRef } from "./common";
-import { ALL_PERMISSIONS } from "../constants/permissions";
+import { ObjectId, UserRef, RoleRef } from "./common";
 
 export interface IRole extends Document {
   name: string;
-  permissions: string[]; // Main permissions array (Resource:Action:Scope)
-
-  // Legacy
-  memberPermissions?: string[];
-  ownerPermissions?: string[];
   description?: string;
-  ownerUserId?: ObjectId; // Legacy single owner - kept for backward compatibility
-  ownerUserIds?: ObjectId[]; // Multiple owners (SPOCs)
+  // Zoho Roles Architecture
+  parentRoleId?: ObjectId; // For Role Hierarchy structuring
+  shareDataWithPeers: boolean; // Zoho feature: Users in this role can see records of other users in this same role
   isSystemRole: boolean;
+  ownerUserIds?: ObjectId[];
 }
 
 const roleSchema = new Schema<IRole>(
   {
     name: { type: String, required: true, unique: true },
     description: { type: String },
-    // Standardized permissions array (Resource:Action:Scope)
-    permissions: [{
-      type: String,
-      required: true,
-      enum: ALL_PERMISSIONS
-    }],
-
-    // Deprecated / Legacy Support
-    memberPermissions: [{ type: String }],
-    ownerPermissions: [{ type: String }],
-    ownerUserId: UserRef,
-    ownerUserIds: [UserRef],
+    parentRoleId: RoleRef, // Points to the manager role above this one
+    shareDataWithPeers: { type: Boolean, default: false },
     isSystemRole: { type: Boolean, default: false },
   },
   { timestamps: true }

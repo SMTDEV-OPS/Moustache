@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { io, Socket } from "socket.io-client";
+import { getAuthToken, API_BASE_URL } from "@/services/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,10 +59,42 @@ export const EmailClient = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     void loadFolders();
-  }, []);
+
+    // Set up WebSocket for real-time inbox refresh
+    const token = getAuthToken();
+    if (token) {
+      const wsUrl = API_BASE_URL.replace(/^http/, "ws").replace(/\/api$/, "");
+      const socket = io(wsUrl, {
+        auth: { token },
+        transports: ["websocket", "polling"],
+        autoConnect: true,
+      });
+
+      socketRef.current = socket;
+
+      socket.on("EMAIL_RECEIVED", () => {
+        // Silently reload messages and folders so new emails drop right in!
+        void loadFolders();
+        void loadMessages();
+
+        toast({
+          title: "New Email Received",
+          description: "Your inbox just updated with a new message.",
+        });
+      });
+    }
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, []); // Run once on mount
 
   useEffect(() => {
     void loadMessages();
@@ -103,7 +137,7 @@ export const EmailClient = () => {
 
   const handleSelectMessage = async (message: EmailMessage) => {
     setSelectedMessage(message);
-    
+
     // Mark as read if unread
     if (!message.isRead) {
       try {
@@ -272,8 +306,8 @@ export const EmailClient = () => {
                   <span className="truncate">{folder.name}</span>
                 </div>
                 {folder.unreadCount > 0 && (
-                  <Badge 
-                    variant={selectedFolder === folder.id ? "secondary" : "default"} 
+                  <Badge
+                    variant={selectedFolder === folder.id ? "secondary" : "default"}
                     className="text-xs font-semibold min-w-[20px] justify-center"
                   >
                     {folder.unreadCount}
@@ -317,8 +351,8 @@ export const EmailClient = () => {
                   onClick={() => handleSelectMessage(message)}
                   className={`
                     p-4 cursor-pointer transition-all duration-200 border-l-4
-                    ${selectedMessage?.id === message.id 
-                      ? "bg-primary/5 border-l-primary" 
+                    ${selectedMessage?.id === message.id
+                      ? "bg-primary/5 border-l-primary"
                       : "border-l-transparent hover:bg-muted/50"
                     }
                     ${!message.isRead ? "bg-muted/30" : ""}
@@ -447,8 +481,8 @@ export const EmailClient = () => {
                         key={msg.id}
                         className={`
                           transition-all duration-200
-                          ${msg.id === selectedMessage.id 
-                            ? "ring-2 ring-primary border-primary shadow-sm" 
+                          ${msg.id === selectedMessage.id
+                            ? "ring-2 ring-primary border-primary shadow-sm"
                             : "hover:shadow-sm"
                           }
                         `}

@@ -7,6 +7,8 @@ import { logger } from "../../config/logger";
 import { LeadActivityModel, LeadActivityType } from "../../models/leadActivity";
 import { LeadModel } from "../../models/lead";
 import { GuestModel } from "../../models/guest";
+import { extractLeadDataWithLLM } from "../../services/llmService";
+import { createNotification, NotificationType } from "../../services/notificationService";
 
 export const publicWhatsappWebhooksRouter = Router();
 
@@ -32,17 +34,29 @@ publicWhatsappWebhooksRouter.post("/", async (req, res, next) => {
 
         const data = parsed.data;
 
+        // Optionally parse incoming message with LLM if there is rich text
+        let extractedData: any = {};
+        if (data.text && data.text.length > 5) {
+            extractedData = await extractLeadDataWithLLM(data.text, 'WHATSAPP');
+        }
+
         // We assume WATI waId is the normalized phone number
         let lead;
         try {
             lead = await createLead({
                 guestContact: {
-                    name: data.senderName || `WA Contact ${data.waId.slice(-4)}`,
+                    name: extractedData.name || data.senderName || `WA Contact ${data.waId.slice(-4)}`,
                     phone: data.waId,
                 },
                 source: LeadSource.WHATSAPP,
                 leadType: LeadType.STAY, // default
-                notes: `Generated from WhatsApp. Initial message: "${data.text || 'N/A'}"`,
+                checkInDate: extractedData.checkInDate ? new Date(extractedData.checkInDate) : undefined,
+                checkOutDate: extractedData.checkOutDate ? new Date(extractedData.checkOutDate) : undefined,
+                roomCategory: extractedData.roomCategory || undefined,
+                occasion: extractedData.occasion || undefined,
+                specialRequests: extractedData.specialRequests || undefined,
+                roomsRequested: extractedData.numberOfGuests ? Math.ceil(extractedData.numberOfGuests / 2) : undefined,
+                notes: `Generated from WhatsApp.\nExtracted via LLM: ${JSON.stringify(extractedData, null, 2)}\nInitial message: "${data.text || 'N/A'}"`,
                 assignmentMode: "auto"
             });
 
@@ -87,6 +101,25 @@ publicWhatsappWebhooksRouter.post("/", async (req, res, next) => {
                     text: data.text
                 }
             });
+
+            // Trigger notification
+            if (lead.assignedToUserId) {
+                const leadNumber = lead.leadNumber || lead._id.toString().substring(0, 8);
+                await createNotification({
+                    userId: lead.assignedToUserId.toString(),
+                    type: NotificationType.CLIENT_RESPONSE,
+                    title: "WhatsApp Message Received",
+                    message: `Lead ${leadNumber} has sent a WhatsApp message: "${(data.text || '').substring(0, 50)}..."`,
+                    metadata: {
+                        leadId: lead._id,
+                        leadNumber,
+                        waId: data.waId,
+                        messageId: data.messageId,
+                        responseType: "WhatsApp",
+                        text: data.text
+                    }
+                });
+            }
         }
 
         res.status(200).send("OK");

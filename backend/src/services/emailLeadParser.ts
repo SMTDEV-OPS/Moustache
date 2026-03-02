@@ -21,148 +21,13 @@ import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import { LeadModel } from "../models/lead";
 import { GuestModel } from "../models/guest";
 
+import { extractLeadDataWithLLM, ExtractedLeadInfo } from "./llmService";
+
 export interface ParsedEmailData {
     fromName: string | null;
     fromEmail: string | null;
     subject: string | null;
     body: string;
-}
-
-export interface ExtractedLeadInfo {
-    name?: string;
-    phone?: string;
-    email?: string;
-    checkInDate?: string;      // ISO date string e.g. "2025-06-15"
-    checkOutDate?: string;     // ISO date string e.g. "2025-06-18"
-    numberOfGuests?: number;
-    roomCategory?: string;
-    occasion?: string;
-    specialRequests?: string;
-    isHotelEnquiry: boolean;   // Whether the email is actually a hotel booking enquiry
-}
-
-/**
- * Use an LLM (Google Gemini via REST, no SDK needed) to extract
- * structured lead data from raw email text.
- */
-async function extractWithLLM(emailData: ParsedEmailData): Promise<ExtractedLeadInfo> {
-    const geminiApiKey = process.env.GEMINI_API_KEY;
-    const openAiApiKey = process.env.OPENAI_API_KEY;
-
-    const prompt = buildExtractionPrompt(emailData);
-
-    // Try Gemini first (free tier available), then fall back to OpenAI
-    if (geminiApiKey) {
-        return callGemini(prompt, geminiApiKey);
-    } else if (openAiApiKey) {
-        return callOpenAI(prompt, openAiApiKey);
-    } else {
-        logger.warn("[EmailLeadParser] No LLM API key configured. Falling back to basic extraction.");
-        return basicExtraction(emailData);
-    }
-}
-
-function buildExtractionPrompt(emailData: ParsedEmailData): string {
-    return `You are a hotel CRM assistant. Your job is to analyze hotel booking inquiry emails and extract structured information.
-
-Analyze the following email and extract lead information. Return ONLY valid JSON, no markdown, no explanation.
-
-Email From: ${emailData.fromName || "Unknown"} <${emailData.fromEmail || "unknown@email.com"}>
-Subject: ${emailData.subject || "(no subject)"}
-Body:
----
-${emailData.body.slice(0, 3000)}
----
-
-Return this exact JSON structure (use null for any field you cannot determine):
-{
-  "isHotelEnquiry": true or false,
-  "name": "Full name of the guest or null",
-  "phone": "Phone number with country code or null",
-  "email": "Email address or null",
-  "checkInDate": "YYYY-MM-DD format or null",
-  "checkOutDate": "YYYY-MM-DD format or null",
-  "numberOfGuests": integer or null,
-  "roomCategory": "e.g. Deluxe, Suite, Standard or null",
-  "occasion": "e.g. Anniversary, Birthday, Honeymoon or null",
-  "specialRequests": "Any special requests mentioned or null"
-}
-
-Only set isHotelEnquiry to true if this is clearly a hotel booking/stay/availability inquiry.
-If it is spam, promotional, or unrelated, set isHotelEnquiry to false.`;
-}
-
-async function callGemini(prompt: string, apiKey: string): Promise<ExtractedLeadInfo> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
-    const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 500,
-                responseMimeType: "application/json",
-            },
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json() as any;
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-    return JSON.parse(rawText) as ExtractedLeadInfo;
-}
-
-async function callOpenAI(prompt: string, apiKey: string): Promise<ExtractedLeadInfo> {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.1,
-            response_format: { type: "json_object" },
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json() as any;
-    const rawText = data?.choices?.[0]?.message?.content ?? "{}";
-    return JSON.parse(rawText) as ExtractedLeadInfo;
-}
-
-/**
- * Basic rule-based extraction fallback (no LLM).
- * Uses regex to detect phone numbers and dates.
- */
-function basicExtraction(emailData: ParsedEmailData): ExtractedLeadInfo {
-    const body = emailData.body.toLowerCase();
-
-    // If no hotel-related keywords → not an enquiry
-    const hotelKeywords = ["check-in", "check in", "booking", "room", "stay", "nights", "reservation", "hotel", "resort"];
-    const isHotelEnquiry = hotelKeywords.some((k) => body.includes(k));
-
-    const phoneMatch = emailData.body.match(/(\+?\d[\d\s\-().]{7,14}\d)/);
-    const dateMatch = emailData.body.match(/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/g);
-
-    return {
-        isHotelEnquiry,
-        name: emailData.fromName || undefined,
-        email: emailData.fromEmail || undefined,
-        phone: phoneMatch?.[0] ?? undefined,
-        checkInDate: dateMatch?.[0] ?? undefined,
-        checkOutDate: dateMatch?.[1] ?? undefined,
-    };
 }
 
 /**
@@ -181,8 +46,10 @@ export async function processInboundEmailForLeads(
             subject: emailData.subject,
         });
 
-        // 1. Extract structured data using LLM
-        const extracted = await extractWithLLM(emailData);
+        const fullText = `Email From: ${emailData.fromName || "Unknown"} <${emailData.fromEmail || "unknown@email.com"}>\nSubject: ${emailData.subject || "(no subject)"}\nBody:\n---\n${emailData.body}`;
+
+        // 1. Extract structured data using reusable LLM Service
+        const extracted = await extractLeadDataWithLLM(fullText, 'EMAIL');
 
         // 2. Skip if the LLM says this is NOT a hotel enquiry at all
         if (!extracted.isHotelEnquiry) {

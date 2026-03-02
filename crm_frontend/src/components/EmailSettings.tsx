@@ -45,6 +45,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { EmailSetupWizard } from "./EmailSetupWizard";
+import { updateEmailAccount } from "@/services/email";
 
 export const EmailSettings = () => {
   const { toast } = useToast();
@@ -57,6 +59,7 @@ export const EmailSettings = () => {
   const [syncStatus, setSyncStatus] = useState<Record<string, { status: "idle" | "syncing" | "error"; lastSync?: Date }>>({});
   const [testResult, setTestResult] = useState<TestSMTPResult | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
 
   // SMTP form state
   const [smtpForm, setSmtpForm] = useState<SMTPConfig>({
@@ -80,7 +83,7 @@ export const EmailSettings = () => {
   useEffect(() => {
     void loadAccounts();
     void loadAllowedProviders();
-    
+
     // Poll for sync status updates
     const interval = setInterval(() => {
       void loadAccounts();
@@ -94,7 +97,7 @@ export const EmailSettings = () => {
       setIsLoading(true);
       const list = await listEmailAccounts();
       setAccounts(list);
-      
+
       // Update sync status
       const statusMap: Record<string, { status: "idle" | "syncing" | "error"; lastSync?: Date }> = {};
       list.forEach((acc) => {
@@ -129,7 +132,7 @@ export const EmailSettings = () => {
     try {
       setIsConnecting(true);
       const result = await connectGmailWithPopup();
-      
+
       toast({
         title: "Success",
         description: `Gmail account ${result.email} connected successfully`,
@@ -150,7 +153,7 @@ export const EmailSettings = () => {
     try {
       setIsConnecting(true);
       const result = await connectOutlookWithPopup();
-      
+
       toast({
         title: "Success",
         description: `Outlook account ${result.email} connected successfully`,
@@ -175,7 +178,7 @@ export const EmailSettings = () => {
         imap: smtpForm.imap,
       });
       setTestResult(result);
-      
+
       if (result.smtp.success && result.imap.success) {
         toast({
           title: "Connection Test Successful",
@@ -277,7 +280,7 @@ export const EmailSettings = () => {
     try {
       setSyncingAccountId(accountId);
       const result = await syncEmailAccount(accountId);
-      
+
       if (result.errorCode) {
         const errorMessages: Record<string, string> = {
           TOKEN_EXPIRED: "Your email account token has expired. Please reconnect your account.",
@@ -287,7 +290,7 @@ export const EmailSettings = () => {
           INSUFFICIENT_PERMISSIONS: "Insufficient permissions. Please reconnect your account with proper permissions.",
           ACCOUNT_NOT_FOUND: "Email account not found or inactive.",
         };
-        
+
         toast({
           title: "Sync Error",
           description: errorMessages[result.errorCode] || `Failed to sync: ${result.errorCode}`,
@@ -311,11 +314,11 @@ export const EmailSettings = () => {
         INSUFFICIENT_PERMISSIONS: "Insufficient permissions. Please reconnect your account with proper permissions.",
         ACCOUNT_NOT_FOUND: "Email account not found or inactive.",
       };
-      
+
       toast({
         title: "Error",
-        description: errorCode && errorMessages[errorCode] 
-          ? errorMessages[errorCode] 
+        description: errorCode && errorMessages[errorCode]
+          ? errorMessages[errorCode]
           : err instanceof Error ? err.message : "Failed to sync emails",
         variant: "destructive",
       });
@@ -336,6 +339,23 @@ export const EmailSettings = () => {
       toast({
         title: "Error",
         description: err instanceof Error ? err.message : "Failed to set primary account",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggleLeadCapture = async (accountId: string, isLeadCaptureEnabled: boolean) => {
+    try {
+      await updateEmailAccount(accountId, { isLeadCaptureEnabled });
+      toast({
+        title: "Success",
+        description: `Lead capture ${isLeadCaptureEnabled ? 'enabled' : 'disabled'} for this account`,
+      });
+      void loadAccounts();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to update lead capture settings",
         variant: "destructive",
       });
     }
@@ -378,53 +398,19 @@ export const EmailSettings = () => {
       {/* Connect New Account */}
       <Card className="border shadow-sm">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg font-semibold">Connect Email Account</CardTitle>
+          <CardTitle className="text-lg font-semibold">Email Accounts</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-3">
-            {allowedProviders.includes("GMAIL") && (
-              <Button
-                onClick={handleConnectGmail}
-                disabled={isConnecting}
-                variant="outline"
-                className="h-10 px-4 font-medium"
-                size="default"
-              >
-                <Mail className="h-4 w-4 mr-2 text-red-500" />
-                Connect Gmail
-              </Button>
-            )}
-            {allowedProviders.includes("OUTLOOK") && (
-              <Button
-                onClick={handleConnectOutlook}
-                disabled={isConnecting}
-                variant="outline"
-                className="h-10 px-4 font-medium"
-                size="default"
-              >
-                <Mail className="h-4 w-4 mr-2 text-blue-500" />
-                Connect Outlook
-              </Button>
-            )}
-            {allowedProviders.includes("SMTP_IMAP") && (
-              <Button
-                onClick={() => setIsSMTPDialogOpen(true)}
-                disabled={isConnecting}
-                variant="outline"
-                className="h-10 px-4 font-medium"
-                size="default"
-              >
-                <Mail className="h-4 w-4 mr-2" />
-                Connect SMTP/IMAP
-              </Button>
-            )}
-            {allowedProviders.length === 0 && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <AlertCircle className="h-4 w-4" />
-                <p>No email providers are currently enabled. Please contact your administrator.</p>
-              </div>
-            )}
-          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Connect an inbox to sync emails directly into the CRM. You can configure shared company inboxes to automatically capture new leads.
+          </p>
+          <Button
+            onClick={() => setIsSetupWizardOpen(true)}
+            className="h-10 px-4 font-medium bg-[#0F172A] hover:bg-[#1e293b] text-white"
+          >
+            <Mail className="h-4 w-4 mr-2" />
+            Connect New Inbox
+          </Button>
         </CardContent>
       </Card>
 
@@ -436,7 +422,7 @@ export const EmailSettings = () => {
             <span className="text-sm text-muted-foreground">{accounts.length} account{accounts.length !== 1 ? 's' : ''}</span>
           )}
         </div>
-        
+
         {isLoading ? (
           <Card>
             <CardContent className="py-12 text-center">
@@ -485,6 +471,27 @@ export const EmailSettings = () => {
                             </>
                           )}
                         </div>
+
+                        {/* Lead Capture Toggle */}
+                        <div className="mt-4 flex items-center justify-between p-3 bg-muted/40 rounded-lg border">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-md ${account.isLeadCaptureEnabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                              <MailCheck className="h-5 w-5" />
+                            </div>
+                            <div className="space-y-0.5">
+                              <Label htmlFor={`capture-${account.id}`} className="text-sm font-medium">Automatic Lead Capture</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Extract leads automatically from unknown senders in this inbox.
+                              </p>
+                            </div>
+                          </div>
+                          <Switch
+                            id={`capture-${account.id}`}
+                            checked={account.isLeadCaptureEnabled}
+                            onCheckedChange={(checked) => handleToggleLeadCapture(account.id, checked)}
+                          />
+                        </div>
+
                         {account.syncError && (
                           <div className="mt-3 p-2 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -788,6 +795,15 @@ export const EmailSettings = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <EmailSetupWizard
+        open={isSetupWizardOpen}
+        onOpenChange={setIsSetupWizardOpen}
+        onComplete={() => {
+          setIsSetupWizardOpen(false);
+          void loadAccounts();
+        }}
+      />
     </div>
   );
 };

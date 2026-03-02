@@ -171,29 +171,12 @@ export function hasPermission(
   permission: string
 ): boolean {
   if (!user) return false;
+
+  // Super Admins override all
   if (user.isAdmin) return true;
 
   const userPerms = user.permissions ?? [];
-  if (userPerms.includes(permission)) {
-    return true;
-  }
-
-  // Wildcard / Super-permission check
-  // If user has `${resource}.manage`, they implicitly have all permissions for that resource.
-  // e.g., `leads.manage` grants `leads.read`, `leads.create`, `leads.delete`, etc.
-
-  if (permission.includes(".")) {
-    const [resourceStr] = permission.split(".");
-    const managePermission = `${resourceStr}.manage`;
-    if (userPerms.includes(managePermission)) {
-      return true;
-    }
-  }
-
-  // Fallback for any legacy special cases if needed, but the above generic check covers 
-  // leads.manage -> leads.* and tickets.manage -> tickets.*
-
-  return false;
+  return userPerms.includes(permission);
 }
 
 export function hasAnyPermission(

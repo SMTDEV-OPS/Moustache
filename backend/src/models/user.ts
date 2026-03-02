@@ -1,5 +1,5 @@
 import { Schema, model, Document } from "mongoose";
-import { ObjectId, TeamType, RegionRef, UserRef } from "./common";
+import { ObjectId, TeamType, RegionRef, UserRef, RoleRef, ProfileRef } from "./common";
 
 export interface IUser extends Document {
   name: string;
@@ -7,7 +7,8 @@ export interface IUser extends Document {
   phone?: string;
   teamType: TeamType;
   regions: ObjectId[];
-  roleId?: ObjectId;
+  roleId?: ObjectId;     // Now purely represents Org Hierarchy position
+  profileId?: ObjectId;  // Represents Feature Permissions (Actions)
   reportsTo?: ObjectId;
   hierarchyPath?: string;
   groupIds?: ObjectId[];
@@ -28,7 +29,8 @@ const userSchema = new Schema<IUser>(
     phone: { type: String },
     teamType: { type: String, enum: Object.values(TeamType), required: true },
     regions: [RegionRef],
-    roleId: { type: Schema.Types.ObjectId, ref: "Role" },
+    roleId: RoleRef,
+    profileId: ProfileRef,
     reportsTo: { type: Schema.Types.ObjectId, ref: "User", index: true },
     hierarchyPath: { type: String, index: true }, // Materialized path: /CEO_ID/VP_ID/MANAGER_ID/
     groupIds: [{ type: Schema.Types.ObjectId, ref: "EmployeeGroup", index: true }],
@@ -43,5 +45,3 @@ const userSchema = new Schema<IUser>(
 );
 
 export const UserModel = model<IUser>("User", userSchema);
-
-

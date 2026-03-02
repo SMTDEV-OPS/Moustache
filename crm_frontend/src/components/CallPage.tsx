@@ -24,7 +24,7 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
   const [isSearching, setIsSearching] = useState(false);
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [isCreatingLead, setIsCreatingLead] = useState(false);
-  
+
   // Lead form state
   const [leadFormData, setLeadFormData] = useState<Partial<CreateLeadPayload & { callStatus?: string }>>({
     guestContact: {
@@ -45,6 +45,9 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
     occasion: "",
     isFirstTimeGuest: false,
     callStatus: undefined,
+    customerType: "",
+    bookingWindow: "",
+    budget: undefined,
   });
 
   const { toast } = useToast();
@@ -74,7 +77,7 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
     try {
       const result = await searchGuestByPhone(phone);
       setSearchResult(result);
-      
+
       if (!result.guest) {
         // Guest not found, show lead form
         setShowLeadForm(true);
@@ -138,11 +141,14 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
         guests: leadFormData.guests,
         occasion: leadFormData.occasion,
         isFirstTimeGuest: leadFormData.isFirstTimeGuest || false,
+        customerType: leadFormData.customerType || undefined,
+        bookingWindow: leadFormData.bookingWindow || undefined,
+        budget: leadFormData.budget ? Number(leadFormData.budget) : undefined,
         assignmentMode: "auto",
       };
 
       const lead = await createLead(payload);
-      
+
       // Update call status if provided (separate call since it's not in create payload)
       if (leadFormData.callStatus) {
         try {
@@ -158,7 +164,7 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
           console.error("Failed to update call status:", error);
         }
       }
-      
+
       toast({
         title: "Lead created",
         description: `Lead ${lead.leadNumber} created successfully`,
@@ -436,6 +442,66 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Tag Dimensions (SOP 1.2, 1.3, 1.5 fields) */}
+              <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="customerType">Customer Type</Label>
+                  <Select
+                    value={leadFormData.customerType || ""}
+                    onValueChange={(value) =>
+                      setLeadFormData({ ...leadFormData, customerType: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="B2C">B2C</SelectItem>
+                      <SelectItem value="B2B">B2B</SelectItem>
+                      <SelectItem value="Corporate">Corporate</SelectItem>
+                      <SelectItem value="Influencer">Influencer</SelectItem>
+                      <SelectItem value="NRI">NRI</SelectItem>
+                      <SelectItem value="HNI">HNI</SelectItem>
+                      <SelectItem value="Reference">Reference</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="bookingWindow">Booking Window</Label>
+                  <Select
+                    value={leadFormData.bookingWindow || ""}
+                    onValueChange={(value) =>
+                      setLeadFormData({ ...leadFormData, bookingWindow: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select window" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Within 5 hrs">Within 5 hrs</SelectItem>
+                      <SelectItem value="Within 24 hrs">Within 24 hrs</SelectItem>
+                      <SelectItem value="Yet to decide final plan">Yet to decide final plan</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="budget">Auto-Tag Budget</Label>
+                  <Input
+                    id="budget"
+                    type="number"
+                    value={leadFormData.budget || ""}
+                    onChange={(e) =>
+                      setLeadFormData({
+                        ...leadFormData,
+                        budget: e.target.value ? Number(e.target.value) : undefined,
+                      })
+                    }
+                    placeholder="e.g. 15000"
+                  />
+                </div>
+              </div>
+
               <div>
                 <Label htmlFor="checkInDate">Check-in Date</Label>
                 <Input

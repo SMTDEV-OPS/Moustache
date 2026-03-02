@@ -38,46 +38,20 @@ type AccessUser = {
 };
 
 async function getTeamMemberIdsForRoleOwner(userId: string): Promise<string[]> {
-  // Check both legacy ownerUserId and new ownerUserIds array
-  // Role owners can see team leads if their ownerPermissions include leads.view.team or leads.manage
-  const ownedRoles = await RoleModel.find({
-    $and: [
-      {
-        $or: [
-          { ownerUserId: userId },
-          { ownerUserIds: userId },
-        ],
-      },
-      {
-        $or: [
-          { ownerPermissions: { $in: [PERMISSIONS.LEADS.MANAGE, PERMISSIONS.LEADS.READ_TEAM] } },
-          { permissions: { $in: [PERMISSIONS.LEADS.MANAGE, PERMISSIONS.LEADS.READ_TEAM] } }, // Legacy fallback
-        ],
-      },
-    ],
-  }).lean();
+  // New System: If a user has leads.read.team (or manage) profile permission,
+  // they can see leads of all users who report to them directly or indirectly.
 
-  if (!ownedRoles.length) {
+  // Note: the "leads.read.team" permission itself is checked in the auth middleware 
+  // or before calling this function. This function purely resolves the User IDs.
+
+  try {
+    const { AccessControlService } = await import("../services/auth/AccessControlService");
+    const descendantIds = await AccessControlService.getDescendants(userId);
+    return descendantIds;
+  } catch (error) {
+    console.error("Error fetching team member IDs:", error);
     return [];
   }
-
-  const roleIds = ownedRoles.map((r) => r._id);
-
-  const groups = await EmployeeGroupModel.find({
-    roleIds: { $in: roleIds },
-    isActive: true,
-  }).lean();
-
-  const memberIds = new Set<string>();
-  for (const g of groups) {
-    for (const m of g.memberUserIds ?? []) {
-      if (m) {
-        memberIds.add(m.toString());
-      }
-    }
-  }
-
-  return Array.from(memberIds);
 }
 
 async function assertLeadAccess(
@@ -85,31 +59,27 @@ async function assertLeadAccess(
   lead: { assignedToUserId?: any }
 ) {
   // Admins and users with full lead visibility can see any lead.
+  // Admins and users with full lead management can see any lead.
   if (
     user.isAdmin ||
-    hasPermission(user, PERMISSIONS.LEADS.MANAGE) ||
-    hasPermission(user, PERMISSIONS.LEADS.READ_ALL)
+    hasPermission(user, PERMISSIONS.LEADS.MANAGE)
   ) {
     return;
   }
 
-  // Directly assigned leads are always visible if the user has at least own-view rights.
-  if (
-    hasPermission(user, PERMISSIONS.LEADS.READ_OWN) &&
-    lead.assignedToUserId &&
-    lead.assignedToUserId.toString() === user.id
-  ) {
-    return;
-  }
+  // Use AccessControlService for scoped checks (own vs team)
+  const { AccessControlService } = await import(
+    "../services/auth/AccessControlService"
+  );
 
-  // Team leads – only for role owners mapped via employee groups.
-  if (hasPermission(user, PERMISSIONS.LEADS.READ_TEAM)) {
-    const teamMemberIds = await getTeamMemberIdsForRoleOwner(user.id);
-    const assigneeId = lead.assignedToUserId?.toString();
-    if (assigneeId && teamMemberIds.includes(assigneeId)) {
-      return;
-    }
-  }
+  const hasAccess = await AccessControlService.hasPermission(
+    user,
+    "leads",
+    "read",
+    { ownerId: lead.assignedToUserId }
+  );
+
+  if (hasAccess) return;
 
   throw forbidden("Insufficient permissions to access this lead");
 }
@@ -349,8 +319,11 @@ leadsRouter.get("/", async (req, res, next) => {
 
     // Determine effective scope based on request and permissions
     if (requestedScope === "team") {
+      // In the new model, "leads.read" generally allows reading subordinates' data.
+      // We accept requests for "team" if they have leads.read or leads.manage.
+      // (The actual data filter below enforces the hierarchy).
       if (
-        hasPermission(req.user, PERMISSIONS.LEADS.READ_TEAM) ||
+        hasPermission(req.user, PERMISSIONS.LEADS.READ) ||
         hasPermission(req.user, PERMISSIONS.LEADS.MANAGE) ||
         req.user.isAdmin
       ) {
@@ -359,9 +332,9 @@ leadsRouter.get("/", async (req, res, next) => {
         throw forbidden("Insufficient permissions for team leads");
       }
     } else if (requestedScope === "all") {
+      // Global read access requires admin or manage, or a specific profile configuration
       if (
         req.user.isAdmin ||
-        hasPermission(req.user, PERMISSIONS.LEADS.READ_ALL) ||
         hasPermission(req.user, PERMISSIONS.LEADS.MANAGE)
       ) {
         effectiveScope = "all";
@@ -369,18 +342,16 @@ leadsRouter.get("/", async (req, res, next) => {
         throw forbidden("Insufficient permissions for all leads");
       }
     } else {
-      // Default or explicit "own" - enforce strict own-leads-only access
+      // Default or explicit "own" 
       if (
         !(
-          hasPermission(req.user, PERMISSIONS.LEADS.READ_OWN) ||
+          hasPermission(req.user, PERMISSIONS.LEADS.READ) ||
           hasPermission(req.user, PERMISSIONS.LEADS.MANAGE) ||
           req.user.isAdmin
         )
       ) {
         throw forbidden("Insufficient permissions for own leads");
       }
-      // Even if user has leads.manage or leads.view.all, if they request "own" (or default),
-      // they should only see their own leads unless they explicitly request "all"
       effectiveScope = "own";
     }
 

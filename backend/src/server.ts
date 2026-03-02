@@ -5,6 +5,7 @@ import { app } from "./app";
 import { config } from "./config/env";
 import { logger } from "./config/logger";
 import { initializeWebSocket } from "./websocket";
+import { initializeImapListeners } from "./services/imapListener";
 import "./jobs/scheduler";
 
 // Global error handlers
@@ -46,6 +47,9 @@ async function start() {
     httpServer.listen(config.port, () => {
       logger.info(`MoustacheCRM API listening on port ${config.port}`);
       logger.info(`WebSocket server running on port ${config.port}`);
+
+      // Boot up the IMAP push-listener for any configured email accounts
+      initializeImapListeners().catch(logger.error);
     });
   } catch (err) {
     logger.error("Failed to start server", {

@@ -31,7 +31,7 @@ function getEmailProvider(account: IEmailAccount) {
 /**
  * Link email to lead/guest by email address and create communication record for inbound emails
  */
-async function linkEmailToCRM(email: Partial<IEmailMessage>) {
+export async function linkEmailToCRM(email: Partial<IEmailMessage>) {
   // Try to find guest by email
   const guestEmails = [
     email.from?.email,
@@ -379,9 +379,22 @@ export async function syncEmails(accountId: string): Promise<{ syncedCount: numb
             emailData._id = savedEmail._id;
             await linkEmailToCRM(emailData);
 
+            if (emailData.linkedLeadId) {
+              savedEmail.linkedLeadId = emailData.linkedLeadId as any;
+              savedEmail.linkedGuestId = emailData.linkedGuestId as any;
+              await EmailMessageModel.updateOne(
+                { _id: savedEmail._id },
+                { $set: { linkedLeadId: emailData.linkedLeadId, linkedGuestId: emailData.linkedGuestId } }
+              );
+            }
+
             // Check if this is a client response and handle it
             if (savedEmail.folder !== "SENT" && savedEmail.linkedLeadId) {
-              await handleClientResponse(savedEmail);
+              try {
+                await handleClientResponse(savedEmail);
+              } catch (e) {
+                logger.error("Failed to handle client response after linking", {}, e as Error);
+              }
             }
 
             // 🔥 NEW: Run LLM-based lead extraction for new INBOX emails

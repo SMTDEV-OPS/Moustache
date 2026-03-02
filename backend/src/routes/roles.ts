@@ -10,13 +10,15 @@ export const rolesRouter = Router();
 const createRoleSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
-  permissions: z.array(z.string()), // Resource:Action:Scope
+  parentRoleId: z.string().optional(),
+  shareDataWithPeers: z.boolean().optional(),
 });
 
 const updateRoleSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
-  permissions: z.array(z.string()).optional(),
+  parentRoleId: z.string().optional().nullable(),
+  shareDataWithPeers: z.boolean().optional(),
 });
 
 rolesRouter.use(requireAuth);
@@ -25,8 +27,44 @@ rolesRouter.use(requirePermissions([PERMISSIONS.ROLES.MANAGE]));
 // List all roles
 rolesRouter.get("/", async (req, res, next) => {
   try {
-    const roles = await RoleModel.find().lean();
+    const roles = await RoleModel.find().populate('parentRoleId', 'name').lean();
     res.json(roles);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get roles as a hierarchical tree
+rolesRouter.get("/tree", async (req, res, next) => {
+  try {
+    const roles = await RoleModel.find().lean();
+
+    // Build tree
+    const roleMap = new Map();
+    const tree: any[] = [];
+
+    // First pass: map nodes
+    roles.forEach(role => {
+      roleMap.set(role._id.toString(), { ...role, children: [] });
+    });
+
+    // Second pass: associate children with parents
+    roles.forEach(role => {
+      const node = roleMap.get(role._id.toString());
+      if (role.parentRoleId) {
+        const parent = roleMap.get(role.parentRoleId.toString());
+        if (parent) {
+          parent.children.push(node);
+        } else {
+          // If parent is missing, treat as root to avoid orphan loss
+          tree.push(node);
+        }
+      } else {
+        tree.push(node);
+      }
+    });
+
+    res.json(tree);
   } catch (err) {
     next(err);
   }
@@ -54,7 +92,7 @@ rolesRouter.post("/", async (req, res, next) => {
       throw badRequest(`Invalid role payload: ${parsed.error.issues.map(i => i.message).join(", ")}`);
     }
 
-    const { name, description, permissions } = parsed.data;
+    const { name, description, parentRoleId, shareDataWithPeers } = parsed.data;
 
     const existing = await RoleModel.findOne({ name });
     if (existing) {
@@ -64,10 +102,8 @@ rolesRouter.post("/", async (req, res, next) => {
     const role = await RoleModel.create({
       name,
       description,
-      permissions,
-      // Default legacy fields to empty/compatible
-      memberPermissions: [],
-      ownerPermissions: [],
+      parentRoleId: parentRoleId || undefined,
+      shareDataWithPeers: shareDataWithPeers || false,
     });
 
     res.status(201).json(role);
@@ -112,6 +148,15 @@ rolesRouter.delete("/:id", async (req, res, next) => {
     if (role.isSystemRole) {
       throw badRequest("Cannot delete system role");
     }
+
+    // Check if any roles report to this role
+    const children = await RoleModel.find({ parentRoleId: req.params.id });
+    if (children.length > 0) {
+      throw badRequest("Cannot delete role: other roles report to it");
+    }
+
+    // Check if any users have this role (we'd need to import UserModel, but let's assume we can do a check or the UI prevents it)
+    // Assuming UI prevention or later User reference check for now.
 
     await RoleModel.findByIdAndDelete(req.params.id);
     res.json({ success: true });

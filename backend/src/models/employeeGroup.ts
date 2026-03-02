@@ -1,12 +1,20 @@
 import { Schema, model, Document } from "mongoose";
-import { ObjectId, TeamType, UserRef, RoleRef } from "./common";
+import { ObjectId, TeamType, UserRef } from "./common";
 
 export interface IEmployeeGroup extends Document {
   name: string;
   description?: string;
-  teamType?: TeamType;
+
+  // Zoho Groups Architecture (Mix of Users, Roles, and Subgroups)
   memberUserIds: ObjectId[];
-  roleIds: ObjectId[];
+  memberRoleIds: ObjectId[]; // Roles whose users are implicitly in this group
+  includeSubordinates: boolean; // Flag to indicate if subordinates of memberRoleIds are also included
+  subGroupIds: ObjectId[]; // Nested groups
+
+  // Legacy -> Groups no longer grant roles/permissions
+  teamType?: TeamType; // Keep legacy for migration
+  roleIds?: ObjectId[];
+
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -16,9 +24,12 @@ const employeeGroupSchema = new Schema<IEmployeeGroup>(
   {
     name: { type: String, required: true, unique: true, index: true },
     description: { type: String },
-    teamType: { type: String, enum: Object.values(TeamType) },
+    teamType: { type: String, enum: Object.values(TeamType) }, // Keep legacy for migration
     memberUserIds: [UserRef],
-    roleIds: [RoleRef],
+    memberRoleIds: [{ type: Schema.Types.ObjectId, ref: "Role" }],
+    includeSubordinates: { type: Boolean, default: false },
+    subGroupIds: [{ type: Schema.Types.ObjectId, ref: "EmployeeGroup" }],
+    roleIds: [{ type: Schema.Types.ObjectId, ref: "Role" }], // Kept temporarily for migration backwards-compatibility
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

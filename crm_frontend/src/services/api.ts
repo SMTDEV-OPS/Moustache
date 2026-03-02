@@ -42,3 +42,39 @@ export const withAuthHeaders = (headers: HeadersInit = {}): HeadersInit => {
   };
 };
 
+// Global Fetch Interceptor to handle 401 Token Expired globally
+if (typeof window !== "undefined") {
+  const originalFetch = window.fetch;
+  window.fetch = async (...args) => {
+    const response = await originalFetch(...args);
+
+    if (response.status === 401) {
+      try {
+        const clone = response.clone();
+        const data = await clone.json();
+
+        // If backend explicitly says the token expired, force a logout
+        const errorCode = data?.code || data?.error?.code;
+        const errorMessage = data?.message || data?.error?.message;
+
+        if (errorCode === "TOKEN_EXPIRED" || errorMessage === "Token expired" || errorCode === "INVALID_TOKEN") {
+          console.warn("Auth token expired or invalid. Redirecting to login...");
+          setAuthToken(null);
+          // Optional: clear localStorage explicitly
+          window.localStorage.removeItem("authToken");
+          window.location.href = "/login?message=session_expired";
+        } else if (response.status === 401) {
+          // General 401 Unauthorized - also good practice to wipe token
+          setAuthToken(null);
+          window.localStorage.removeItem("authToken");
+          window.location.href = "/login?message=unauthorized";
+        }
+      } catch (e) {
+        // Response wasn't JSON, ignore
+      }
+    }
+
+    return response;
+  };
+}
+

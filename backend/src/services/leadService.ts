@@ -27,6 +27,7 @@ import {
 import { notifyLeadAssigned } from "./notificationService";
 import { initializeWorkflowForLead } from "./workflowExecutionService";
 import { logger } from "../config/logger";
+import { generateTagsForLead } from "./leadTaggingService";
 
 export type AssignmentMode = "auto" | "manual";
 
@@ -594,12 +595,25 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
   const calculatedScore = calculateLeadScore(initialLeadState);
   const calculatedHeatLevel = deriveHeatLevel({ ...initialLeadState, score: calculatedScore });
 
+  // Generate Tags
+  const loadedProperty = propertyId ? await PropertyModel.findById(propertyId).exec() : null;
+  const tagInputParams: Partial<ILead> = {
+    customerType: input.customerType,
+    checkInDate: input.checkInDate,
+    budget: input.budget,
+    estimatedValue: input.estimatedValue,
+    source: input.source,
+    bookingWindow: input.bookingWindow,
+  };
+  const autoTags = generateTagsForLead(tagInputParams, loadedProperty);
+
   const lead = await LeadModel.create({
     leadNumber,
     guestId,
     contactDetails,
     accountId,
     propertyId,
+    tags: autoTags,
     source: input.source,
     leadType: input.leadType,
     status: LeadStatus.NEW,

@@ -83,6 +83,7 @@ export interface ILead extends Document {
   pendingAmount?: number;
   lastSMSFollowUpAt?: Date;
   followUpCount: number; // Track number of follow-ups
+  tags?: string[];
 }
 
 const leadSchema = new Schema<ILead>(
@@ -165,6 +166,7 @@ const leadSchema = new Schema<ILead>(
     pendingAmount: Number,
     lastSMSFollowUpAt: Date,
     followUpCount: { type: Number, default: 0 },
+    tags: [{ type: String, index: true }],
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );

@@ -4,45 +4,55 @@ import bcrypt from "bcrypt";
 import { config } from "../src/config/env";
 import { logger } from "../src/config/logger";
 import { RoleModel } from "../src/models/role";
+import { ProfileModel } from "../src/models/profile";
 import { UserModel } from "../src/models/user";
-import { UserRoleModel } from "../src/models/userRole";
 import { TeamType } from "../src/models/common";
+import { ALL_PERMISSIONS } from "../src/constants/permissions";
 
 async function seed() {
   await mongoose.connect(config.mongoUri);
   logger.info("Connected to MongoDB for seeding");
 
-  const adminRoleName = "Admin";
+  const adminProfileName = "Admin";
+  const adminRoleName = "Admin Role";
   const adminEmail = "admin@moustachecrm.local";
   const adminPassword = "Admin@123";
 
-  const permissions = [
-    "users.manage",
-    "accounts.manage",
-    "properties.manage",
-    "regions.manage",
-    "workflows.manage",
-    "availability.upload",
-    "reports.view",
-  ];
+  // 1. Seed the Admin Profile (Feature Permissions)
+  let profile = await ProfileModel.findOne({ name: adminProfileName });
+  if (!profile) {
+    profile = await ProfileModel.create({
+      name: adminProfileName,
+      description: "System administrator profile with full permissions",
+      permissions: ALL_PERMISSIONS,
+      isSystemProfile: true,
+    });
+    logger.info("Created Admin Profile");
+  } else {
+    profile.permissions = ALL_PERMISSIONS;
+    profile.isSystemProfile = true;
+    await profile.save();
+    logger.info("Admin Profile already exists, updated permissions to ALL_PERMISSIONS");
+  }
 
+  // 2. Seed the Admin Role (Hierarchy / Data Access at the very top)
   let role = await RoleModel.findOne({ name: adminRoleName });
   if (!role) {
     role = await RoleModel.create({
       name: adminRoleName,
-      description: "System administrator role with full management permissions",
-      permissions,
+      description: "Root role in the hierarchy",
       isSystemRole: true,
+      parentRoleId: undefined, // Top of the hierarchy
     });
-    logger.info("Created Admin role");
+    logger.info("Created Admin Role");
   } else {
-    const updatedPermissions = Array.from(new Set([...(role.permissions ?? []), ...permissions]));
-    role.permissions = updatedPermissions;
-    role.isSystemRole = role.isSystemRole ?? true;
+    role.isSystemRole = true;
+    role.parentRoleId = undefined; // Ensure it stays at the top
     await role.save();
-    logger.info("Admin role already exists, updated permissions/flags if needed");
+    logger.info("Admin Role already exists, updated configuration");
   }
 
+  // 3. Seed the Admin User
   let user = await UserModel.findOne({ email: adminEmail });
   if (!user) {
     const passwordHash = await bcrypt.hash(adminPassword, 10);
@@ -52,6 +62,7 @@ async function seed() {
       phone: "",
       teamType: TeamType.OPERATIONS,
       regions: [],
+      profileId: profile._id,
       roleId: role._id,
       status: "ACTIVE",
       passwordHash,
@@ -59,25 +70,26 @@ async function seed() {
     logger.info("Created admin user", { email: adminEmail });
   } else {
     logger.info("Admin user already exists", { email: adminEmail });
-    if (!user.roleId) {
+    let updated = false;
+
+    // Ensure profile and role are correctly attached
+    if (!user.profileId || user.profileId.toString() !== profile._id.toString()) {
+      user.profileId = profile._id;
+      updated = true;
+    }
+    if (!user.roleId || user.roleId.toString() !== role._id.toString()) {
       user.roleId = role._id;
+      updated = true;
+    }
+
+    if (updated) {
       await user.save();
-      logger.info("Updated admin user with admin roleId");
+      logger.info("Updated admin user with new Profile and Role configurations");
     }
   }
 
-  await UserRoleModel.updateOne(
-    { userId: user._id, roleId: role._id },
-    {
-      $setOnInsert: {
-        userId: user._id,
-        roleId: role._id,
-        assignedBy: user._id,
-        assignedAt: new Date(),
-      },
-    },
-    { upsert: true }
-  );
+  // Clean up legacy UserRoleModel if necessary (not required but good for sanity)
+  // We dropped this pattern in Phase 1, but we can safely ignore it.
 
   logger.info("Seeding complete. You can log in with:", {
     email: adminEmail,
@@ -96,5 +108,3 @@ seed()
     console.error("Error seeding admin:", err);
     process.exit(1);
   });
-
-
