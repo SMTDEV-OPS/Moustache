@@ -22,7 +22,6 @@ export interface ITicket extends Document {
   accountId?: Types.ObjectId;
   propertyId?: Types.ObjectId;
   assignedToUserId?: Types.ObjectId;
-  assignedTeamType?: string;
   assignedRegionId?: Types.ObjectId;
   createdByUserId?: Types.ObjectId;
   resolvedAt?: Date;
@@ -58,7 +57,6 @@ const ticketSchema = new Schema<ITicket>(
     accountId: AccountRef,
     propertyId: PropertyRef,
     assignedToUserId: UserRef,
-    assignedTeamType: { type: String },
     assignedRegionId: RegionRef,
     createdByUserId: UserRef,
     resolvedAt: { type: Date },

@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { LeadType, LeadStatus, ObjectId, TeamType, LeadSource } from "../models/common";
+import { LeadType, LeadStatus, ObjectId, LeadSource } from "../models/common";
 import { LeadAssignmentRuleModel } from "../models/leadAssignmentRule";
 import { EmployeeGroupModel } from "../models/employeeGroup";
 import { UserModel } from "../models/user";
@@ -47,7 +47,6 @@ export async function getAssignmentRule(leadType: LeadType) {
  */
 export async function findEligibleUsers(
   groupId: Types.ObjectId | string,
-  requiredTeamType?: TeamType
 ): Promise<LeanUser[]> {
   const group = await EmployeeGroupModel.findById(groupId).lean();
   if (!group || !group.isActive) {
@@ -65,11 +64,6 @@ export async function findEligibleUsers(
     status: "ACTIVE",
     isOnline: true,
   };
-
-  if (requiredTeamType) {
-    query.teamType = requiredTeamType;
-  }
-
   const users = await UserModel.find(query)
     .select("_id name email isOnline teamType")
     .lean();
@@ -82,7 +76,6 @@ export async function findEligibleUsers(
  */
 export async function findAllGroupUsers(
   groupId: Types.ObjectId | string,
-  requiredTeamType?: TeamType
 ): Promise<LeanUser[]> {
   const group = await EmployeeGroupModel.findById(groupId).lean();
   if (!group || !group.isActive) {
@@ -98,11 +91,6 @@ export async function findAllGroupUsers(
     _id: { $in: memberIds },
     status: "ACTIVE",
   };
-
-  if (requiredTeamType) {
-    query.teamType = requiredTeamType;
-  }
-
   const users = await UserModel.find(query)
     .select("_id name email isOnline teamType")
     .lean();
@@ -173,30 +161,7 @@ export async function getUserWithLeastLeads(
 /**
  * Helper to determine team type based on LeadType and Source
  */
-function determineRequiredTeamType(leadType: LeadType, source?: LeadSource): TeamType {
-  // 1. Source-based overrides (Strongest signal for B2B)
-  if (source) {
-    if (
-      source === LeadSource.TRAVEL_AGENT ||
-      source === LeadSource.CORPORATE_OFFICE ||
-      source === LeadSource.EVENT_MICE
-    ) {
-      return TeamType.SALES;
-    }
-  }
 
-  // 2. LeadType-based routing
-  switch (leadType) {
-    case LeadType.MICE:
-    case LeadType.WEDDING:
-      return TeamType.SALES;
-    case LeadType.STAY:
-    case LeadType.DINING:
-    case LeadType.INFORMATION:
-    default:
-      return TeamType.RESERVATIONS;
-  }
-}
 
 /**
  * Auto-assign a lead based on lead type rules
@@ -215,14 +180,13 @@ export async function autoAssignLead(
     };
   }
 
-  const requiredTeamType = determineRequiredTeamType(leadType, source);
 
-  // Find eligible (online + active) users in the group, filtering by team type
-  let eligibleUsers = await findEligibleUsers(rule.employeeGroupId, requiredTeamType);
+
+  let eligibleUsers = await findEligibleUsers(rule.employeeGroupId);
 
   // If no online users, fall back to all active users in the group
   if (eligibleUsers.length === 0) {
-    eligibleUsers = await findAllGroupUsers(rule.employeeGroupId, requiredTeamType);
+    eligibleUsers = await findAllGroupUsers(rule.employeeGroupId);
 
     if (eligibleUsers.length === 0) {
       return {
@@ -277,8 +241,7 @@ export async function getEligibleUsersForManualAssignment(
     return [];
   }
 
-  const requiredTeamType = determineRequiredTeamType(leadType, source);
-  const users = await findAllGroupUsers(rule.employeeGroupId, requiredTeamType);
+  const users = await findAllGroupUsers(rule.employeeGroupId);
 
   if (users.length === 0) {
     return [];

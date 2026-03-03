@@ -103,9 +103,7 @@ export const EmployeeGroupsManagement = () => {
       if (editingGroup) {
         await updateGroup(editingGroup.id, {
           name: groupName.trim(),
-          description: groupDescription.trim() || undefined,
-          teamType: groupTeamType || undefined,
-        });
+          description: groupDescription.trim() || undefined,        });
         toast({
           title: "Success",
           description: "Group updated successfully",
@@ -113,9 +111,7 @@ export const EmployeeGroupsManagement = () => {
       } else {
         const group = await createGroup({
           name: groupName.trim(),
-          description: groupDescription.trim() || undefined,
-          teamType: groupTeamType || undefined,
-        });
+          description: groupDescription.trim() || undefined,        });
         setSelectedGroupId(group.id);
         toast({
           title: "Success",
@@ -142,9 +138,7 @@ export const EmployeeGroupsManagement = () => {
   const handleEditGroup = (group: Group) => {
     setEditingGroup(group);
     setGroupName(group.name);
-    setGroupDescription(group.description || "");
-    setGroupTeamType(group.teamType);
-    setSelectedGroupId(group.id);
+    setGroupDescription(group.description || "");    setSelectedGroupId(group.id);
   };
 
   const handleDeleteGroup = async (groupId: string) => {
@@ -324,7 +318,6 @@ export const EmployeeGroupsManagement = () => {
                           </div>
                         )}
                         <div className="mt-1 flex gap-2 text-xs text-muted-foreground">
-                          {group.teamType && <Badge variant="outline" className="text-xs">{group.teamType}</Badge>}
                           <span>{group.isActive ? "Active" : "Inactive"}</span>
                         </div>
                       </div>
@@ -457,15 +450,8 @@ export const EmployeeGroupsManagement = () => {
                           <Label className="text-sm font-semibold">Description</Label>
                           <p className="text-sm mt-1 text-muted-foreground">{selectedGroup.description}</p>
                         </div>
-                      )}
-                      {selectedGroup.teamType && (
-                        <div>
-                          <Label className="text-sm font-semibold">Team Type</Label>
-                          <div className="mt-1">
-                            <Badge variant="outline">{selectedGroup.teamType}</Badge>
-                          </div>
-                        </div>
-                      )}
+                      )}                          <div className="mt-1">
+                            <Badge variant="outline">                      )}
                     </CardContent>
                   </Card>
 

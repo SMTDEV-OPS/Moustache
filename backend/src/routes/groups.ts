@@ -13,7 +13,6 @@ groupsRouter.use(requireAuth, requirePermissions(["users.manage"]));
 const baseGroupSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
-  teamType: z.string().optional(), // Legacy
   isActive: z.boolean().optional(),
   memberUserIds: z.array(z.string()).optional(),
   memberRoleIds: z.array(z.string()).optional(),
@@ -38,11 +37,8 @@ const roleIdsSchema = z.object({
 
 groupsRouter.get("/", async (req, res, next) => {
   try {
-    const { teamType, isActive } = req.query;
+    const { isActive } = req.query;
     const filter: Record<string, unknown> = {};
-    if (teamType) {
-      filter.teamType = teamType;
-    }
     if (typeof isActive === "string") {
       filter.isActive = isActive === "true";
     }
@@ -72,7 +68,7 @@ groupsRouter.post("/", async (req, res, next) => {
       throw badRequest("Invalid group payload");
     }
 
-    const { name, description, teamType, isActive } = parsed.data;
+    const { name, description, isActive } = parsed.data;
 
     const existing = await EmployeeGroupModel.findOne({ name });
     if (existing) {
@@ -82,7 +78,6 @@ groupsRouter.post("/", async (req, res, next) => {
     const group = await EmployeeGroupModel.create({
       name,
       description,
-      teamType,
       memberUserIds: parsed.data.memberUserIds || [],
       memberRoleIds: parsed.data.memberRoleIds || [],
       includeSubordinates: parsed.data.includeSubordinates || false,

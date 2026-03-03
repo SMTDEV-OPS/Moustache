@@ -6,8 +6,7 @@ export interface Group {
   id: string;
   name: string;
   description?: string;
-  teamType?: string;
-  isActive: boolean;
+    isActive: boolean;
   memberUserIds?: string[];
   roleIds?: string[];
   createdAt?: string;
@@ -17,15 +16,13 @@ export interface Group {
 interface CreateGroupPayload {
   name: string;
   description?: string;
-  teamType?: string;
-  isActive?: boolean;
+    isActive?: boolean;
 }
 
 interface UpdateGroupPayload {
   name?: string;
   description?: string;
-  teamType?: string;
-  isActive?: boolean;
+    isActive?: boolean;
 }
 
 export const listGroups = async (): Promise<Group[]> => {

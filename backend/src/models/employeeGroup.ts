@@ -1,5 +1,5 @@
 import { Schema, model, Document } from "mongoose";
-import { ObjectId, TeamType, UserRef } from "./common";
+import { ObjectId, UserRef } from "./common";
 
 export interface IEmployeeGroup extends Document {
   name: string;
@@ -12,7 +12,6 @@ export interface IEmployeeGroup extends Document {
   subGroupIds: ObjectId[]; // Nested groups
 
   // Legacy -> Groups no longer grant roles/permissions
-  teamType?: TeamType; // Keep legacy for migration
   roleIds?: ObjectId[];
 
   isActive: boolean;
@@ -24,7 +23,6 @@ const employeeGroupSchema = new Schema<IEmployeeGroup>(
   {
     name: { type: String, required: true, unique: true, index: true },
     description: { type: String },
-    teamType: { type: String, enum: Object.values(TeamType) }, // Keep legacy for migration
     memberUserIds: [UserRef],
     memberRoleIds: [{ type: Schema.Types.ObjectId, ref: "Role" }],
     includeSubordinates: { type: Boolean, default: false },

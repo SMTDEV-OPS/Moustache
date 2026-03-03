@@ -2,16 +2,6 @@ import { Schema, Types } from "mongoose";
 
 export type ObjectId = Types.ObjectId;
 
-export enum TeamType {
-  RESERVATIONS = "RESERVATIONS",
-  SALES = "SALES",
-  OPERATIONS = "OPERATIONS",
-  MANAGEMENT = "MANAGEMENT",
-  CALL_CENTER = "CALL_CENTER",
-  PROPERTY = "PROPERTY",
-  HR = "HR",
-}
-
 export enum SunshineTier {
   GOLD = "GOLD",
   PLATINUM = "PLATINUM",

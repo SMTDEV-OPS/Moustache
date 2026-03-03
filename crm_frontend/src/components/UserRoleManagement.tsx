@@ -124,9 +124,7 @@ export const UserRoleManagement = () => {
       await createUser({
         name: `${firstName} ${lastName}`.trim() || email.trim(),
         email: email.trim(),
-        password,
-        teamType: "OPERATIONS",
-      });
+        password,      });
 
       toast({
         title: "Success",
@@ -417,11 +415,7 @@ export const UserRoleManagement = () => {
                               <CardHeader className="pb-3">
                                 <div className="flex items-center gap-2">
                                   <Building2 className="h-4 w-4 text-muted-foreground" />
-                                  <CardTitle className="text-base">{group.name}</CardTitle>
-                                  {group.teamType && (
-                                    <Badge variant="outline" className="text-xs">
-                                      {group.teamType}
-                                    </Badge>
+                                  <CardTitle className="text-base">{group.name}</CardTitle>                                    </Badge>
                                   )}
                                 </div>
                                 {group.description && (

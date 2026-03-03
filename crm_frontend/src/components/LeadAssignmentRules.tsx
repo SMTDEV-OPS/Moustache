@@ -280,11 +280,7 @@ export function LeadAssignmentRules() {
                         </span>
                         {typeof rule.employeeGroupId === "object" &&
                           rule.employeeGroupId.teamType && (
-                            <span className="text-xs text-muted-foreground">
-                              {rule.employeeGroupId.teamType}
-                            </span>
-                          )}
-                      </div>
+                            <span className="text-xs text-muted-foreground">                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -372,11 +368,7 @@ export function LeadAssignmentRules() {
                   {groups.map((group) => (
                     <SelectItem key={group.id} value={group.id}>
                       <div className="flex flex-col">
-                        <span>{group.name}</span>
-                        {group.teamType && (
-                          <span className="text-xs text-muted-foreground">
-                            {group.teamType}
-                          </span>
+                        <span>{group.name}</span>                          </span>
                         )}
                       </div>
                     </SelectItem>

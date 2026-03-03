@@ -7,7 +7,6 @@ interface User {
     id: string;
     name: string;
     email: string;
-    teamType: string;
     roleId?: string;
     isAdmin?: boolean;
     permissions?: string[];

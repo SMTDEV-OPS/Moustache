@@ -88,6 +88,13 @@ export function SettingsDashboard({
             icon: <Building2 className="h-5 w-5 text-purple-600" />,
             items: [
                 {
+                    title: "Users",
+                    description: "Create and manage CRM users, roles, and reporting structure.",
+                    url: "user-management",
+                    icon: <UserPlus className="h-4 w-4" />,
+                    requiredPermission: canManageUsers ? 'true' : 'false'
+                },
+                {
                     title: "Account Management",
                     description: "Manage B2B and agent accounts.",
                     url: "account-management",
@@ -108,8 +115,8 @@ export function SettingsDashboard({
             icon: <Workflow className="h-5 w-5 text-green-600" />,
             items: [
                 {
-                    title: "Lead Assignment Rules",
-                    description: "Configure automatic lead assignment.",
+                    title: "Assignment Rules",
+                    description: "Configure automatic module-based assignments.",
                     url: "assignment-rules",
                     icon: <GitBranch className="h-4 w-4" />,
                     requiredPermission: canManageLeads ? 'true' : 'false'

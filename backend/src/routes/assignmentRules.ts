@@ -35,7 +35,6 @@ assignmentRulesRouter.get("/", async (req, res, next) => {
     }
 
     const rules = await LeadAssignmentRuleModel.find(filter)
-      .populate("employeeGroupId", "name description teamType isActive")
       .sort({ priority: -1, leadType: 1 })
       .lean();
 
@@ -49,7 +48,6 @@ assignmentRulesRouter.get("/", async (req, res, next) => {
 assignmentRulesRouter.get("/:id", async (req, res, next) => {
   try {
     const rule = await LeadAssignmentRuleModel.findById(req.params.id)
-      .populate("employeeGroupId", "name description teamType isActive")
       .lean();
 
     if (!rule) {
@@ -74,7 +72,6 @@ assignmentRulesRouter.get("/by-lead-type/:leadType", async (req, res, next) => {
     const rule = await LeadAssignmentRuleModel.findOne({
       leadType: leadType as LeadType,
     })
-      .populate("employeeGroupId", "name description teamType isActive")
       .lean();
 
     if (!rule) {
@@ -119,7 +116,6 @@ assignmentRulesRouter.post("/", async (req, res, next) => {
     });
 
     const populatedRule = await LeadAssignmentRuleModel.findById(rule._id)
-      .populate("employeeGroupId", "name description teamType isActive")
       .lean();
 
     res.status(201).json(populatedRule);
@@ -151,7 +147,6 @@ assignmentRulesRouter.put("/:id", async (req, res, next) => {
       { $set: updates },
       { new: true }
     )
-      .populate("employeeGroupId", "name description teamType isActive")
       .lean();
 
     if (!rule) {

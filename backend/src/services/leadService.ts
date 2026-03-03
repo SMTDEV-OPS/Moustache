@@ -14,7 +14,6 @@ import {
   LeadStatus,
   LeadStage,
   LeadType,
-  TeamType,
   TicketPriority,
   TicketStatus,
 } from "../models/common";
@@ -72,7 +71,6 @@ export interface CreateLeadInput {
 
 export interface AutoAssignResult {
   assignedToUserId?: Types.ObjectId;
-  assignedTeamType?: TeamType;
   employeeGroupId?: Types.ObjectId;
   assignmentMethod: "auto" | "manual" | "legacy" | "none";
   wasRedirectedToBuddy?: boolean;
@@ -179,16 +177,7 @@ async function scheduleFollowUps(lead: ILead) {
   }
 }
 
-function determineTeamType(source: LeadSource): TeamType {
-  switch (source) {
-    case LeadSource.TRAVEL_AGENT:
-    case LeadSource.CORPORATE_OFFICE:
-    case LeadSource.EVENT_MICE:
-      return TeamType.SALES;
-    default:
-      return TeamType.RESERVATIONS;
-  }
-}
+
 
 /**
  * Legacy auto-assignment (fallback when no rules are configured)
@@ -197,8 +186,6 @@ async function legacyAutoAssignLead(
   leadType: LeadType,
   source: LeadSource
 ): Promise<AutoAssignResult> {
-  const teamType = determineTeamType(source);
-
   // Special case: weddings – try to assign to Nancy.
   if (leadType === LeadType.WEDDING) {
     const nancy = await UserModel.findOne({
@@ -211,36 +198,15 @@ async function legacyAutoAssignLead(
       const buddyResolution = await resolveAssigneeWithBuddy(nancy._id);
 
       return {
-        assignedToUserId: buddyResolution.finalUserId,
-        assignedTeamType: nancy.teamType,
-        assignmentMethod: "legacy",
+        assignedToUserId: buddyResolution.finalUserId, assignmentMethod: "legacy",
       };
     }
   }
 
-  const user = await UserModel.findOne({
-    teamType,
-    status: "ACTIVE",
-  }).exec();
-
-  if (!user) {
-    return {
-      assignedToUserId: undefined,
-      assignedTeamType: teamType,
-      assignmentMethod: "none",
-    };
-  }
-
-  // Check for active buddy assignment
-  const { resolveAssigneeWithBuddy } = await import("./assignmentService");
-  const buddyResolution = await resolveAssigneeWithBuddy(user._id);
-
+  // Legacy team-based lookup removed — use AssignmentRulesV2 engine instead
   return {
-    assignedToUserId: buddyResolution.finalUserId,
-    assignedTeamType: user.teamType,
-    assignmentMethod: "legacy",
-    wasRedirectedToBuddy: buddyResolution.wasRedirected,
-    originalAssigneeId: buddyResolution.wasRedirected ? user._id : undefined,
+    assignedToUserId: undefined,
+    assignmentMethod: "none",
   };
 }
 
@@ -268,7 +234,6 @@ async function performAssignment(
         userName: user.name,
         userEmail: user.email,
         userStatus: user.status,
-        teamType: user.teamType,
       });
 
       const groupId = await getEmployeeGroupIdForLeadType(leadType);
@@ -300,9 +265,7 @@ async function performAssignment(
       });
 
       return {
-        assignedToUserId: buddyResolution.finalUserId,
-        assignedTeamType: user.teamType,
-        employeeGroupId: groupId ?? undefined,
+        assignedToUserId: buddyResolution.finalUserId, employeeGroupId: groupId ?? undefined,
         assignmentMethod: "manual",
         wasRedirectedToBuddy: buddyResolution.wasRedirected,
         originalAssigneeId: buddyResolution.wasRedirected ? user._id : undefined,
@@ -320,9 +283,7 @@ async function performAssignment(
   if (ruleResult.assignmentMethod === "auto" && ruleResult.assignedToUserId) {
     const user = await UserModel.findById(ruleResult.assignedToUserId).exec();
     return {
-      assignedToUserId: ruleResult.assignedToUserId,
-      assignedTeamType: user?.teamType,
-      employeeGroupId: ruleResult.employeeGroupId,
+      assignedToUserId: ruleResult.assignedToUserId, employeeGroupId: ruleResult.employeeGroupId,
       assignmentMethod: "auto",
       wasRedirectedToBuddy: ruleResult.wasRedirectedToBuddy,
       originalAssigneeId: ruleResult.originalAssigneeId,
@@ -629,9 +590,7 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     guests: input.guests,
     occasion: input.occasion,
     isFirstTimeGuest,
-    assignedToUserId: assignment.assignedToUserId,
-    assignedTeamType: assignment.assignedTeamType,
-    leadAssignedAt: assignment.assignedToUserId ? new Date() : undefined,
+    assignedToUserId: assignment.assignedToUserId, leadAssignedAt: assignment.assignedToUserId ? new Date() : undefined,
     // Additional form fields
     alternateContact: input.alternateContact,
     occupation: input.occupation,

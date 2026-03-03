@@ -4,7 +4,6 @@ import { z } from "zod";
 import { UserModel } from "../models/user";
 import { UserRoleModel } from "../models/userRole";
 import { RoleModel } from "../models/role";
-import { TeamType } from "../models/common";
 import { requireAuth, requirePermissions } from "../middleware/auth";
 import { badRequest, forbidden, notFound, unauthorized } from "../utils/httpError";
 import { AccessControlService } from "../services/auth/AccessControlService";
@@ -17,7 +16,6 @@ const createUserSchema = z.object({
   email: z.string().email(),
   phone: z.string().nullish(),
   password: z.string().min(6),
-  teamType: z.nativeEnum(TeamType),
   regions: z.array(z.string()).nullish(),
   roleId: z.string().nullish(),
   reportsTo: z.string().nullish(), // ID of the manager
@@ -27,7 +25,6 @@ const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
   phone: z.string().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
-  teamType: z.nativeEnum(TeamType).optional(),
   regions: z.array(z.string()).optional(),
   roleId: z.string().optional(),
   password: z.string().min(6).optional(),
@@ -42,7 +39,6 @@ usersRouter.get("/hierarchy", async (req, res, next) => {
   try {
     // Fetch all active users
     const users = await UserModel.find({ status: "ACTIVE" })
-      .select("name email roleId reportsTo hierarchyPath teamType pfp")
       .lean();
 
     // Construct tree in memory? Or just return flat list with reportsTo?
@@ -55,9 +51,8 @@ usersRouter.get("/hierarchy", async (req, res, next) => {
 
 usersRouter.get("/", async (req, res, next) => {
   try {
-    const { teamType, regionId, status } = req.query;
+    const { status, regionId } = req.query;
     const filter: Record<string, unknown> = {};
-    if (teamType) filter.teamType = teamType;
     if (status) filter.status = status;
     if (regionId) filter.regions = regionId;
 
@@ -121,7 +116,7 @@ usersRouter.post(
         console.error("User Validation Error:", JSON.stringify(parsed.error.format(), null, 2));
         throw badRequest(`VALIDATION FAILED: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(", ")}`);
       }
-      const { name, email, phone, password, teamType, regions, roleId, reportsTo } =
+      const { name, email, phone, regions, roleId, password, reportsTo } =
         parsed.data;
 
       const existing = await UserModel.findOne({ email });
@@ -136,7 +131,6 @@ usersRouter.post(
         name,
         email,
         phone,
-        teamType,
         regions,
         roleId,
         passwordHash,
@@ -155,7 +149,6 @@ usersRouter.post(
         id: user.id,
         name: user.name,
         email: user.email,
-        teamType: user.teamType,
         roleId: user.roleId,
         reportsTo: user.reportsTo,
         hierarchyPath: user.hierarchyPath,

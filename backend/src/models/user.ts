@@ -1,11 +1,10 @@
 import { Schema, model, Document } from "mongoose";
-import { ObjectId, TeamType, RegionRef, UserRef, RoleRef, ProfileRef } from "./common";
+import { ObjectId, RegionRef, UserRef, RoleRef, ProfileRef } from "./common";
 
 export interface IUser extends Document {
   name: string;
   email: string;
   phone?: string;
-  teamType: TeamType;
   regions: ObjectId[];
   roleId?: ObjectId;     // Now purely represents Org Hierarchy position
   profileId?: ObjectId;  // Represents Feature Permissions (Actions)
@@ -27,7 +26,6 @@ const userSchema = new Schema<IUser>(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true, index: true },
     phone: { type: String },
-    teamType: { type: String, enum: Object.values(TeamType), required: true },
     regions: [RegionRef],
     roleId: RoleRef,
     profileId: ProfileRef,

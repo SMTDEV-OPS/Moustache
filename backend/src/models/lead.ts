@@ -57,7 +57,6 @@ export interface ILead extends Document {
   occasion?: string;
   isFirstTimeGuest: boolean;
   assignedToUserId?: Types.ObjectId;
-  assignedTeamType?: string;
   assignedRegionId?: Types.ObjectId;
   createdAt: Date;
   leadAssignedAt?: Date;
@@ -135,7 +134,6 @@ const leadSchema = new Schema<ILead>(
     occasion: String,
     isFirstTimeGuest: { type: Boolean, default: false },
     assignedToUserId: UserRef,
-    assignedTeamType: { type: String },
     assignedRegionId: RegionRef,
     leadAssignedAt: { type: Date },
     firstResponseAt: { type: Date },

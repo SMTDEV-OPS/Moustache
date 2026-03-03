@@ -5,7 +5,6 @@ import {
   TicketCategory,
   TicketPriority,
   TicketStatus,
-  TeamType,
 } from "../models/common";
 import { TicketActivityModel, TicketActivityType } from "../models/ticketActivity";
 import { logger } from "../config/logger";
@@ -28,7 +27,6 @@ export interface CreateTicketInput {
 
 export interface AutoAssignResult {
   assignedToUserId?: Types.ObjectId;
-  assignedTeamType?: TeamType;
   assignmentMethod: "auto" | "manual" | "none";
   wasRedirectedToBuddy?: boolean;
   originalAssigneeId?: Types.ObjectId;
@@ -38,9 +36,7 @@ export interface AutoAssignResult {
  * Simple auto-assignment - assigns to first available OPERATIONS team member
  */
 async function autoAssignTicket(): Promise<AutoAssignResult> {
-  const user = await UserModel.findOne({
-    teamType: TeamType.OPERATIONS,
-    status: "ACTIVE",
+  const user = await UserModel.findOne({    status: "ACTIVE",
   }).exec();
 
   if (!user) {
@@ -51,9 +47,7 @@ async function autoAssignTicket(): Promise<AutoAssignResult> {
 
     if (!fallbackUser) {
       return {
-        assignedToUserId: undefined,
-        assignedTeamType: TeamType.OPERATIONS,
-        assignmentMethod: "none",
+        assignedToUserId: undefined,        assignmentMethod: "none",
       };
     }
 
@@ -62,9 +56,7 @@ async function autoAssignTicket(): Promise<AutoAssignResult> {
     const buddyResolution = await resolveAssigneeWithBuddy(fallbackUser._id);
 
     return {
-      assignedToUserId: buddyResolution.finalUserId,
-      assignedTeamType: fallbackUser.teamType,
-      assignmentMethod: "auto",
+      assignedToUserId: buddyResolution.finalUserId,      assignmentMethod: "auto",
       wasRedirectedToBuddy: buddyResolution.wasRedirected,
       originalAssigneeId: buddyResolution.wasRedirected ? fallbackUser._id : undefined,
     };
@@ -75,9 +67,7 @@ async function autoAssignTicket(): Promise<AutoAssignResult> {
   const buddyResolution = await resolveAssigneeWithBuddy(user._id);
 
   return {
-    assignedToUserId: buddyResolution.finalUserId,
-    assignedTeamType: user.teamType,
-    assignmentMethod: "auto",
+    assignedToUserId: buddyResolution.finalUserId,    assignmentMethod: "auto",
     wasRedirectedToBuddy: buddyResolution.wasRedirected,
     originalAssigneeId: buddyResolution.wasRedirected ? user._id : undefined,
   };
@@ -99,9 +89,7 @@ async function performAssignment(
       const buddyResolution = await resolveAssigneeWithBuddy(user._id);
 
       return {
-        assignedToUserId: buddyResolution.finalUserId,
-        assignedTeamType: user.teamType,
-        assignmentMethod: "manual",
+        assignedToUserId: buddyResolution.finalUserId,        assignmentMethod: "manual",
         wasRedirectedToBuddy: buddyResolution.wasRedirected,
         originalAssigneeId: buddyResolution.wasRedirected ? user._id : undefined,
       };
@@ -184,9 +172,7 @@ export async function createTicket(input: CreateTicketInput): Promise<ITicket> {
     guestId,
     accountId,
     propertyId,
-    assignedToUserId: assignment.assignedToUserId,
-    assignedTeamType: assignment.assignedTeamType,
-    createdByUserId: input.createdByUserId,
+    assignedToUserId: assignment.assignedToUserId,    createdByUserId: input.createdByUserId,
     tags: input.tags ?? [],
   });
 

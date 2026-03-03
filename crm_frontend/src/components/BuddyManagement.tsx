@@ -432,7 +432,7 @@ export const BuddyManagement = ({
                             .filter((u) => u.id !== backendUserId)
                             .map((user) => (
                               <SelectItem key={user.id} value={user.id}>
-                                {user.name} ({user.teamType})
+                                {user.name}
                               </SelectItem>
                             ))}
                         </SelectContent>

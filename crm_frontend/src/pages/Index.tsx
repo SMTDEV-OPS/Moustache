@@ -33,15 +33,11 @@ const Index = () => {
       // Determine role string for UI logic
       // Only "admin" role is explicit in backend usually, others are roles.
       // We need to map user.roleId or permissions to these UI roles if needed.
-      // For now, let's assume user.teamType or isAdmin drives this, or we default to 'management'
 
       let role = "management";
       if (user.isAdmin) role = "management"; // Admin sees management dashboard? Or we need 'admin'?
       // Previous logic: role: backendIsAdmin ? "admin" : "management"
 
-      // If we want to support other roles like 'callcenter' etc based on user.teamType:
-      if (user.teamType === "callcenter") role = "callcenter";
-      if (user.teamType === "sales") role = "saleshead"; // example
 
       // Allow overriding via explicit roleId check if needed
 
@@ -49,10 +45,7 @@ const Index = () => {
       // or keep simple mapping:
 
       // Set appropriate default tab
-      // simple logic:
-      if (user.teamType === "callcenter") setActiveTab("calls");
-      else if (user.teamType === "sales") setActiveTab("sales");
-      else setActiveTab("dashboard");
+      setActiveTab("dashboard");
     }
   }, [user]);
 
@@ -104,7 +97,7 @@ const Index = () => {
 
   // Use Professional CRM for all users now
   // Create derived props from user object
-  const userRole = user?.isAdmin ? "admin" : (user?.teamType || "management");
+  const userRole = user?.isAdmin ? "admin" : "management";
 
   return (
     <ProfessionalCRM

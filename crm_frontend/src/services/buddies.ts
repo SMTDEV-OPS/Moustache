@@ -6,14 +6,12 @@ export interface BuddyAssignment {
     _id: string;
     name: string;
     email: string;
-    teamType?: string;
-  };
+      };
   buddyUserId: {
     _id: string;
     name: string;
     email: string;
-    teamType?: string;
-  };
+      };
   effectiveFrom: string;
   effectiveTo?: string;
   reason?: string;

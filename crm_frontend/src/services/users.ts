@@ -4,8 +4,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  teamType: string;
-  status: string;
+    status: string;
   createdAt?: string;
 }
 
@@ -13,8 +12,7 @@ export interface CreateUserPayload {
   name: string;
   email: string;
   password: string;
-  teamType: string;
-  phone?: string;
+    phone?: string;
   regions?: string[];
 }
 

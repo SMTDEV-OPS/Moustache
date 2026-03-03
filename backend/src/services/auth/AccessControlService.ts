@@ -79,13 +79,7 @@ export class AccessControlService {
                     }
                     break;
 
-                case "team":
-                    if (!dataContext?.teamType) continue;
-                    const userTeam = await this.getUserTeam(user.id);
-                    if (userTeam === dataContext.teamType) {
-                        return true;
-                    }
-                    break;
+
 
                 case "own":
                     // If no data context is provided, we can only answer True 
@@ -120,13 +114,6 @@ export class AccessControlService {
         return user?.regions?.map(r => r.toString()) || [];
     }
 
-    /**
-     * Helper to get User's team
-     */
-    private static async getUserTeam(userId: string): Promise<string | undefined> {
-        const user = await UserModel.findById(userId).select("teamType").lean();
-        return user?.teamType;
-    }
 
     /**
      * Get all subordinates (recursive) for a user.

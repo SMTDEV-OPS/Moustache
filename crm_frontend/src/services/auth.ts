@@ -4,8 +4,7 @@ interface BackendLoginUser {
   id: string;
   name: string;
   email: string;
-  teamType: string;
-  roleId?: string;
+    roleId?: string;
 }
 
 interface BackendMeUser {

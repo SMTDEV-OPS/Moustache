@@ -21,7 +21,7 @@ import { AccountManagement } from "@/components/AccountManagement";
 import { PropertyManagement } from "@/components/PropertyManagement";
 import { AdminApiConsole } from "@/components/AdminApiConsole";
 import { AdminLeads } from "@/components/AdminLeads";
-import { LeadAssignmentRules } from "@/components/LeadAssignmentRules";
+import AssignmentRulesManager from "@/pages/admin/AssignmentRulesManager";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { MessageTemplates } from "@/components/MessageTemplates";
 import { EmailSettings } from "@/components/EmailSettings";
@@ -192,7 +192,7 @@ export const ProfessionalCRM = ({
         );
       case 'tickets':
         return <ProfessionalTicketManagement userRole={userRole} agentName={userName} />;
-      case 'ticket-management':
+      case 'ticket-management': {
         // Ticket CRM – available to any backend user with ticket view/control permissions.
         const canManageTickets =
           !!isAdmin ||
@@ -210,6 +210,7 @@ export const ProfessionalCRM = ({
           );
         }
         return <TicketManagement permissions={permissions} isAdmin={isAdmin} />;
+      }
       case 'reports':
         // Show comprehensive reports dashboard only when the user has reporting permission
         if (canViewReports || userRole === 'management' || userRole === 'admin') {
@@ -242,6 +243,15 @@ export const ProfessionalCRM = ({
           );
         }
         return <RolesManager />;
+      case 'user-management':
+        if (!canManageUsers) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage users.
+            </div>
+          );
+        }
+        return <UserRoleManagement />;
       case 'security/profiles':
         if (!canManageUsers) {
           return (
@@ -359,11 +369,11 @@ export const ProfessionalCRM = ({
         if (!canManageLeads) {
           return (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              You do not have permission to manage lead assignment rules.
+              You do not have permission to manage assignment rules.
             </div>
           );
         }
-        return <LeadAssignmentRules />;
+        return <AssignmentRulesManager module="leads" />;
       case 'workflow-management':
         if (!canManageWorkflows) {
           return (
@@ -432,7 +442,7 @@ export const ProfessionalCRM = ({
 
   const isSettingsView = [
     'security/roles', 'security/profiles', 'security/groups', 'security/data-sharing',
-    'account-management', 'property-management',
+    'user-management', 'account-management', 'property-management',
     'assignment-rules', 'workflow-management', 'message-templates',
     'email-provider-settings', 'integration-settings'
   ].includes(activeView);
