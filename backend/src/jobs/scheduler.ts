@@ -12,6 +12,7 @@ import { syncEmails } from "../services/emailService";
 import { sendSMS } from "../services/smsService";
 import { CommunicationModel } from "../models/communication";
 import { GuestModel } from "../models/guest";
+import { startInactiveLeadMonitor } from "../cron/inactiveLeadMonitor";
 
 async function runAutoClosureJob() {
   const tomorrow = new Date();
@@ -220,7 +221,10 @@ function setupJobs() {
     void runSMSFollowUpJob();
   });
 
-  logger.info("Scheduler jobs registered (auto-closure, reminders, workflow execution, email sync, SMS follow-up)");
+  // Start the inactive lead monitor
+  startInactiveLeadMonitor();
+
+  logger.info("Scheduler jobs registered (auto-closure, reminders, workflow execution, email sync, SMS follow-up, inactive leads monitor)");
 }
 
 setupJobs();

@@ -93,12 +93,16 @@ export function ProfilesManager() {
     };
 
     const submitClone = async () => {
-        if (!cloneName || !selectedProfile) return;
+        const trimmedName = cloneName?.trim();
+        if (!trimmedName || !selectedProfile) {
+            if (!trimmedName) toast({ title: "Validation", description: "Please enter a profile name.", variant: "destructive" });
+            return;
+        }
         try {
             const res = await fetch(`${API_BASE_URL}/profiles/${selectedProfile._id}/clone`, {
                 method: 'POST',
                 headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
-                body: JSON.stringify({ name: cloneName, description: cloneDesc })
+                body: JSON.stringify({ name: trimmedName, description: cloneDesc ?? "" })
             });
 
             if (!res.ok) throw new Error("Failed to clone profile");

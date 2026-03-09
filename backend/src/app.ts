@@ -40,6 +40,10 @@ import { accountPotentialsRouter } from "./routes/accountPotentials";
 import { hotelBrandsRouter } from "./routes/hotelBrands";
 import { pmsRouter } from "./routes/pms";
 import profilesRouter from "./routes/profiles";
+import customFieldsRouter from "./routes/customFields";
+import adminFieldsRouter from "./routes/adminFields";
+import { pipelinesRouter } from "./routes/pipelines";
+import { scoringRouter } from "./routes/scoringRules";
 
 export const app = express();
 
@@ -105,6 +109,17 @@ app.use("/account-potentials", accountPotentialsRouter);
 app.use("/hotel-brands", hotelBrandsRouter);
 app.use("/pms", pmsRouter);
 app.use("/profiles", profilesRouter);
+app.use("/custom-fields", customFieldsRouter);
+app.use("/api/admin/fields", adminFieldsRouter);
+import { scoringThresholdsRouter } from "./routes/scoringThresholds";
+import { callQualityDimensionsRouter } from "./routes/callQualityDimensions";
+
+app.use("/pipelines", pipelinesRouter);
+app.use("/scoring-rules", scoringRouter);
+app.use("/api/admin/scoring/thresholds", scoringThresholdsRouter);
+app.use("/api/admin/call-quality/dimensions", callQualityDimensionsRouter);
+import { adminFollowupRulesRouter } from "./routes/adminFollowupRules";
+app.use("/api/admin/followup-rules", adminFollowupRulesRouter);
 
 // Public endpoints (no authentication required)
 app.use("/api/public/website-leads", publicWebsiteLeadsRouter);
@@ -114,6 +129,9 @@ app.use("/api/public/social-webhook", publicSocialWebhooksRouter);
 app.use("/api/public/email-webhook", publicEmailWebhooksRouter);
 
 app.use(errorHandler);
+
+import { FollowupService } from "./services/followupService";
+FollowupService.initialize();
 
 logger.info("Express app initialized");
 

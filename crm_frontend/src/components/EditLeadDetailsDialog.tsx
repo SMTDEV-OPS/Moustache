@@ -13,6 +13,9 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { LeadGuests } from "@/services/leads";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CustomFieldDefinition } from "@/services/customFields";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 export interface LeadTripDetails {
     checkInDate?: string;
@@ -20,12 +23,14 @@ export interface LeadTripDetails {
     roomsRequested?: number;
     guests?: LeadGuests;
     occasion?: string;
+    customData?: Record<string, any>;
 }
 
 interface EditLeadDetailsDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     currentDetails: LeadTripDetails;
+    customFields?: CustomFieldDefinition[];
     onSave: (details: LeadTripDetails) => Promise<void>;
 }
 
@@ -33,6 +38,7 @@ export function EditLeadDetailsDialog({
     open,
     onOpenChange,
     currentDetails,
+    customFields = [],
     onSave,
 }: EditLeadDetailsDialogProps) {
     const [checkInDate, setCheckInDate] = useState("");
@@ -41,8 +47,9 @@ export function EditLeadDetailsDialog({
     const [adults, setAdults] = useState("1");
     const [children, setChildren] = useState("0");
     const [occasion, setOccasion] = useState("");
+    const [customData, setCustomData] = useState<Record<string, any>>({});
     const [isSaving, setIsSaving] = useState(false);
-    const [errors, setErrors] = useState<{ dates?: string }>({});
+    const [errors, setErrors] = useState<{ dates?: string, custom?: string }>({});
 
     // Initialize fields when dialog opens
     useEffect(() => {
@@ -63,17 +70,24 @@ export function EditLeadDetailsDialog({
             setAdults(String(currentDetails.guests?.adults || 1));
             setChildren(String(currentDetails.guests?.children || 0));
             setOccasion(currentDetails.occasion || "");
+            setCustomData(currentDetails.customData || {});
             setErrors({});
         }
     }, [open, currentDetails]);
 
     const validateForm = () => {
-        const newErrors: { dates?: string } = {};
+        const newErrors: { dates?: string, custom?: string } = {};
 
         if (checkInDate && checkOutDate) {
             if (new Date(checkInDate) >= new Date(checkOutDate)) {
                 newErrors.dates = "Check-out date must be after check-in date";
             }
+        }
+
+        // Validate required custom fields
+        const missingCustomRequired = customFields.filter(f => f.isRequired && !customData[f.fieldName]);
+        if (missingCustomRequired.length > 0) {
+            newErrors.custom = `Please fill in required fields: ${missingCustomRequired.map(f => f.label).join(", ")}`;
         }
 
         setErrors(newErrors);
@@ -96,6 +110,7 @@ export function EditLeadDetailsDialog({
                     children: parseInt(children) || 0,
                 },
                 occasion: occasion || undefined,
+                customData: Object.keys(customData).length > 0 ? customData : undefined,
             });
             onOpenChange(false);
         } catch (error) {
@@ -189,6 +204,77 @@ export function EditLeadDetailsDialog({
                             </SelectContent>
                         </Select>
                     </div>
+
+                    {customFields.length > 0 && (
+                        <div className="border-t border-slate-200 mt-2 pt-4">
+                            <h4 className="text-sm font-semibold mb-3">Additional Information</h4>
+                            <div className="grid gap-4">
+                                {customFields.map(field => (
+                                    <div key={field._id} className="grid gap-2">
+                                        <Label className="flex gap-1">
+                                            {field.label} {field.isRequired && <span className="text-red-500">*</span>}
+                                        </Label>
+                                        {field.dataType === "TEXT" && (
+                                            <Input
+                                                placeholder={field.label}
+                                                value={customData[field.fieldName] || ""}
+                                                onChange={e => setCustomData(prev => ({ ...prev, [field.fieldName]: e.target.value }))}
+                                            />
+                                        )}
+                                        {field.dataType === "NUMBER" && (
+                                            <Input
+                                                type="number"
+                                                placeholder={field.label}
+                                                value={customData[field.fieldName] || ""}
+                                                onChange={e => setCustomData(prev => ({ ...prev, [field.fieldName]: Number(e.target.value) || "" }))}
+                                            />
+                                        )}
+                                        {field.dataType === "TEXTAREA" && (
+                                            <Textarea
+                                                placeholder={field.label}
+                                                value={customData[field.fieldName] || ""}
+                                                onChange={e => setCustomData(prev => ({ ...prev, [field.fieldName]: e.target.value }))}
+                                            />
+                                        )}
+                                        {field.dataType === "DATE" && (
+                                            <Input
+                                                type="date"
+                                                value={customData[field.fieldName] || ""}
+                                                onChange={e => setCustomData(prev => ({ ...prev, [field.fieldName]: e.target.value }))}
+                                            />
+                                        )}
+                                        {field.dataType === "BOOLEAN" && (
+                                            <div className="flex items-center h-10 space-x-2">
+                                                <Switch
+                                                    checked={!!customData[field.fieldName]}
+                                                    onCheckedChange={checked => setCustomData(prev => ({ ...prev, [field.fieldName]: checked }))}
+                                                />
+                                            </div>
+                                        )}
+                                        {field.dataType === "DROPDOWN" && (
+                                            <Select
+                                                value={customData[field.fieldName] || ""}
+                                                onValueChange={value => setCustomData(prev => ({ ...prev, [field.fieldName]: value }))}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder={`Select ${field.label}`} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {field.options?.map(opt => (
+                                                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {errors.custom && (
+                        <p className="text-sm text-red-500">{errors.custom}</p>
+                    )}
                 </div>
                 <DialogFooter>
                     <Button

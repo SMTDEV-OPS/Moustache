@@ -24,9 +24,17 @@ import {
   getEmployeeGroupIdForLeadType,
 } from "./assignmentService";
 import { notifyLeadAssigned } from "./notificationService";
+import { incrementAgentWorkload, checkCapacityAlerts } from "./allocationService";
 import { initializeWorkflowForLead } from "./workflowExecutionService";
 import { logger } from "../config/logger";
 import { generateTagsForLead } from "./leadTaggingService";
+import { PipelineModel } from "../models/pipeline";
+import { PipelineStageModel } from "../models/pipelineStage";
+import { CustomFieldModel } from "../models/customField";
+import { ScoringService } from "./scoringService";
+import { EventEmitter } from "events";
+
+export const leadEventBus = new EventEmitter();
 
 export type AssignmentMode = "auto" | "manual";
 
@@ -63,6 +71,8 @@ export interface CreateLeadInput {
   assignmentMode?: AssignmentMode;
   assignedToUserId?: string;
   createdByUserId?: string;
+  // Dynamic User custom data
+  customData?: Record<string, any>;
   // New fields
   budget?: number;
   bookingWindow?: string;
@@ -75,107 +85,15 @@ export interface AutoAssignResult {
   assignmentMethod: "auto" | "manual" | "legacy" | "none";
   wasRedirectedToBuddy?: boolean;
   originalAssigneeId?: Types.ObjectId;
+  isOverflow?: boolean;
 }
 
 // Helper to calculate lead score (0-10) based on SOP 1.11
-export function calculateLeadScore(lead: Partial<ILead>): number {
-  let score = 0;
-
-  // 1. Travel Date Urgency (0-3 points)
-  if (lead.checkInDate) {
-    const daysUntilCheckIn = Math.ceil(
-      (new Date(lead.checkInDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-    );
-    if (daysUntilCheckIn >= 0 && daysUntilCheckIn <= 10) score += 3;
-    else if (daysUntilCheckIn > 10 && daysUntilCheckIn <= 30) score += 2;
-    // else if (daysUntilCheckIn > 30 && daysUntilCheckIn <= 60) score += 1;
-    else if (daysUntilCheckIn > 30) score += 1;
-  }
-
-  // 2. Budget Fit (0-2 points)
-  if (lead.budget && lead.budget > 0) {
-    score += 1;
-  }
-
-  // 3. Engagement Level (0-2 points)
-  if (lead.contactDetails?.phone || lead.contactDetails?.email) score += 1;
-  if (lead.status && lead.status !== LeadStatus.NEW) score += 1;
-
-  // 4. Call Back Requested (0-1 point)
-  if (lead.source === LeadSource.IVR) score += 1;
-
-  // 5. Deal Size (0-2 points)
-  const dealValue = parseFloat(lead.estimatedValue || "0") || lead.budget || 0;
-  if (dealValue >= 50000) score += 2;
-  else if (dealValue >= 20000) score += 1;
-
-  return Math.min(score, 10);
+export async function calculateLeadScore(lead: Partial<ILead>): Promise<number> {
+  return ScoringService.calculateScoreForLead(lead);
 }
 
-// Helper to derive heat level based on SOP 1.5 & 1.11
-export function deriveHeatLevel(lead: Partial<ILead>): HeatLevel {
-  const score = calculateLeadScore(lead);
-  if (score >= 7) return HeatLevel.HOT;
-  if (score >= 4) return HeatLevel.WARM;
-  return HeatLevel.COLD;
-}
 
-// Helper to schedule follow-ups based on SOP 1.8
-async function scheduleFollowUps(lead: ILead) {
-  if (!lead.assignedToUserId) return;
-
-  const now = new Date();
-  const tasks = [];
-
-  if (lead.heatLevel === HeatLevel.HOT) {
-    // Hot: 2 hrs and 5 hrs
-    tasks.push({
-      title: "Hot Lead Follow-up 1",
-      description: "First follow-up for Hot lead (2 hours)",
-      dueAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
-    });
-    tasks.push({
-      title: "Hot Lead Follow-up 2",
-      description: "Second follow-up for Hot lead (5 hours)",
-      dueAt: new Date(now.getTime() + 5 * 60 * 60 * 1000),
-    });
-  } else if (lead.heatLevel === HeatLevel.WARM) {
-    // Warm: 24 hrs and 48 hrs
-    tasks.push({
-      title: "Warm Lead Follow-up 1",
-      description: "First follow-up for Warm lead (24 hours)",
-      dueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
-    });
-    tasks.push({
-      title: "Warm Lead Follow-up 2",
-      description: "Second follow-up for Warm lead (48 hours)",
-      dueAt: new Date(now.getTime() + 48 * 60 * 60 * 1000),
-    });
-  } else {
-    // Cold: 5 days
-    tasks.push({
-      title: "Cold Lead Follow-up",
-      description: "Follow-up for Cold lead (5 days)",
-      dueAt: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000),
-    });
-  }
-
-  for (const t of tasks) {
-    await TaskModel.create({
-      title: t.title,
-      description: t.description,
-      status: TicketStatus.NEW,
-      priority: TicketPriority.HIGH,
-      assignedToUserId: lead.assignedToUserId,
-      relatedTo: {
-        itemType: "Lead",
-        itemId: lead._id,
-      },
-      dueDate: t.dueAt,
-      createdByUserId: lead.assignedToUserId,
-    });
-  }
-}
 
 
 
@@ -217,7 +135,8 @@ async function performAssignment(
   leadType: LeadType,
   source: LeadSource,
   assignmentMode: AssignmentMode = "auto",
-  manualAssigneeId?: string
+  manualAssigneeId?: string,
+  orgId?: string
 ): Promise<AutoAssignResult> {
   // Manual assignment
   if (assignmentMode === "manual" && manualAssigneeId) {
@@ -278,7 +197,7 @@ async function performAssignment(
   }
 
   // Auto assignment using rules
-  const ruleResult = await autoAssignFromRules(leadType, source);
+  const ruleResult = await autoAssignFromRules(leadType, source, orgId);
 
   if (ruleResult.assignmentMethod === "auto" && ruleResult.assignedToUserId) {
     const user = await UserModel.findById(ruleResult.assignedToUserId).exec();
@@ -287,6 +206,15 @@ async function performAssignment(
       assignmentMethod: "auto",
       wasRedirectedToBuddy: ruleResult.wasRedirectedToBuddy,
       originalAssigneeId: ruleResult.originalAssigneeId,
+    };
+  }
+
+  if (ruleResult.isOverflow) {
+    return {
+      assignedToUserId: undefined,
+      employeeGroupId: ruleResult.employeeGroupId,
+      assignmentMethod: "none",
+      isOverflow: true
     };
   }
 
@@ -532,12 +460,15 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     guest.totalLeadsCount === 0 &&
     guest.totalReservationsCount === 0;
 
+  const orgIdForLead = propertyId || accountId;
+
   // Perform assignment based on mode
   const assignment = await performAssignment(
     input.leadType,
     input.source,
     input.assignmentMode ?? "auto",
-    input.assignedToUserId
+    input.assignedToUserId,
+    orgIdForLead?.toString()
   );
 
   const leadNumber = generateLeadNumber();
@@ -553,8 +484,8 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     source: input.source
   };
 
-  const calculatedScore = calculateLeadScore(initialLeadState);
-  const calculatedHeatLevel = deriveHeatLevel({ ...initialLeadState, score: calculatedScore });
+  const calculatedScore = await calculateLeadScore(initialLeadState);
+  const { bucket, color, thresholdId } = await ScoringService.evaluateThreshold(orgIdForLead?.toString(), calculatedScore);
 
   // Generate Tags
   const loadedProperty = propertyId ? await PropertyModel.findById(propertyId).exec() : null;
@@ -568,18 +499,29 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
   };
   const autoTags = generateTagsForLead(tagInputParams, loadedProperty);
 
+  // Determine default stageId
+  let defaultStageId: Types.ObjectId | undefined;
+  const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).exec();
+  if (pipeline) {
+    const stage = await PipelineStageModel.findOne({ pipelineId: pipeline._id }).sort({ order: 1 }).exec();
+    if (stage) defaultStageId = stage._id as Types.ObjectId;
+  }
+
   const lead = await LeadModel.create({
     leadNumber,
     guestId,
     contactDetails,
     accountId,
     propertyId,
+    orgId: orgIdForLead,
     tags: autoTags,
     source: input.source,
     leadType: input.leadType,
-    status: LeadStatus.NEW,
-    stage: LeadStage.NEW_LEAD, // Initialize stage
-    heatLevel: input.heatLevel ?? calculatedHeatLevel, // Use manual or calculated
+    status: assignment.isOverflow ? LeadStatus.UNASSIGNED_OVERFLOW : LeadStatus.NEW,
+    stageId: defaultStageId, // Dynamically assigned stage
+    heatLevel: input.heatLevel ?? bucket, // Use manual or calculated
+    color,
+    thresholdId,
     score: calculatedScore, // Set score
     budget: input.budget,
     bookingWindow: input.bookingWindow,
@@ -603,11 +545,14 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     notes: input.notes,
     roomCategory: input.roomCategory,
     roomPreference: input.roomPreference,
+    customData: input.customData ? new Map(Object.entries(input.customData)) : undefined,
   });
 
-  // Schedule follow-ups (fire and forget)
-  scheduleFollowUps(lead as unknown as ILead).catch(err => {
-    logger.error("Failed to schedule follow-ups", { leadId: lead._id }, err);
+  // Schedule follow-ups (fire and forget) using the FollowupRule Engine
+  import("./followupService").then(({ FollowupService }) => {
+    FollowupService.generateFollowupTasks(lead._id.toString(), bucket, orgIdForLead?.toString()).catch(err => {
+      logger.error("Failed to schedule follow-ups via FollowupService", { leadId: lead._id }, err);
+    });
   });
 
   if (guest) {
@@ -693,6 +638,32 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
         leadNumber,
       }, error instanceof Error ? error : new Error(String(error)));
     }
+  } else if (assignment.isOverflow) {
+    // Log overflow activity
+    await LeadActivityModel.create({
+      leadId: lead._id,
+      type: LeadActivityType.AUTO_ASSIGNED,
+      note: "Lead overflowed to queue due to agent capacity limits",
+      performedByUserId: input.createdByUserId,
+      employeeGroupId: assignment.employeeGroupId,
+      performedAt: new Date(),
+    });
+
+    leadEventBus.emit("lead.overflow_queued", {
+      leadId: lead._id.toString(),
+      leadNumber,
+      orgId: orgIdForLead?.toString(),
+    });
+  }
+
+  // Increment workload for the assigned agent
+  if (assignment.assignedToUserId && orgIdForLead) {
+    incrementAgentWorkload(orgIdForLead.toString(), assignment.assignedToUserId.toString()).catch(err => {
+      logger.error("Failed to increment workload", err);
+    });
+    checkCapacityAlerts(orgIdForLead.toString()).catch(err => {
+      logger.error("Failed to check capacity alerts", err);
+    });
   }
 
   return lead;
@@ -827,4 +798,67 @@ export async function reassignLead(
   }
 
   return lead;
+}
+
+/**
+ * Validate moving a lead to a new pipeline stage.
+ * Checks for mandatory fields and terminal stage rules.
+ */
+export async function validateStageMove(leadId: string, targetStageId: string, orgId?: string): Promise<{
+  allowed: boolean;
+  missingFields?: { id: string, name: string, slug: string }[];
+  reason?: 'already_terminal' | 'stage_not_found' | 'lead_not_found';
+}> {
+  const lead = await LeadModel.findById(leadId).exec();
+  if (!lead) return { allowed: false, reason: 'lead_not_found' };
+
+  const targetStage = await PipelineStageModel.findById(targetStageId).exec();
+  if (!targetStage) return { allowed: false, reason: 'stage_not_found' };
+
+  // Terminal rule check: Cannot move from a terminal stage to another stage
+  if (lead.stageId && lead.stageId.toString() !== targetStageId.toString()) {
+    const currentStage = await PipelineStageModel.findById(lead.stageId).exec();
+    if (currentStage && currentStage.isTerminal) {
+      return { allowed: false, reason: 'already_terminal' };
+    }
+  }
+
+  // Check mandatory fields
+  if (targetStage.mandatory_fields_json && targetStage.mandatory_fields_json.length > 0) {
+    const missingFields: { id: string, name: string, slug: string }[] = [];
+
+    const customFields = await CustomFieldModel.find({
+      _id: { $in: targetStage.mandatory_fields_json }
+    }).exec();
+
+    for (const field of customFields) {
+      // Check if the lead has this field
+      const slug = field.slug;
+      let hasValue = false;
+
+      // Check static fields (using slug)
+      const leadAny = lead as any;
+      if (leadAny[slug] !== undefined && leadAny[slug] !== null && leadAny[slug] !== '') {
+        hasValue = true;
+      }
+
+      // Check dynamic customData map if static field missing
+      if (!hasValue && lead.customData && lead.customData.has(slug)) {
+        const mapVal = lead.customData.get(slug);
+        if (mapVal !== undefined && mapVal !== null && mapVal !== '') {
+          hasValue = true;
+        }
+      }
+
+      if (!hasValue) {
+        missingFields.push({ id: field._id.toString(), name: field.label || field.name, slug });
+      }
+    }
+
+    if (missingFields.length > 0) {
+      return { allowed: false, missingFields };
+    }
+  }
+
+  return { allowed: true };
 }

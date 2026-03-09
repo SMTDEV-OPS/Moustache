@@ -32,15 +32,6 @@ export type LeadSource =
   | "MANUAL"
   | "CSV_UPLOAD";
 
-export type LeadStage =
-  | "NEW_LEAD"
-  | "FIRST_CONNECT"
-  | "DISCUSSION"
-  | "PAYMENT_REQUEST"
-  | "BOOKED"
-  | "BOOKED"
-  | "LOST";
-
 export type ClosedReason =
   | "PRICE"
   | "NO_AVAILABILITY"
@@ -121,7 +112,7 @@ export interface Lead {
   source: string;
   leadType: string;
   status: LeadStatus;
-  stage?: LeadStage; // New field
+  stageId?: string; // New dynamic pipeline stage
   heatLevel: HeatLevel;
   score?: number;     // New field
   budget?: number;    // New field
@@ -138,6 +129,7 @@ export interface Lead {
   assignedTeamType?: string;
   assignedRegionId?: string;
   createdAt?: string;
+  customData?: Record<string, any>; // Dynamic custom fields
   // Additional form fields
   alternateContact?: string;
   occupation?: string;
@@ -188,6 +180,7 @@ export interface CreateLeadPayload {
   occasion?: string;
   isFirstTimeGuest?: boolean;
   heatLevel?: HeatLevel;
+  customData?: Record<string, any>; // Dynamic custom fields
   // Additional form fields
   alternateContact?: string;
   occupation?: string;
@@ -250,7 +243,7 @@ export interface LeadDetail {
 
 export interface UpdateLeadPayload {
   status?: LeadStatus;
-  stage?: LeadStage;
+  stageId?: string;
   heatLevel?: HeatLevel;
   callStatus?: string;
   notes?: string;
@@ -262,6 +255,7 @@ export interface UpdateLeadPayload {
   assignedToUserId?: string;
   contactDetails?: LeadContactDetails;
   closedReason?: string;
+  customData?: Record<string, any>;
 }
 
 export const listLeads = async (

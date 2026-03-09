@@ -84,7 +84,7 @@ export const createRole = async (payload: CreateRolePayload): Promise<Role> => {
 
 export const updateRole = async (roleId: string, payload: UpdateRolePayload): Promise<Role> => {
   const response = await fetch(`${API_BASE_URL}/roles/${roleId}`, {
-    method: "PUT",
+    method: "PATCH",
     headers: withAuthHeaders({
       "Content-Type": "application/json",
     }),

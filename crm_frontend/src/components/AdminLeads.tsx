@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { createLead, getLeadDetail, Lead, LeadDetail, listLeads, updateLead, getEligibleAssignees, EligibleAssignee, AssignmentMode, getLeadContactInfo } from "@/services/leads";
 import { listUsers, User } from "@/services/users";
 import { listAccounts, Account, AccountType } from "@/services/accounts";
+import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
+import { PipelineService, PipelineStage } from "@/services/pipelines";
 import { Search, Filter, User as UserIcon, Calendar, Flame, Users, Zap, Plus, Phone, Mail, MessageCircle, CalendarPlus, Video, Trash2, Hotel, MoreVertical, FileText, Edit, UserPlus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -54,7 +56,15 @@ import {
   IndianRupee,
 } from "lucide-react";
 
-// Quotations Tab Component
+const getScoreColor = (score: number) => {
+  if (score >= 7) return "text-green-600";
+  if (score >= 4) return "text-orange-600";
+  return "text-red-600";
+};
+
+/**
+ * Quotations Tab Component
+ */
 const QuotationsTab = ({
   leadId,
   onSendNew,
@@ -284,10 +294,30 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   const [heatFilter, setHeatFilter] = useState<string>("ALL");
   const [sourceFilter, setSourceFilter] = useState<string>("ALL");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("ALL");
+  const [stageFilter, setStageFilter] = useState<string>("ALL");
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [isLoadingStages, setIsLoadingStages] = useState(false);
 
   const [activeScope, setActiveScope] = useState<"own" | "team" | "all">("own");
 
   // Strict permission checks - users must have explicit permissions
+  useEffect(() => {
+    const loadStages = async () => {
+      try {
+        setIsLoadingStages(true);
+        const defaultPipeline = await PipelineService.getDefaultPipeline("leads");
+        if (defaultPipeline) {
+          setPipelineStages(defaultPipeline.stages);
+        }
+      } catch (error) {
+        console.error("Failed to load pipeline stages", error);
+      } finally {
+        setIsLoadingStages(false);
+      }
+    };
+    loadStages();
+  }, []);
+
   // Debug: Log permissions to help diagnose issues
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
@@ -400,6 +430,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     customerType: "",
     bookingWindow: "",
     budget: "",
+    customData: {} as Record<string, any>,
   });
 
   // Assignment mode state
@@ -407,6 +438,10 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   const [manualAssigneeId, setManualAssigneeId] = useState<string>("");
   const [eligibleAssignees, setEligibleAssignees] = useState<EligibleAssignee[]>([]);
   const [isLoadingEligible, setIsLoadingEligible] = useState(false);
+
+  // Custom Fields state
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [isLoadingFields, setIsLoadingFields] = useState(false);
 
   // Lead types for dropdown
   const LEAD_TYPES = [
@@ -465,7 +500,24 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       // Set empty array as fallback
       setAccounts([]);
     });
+
+    // Load custom fields for leads module
+    void loadCustomFields();
   }, [canManageUsers, activeScope]);
+
+  const loadCustomFields = async () => {
+    try {
+      setIsLoadingFields(true);
+      const fields = await CustomFieldsService.getActiveFieldsForModule("leads");
+      // Sort fields by order
+      setCustomFields(fields.sort((a, b) => a.order - b.order));
+    } catch (err) {
+      console.error("Failed to load custom fields:", err);
+      setCustomFields([]);
+    } finally {
+      setIsLoadingFields(false);
+    }
+  };
 
   // Note: Accounts are loaded once on mount, not on source change
   // This prevents infinite loops and render issues
@@ -557,6 +609,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       if (statusFilter !== "ALL" && lead.status !== statusFilter) {
         return false;
       }
+      if (stageFilter !== "ALL" && lead.stageId !== stageFilter) {
+        return false;
+      }
       if (heatFilter !== "ALL" && lead.heatLevel !== heatFilter) {
         return false;
       }
@@ -591,10 +646,11 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
       return true;
     });
-  }, [leads, users, statusFilter, heatFilter, sourceFilter, assigneeFilter, searchQuery]);
+  }, [leads, users, statusFilter, stageFilter, heatFilter, sourceFilter, assigneeFilter, searchQuery]);
 
   const resetFilters = () => {
     setStatusFilter("ALL");
+    setStageFilter("ALL");
     setHeatFilter("ALL");
     setSourceFilter("ALL");
     setAssigneeFilter("ALL");
@@ -667,6 +723,17 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       return;
     }
 
+    // Validate custom required fields
+    const missingCustomRequired = customFields.filter(f => f.isRequired && !form.customData[f.fieldName]);
+    if (missingCustomRequired.length > 0) {
+      toast({
+        title: "Missing required fields",
+        description: `Please fill in: ${missingCustomRequired.map(f => f.label).join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Get primary hotel data
     const primaryHotel = hotels[0];
 
@@ -715,6 +782,8 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
         // Assignment options
         assignmentMode: assignmentMode,
         assignedToUserId: assignmentMode === "manual" && manualAssigneeId ? manualAssigneeId : undefined,
+        // Custom dynamic fields
+        customData: Object.keys(form.customData).length > 0 ? form.customData : undefined,
       };
 
       const newLead = await createLead(payload);
@@ -743,6 +812,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
         customerType: "",
         bookingWindow: "",
         budget: "",
+        customData: {},
       }));
       // Reset hotels
       setHotels([{ ...emptyHotel }]);
@@ -913,21 +983,19 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
               />
             </div>
             <Select
-              value={statusFilter}
-              onValueChange={setStatusFilter}
+              value={stageFilter}
+              onValueChange={setStageFilter}
             >
-              <SelectTrigger className="w-[140px] h-10 border-slate-200">
-                <SelectValue placeholder="Status" />
+              <SelectTrigger className="w-[160px] h-10 border-slate-200">
+                <SelectValue placeholder="Pipeline Stage" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">All Status</SelectItem>
-                <SelectItem value="NEW">New</SelectItem>
-                <SelectItem value="CONTACTED">Contacted</SelectItem>
-                <SelectItem value="QUOTATION_SHARED">Quotation Shared</SelectItem>
-                <SelectItem value="PAYMENT_PENDING">Payment Pending</SelectItem>
-                <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                <SelectItem value="LOST">Lost</SelectItem>
-                <SelectItem value="CLOSED_AUTO">Auto Closed</SelectItem>
+                <SelectItem value="ALL">All Stages</SelectItem>
+                {pipelineStages.map(stage => (
+                  <SelectItem key={stage._id} value={stage._id}>
+                    {stage.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select
@@ -998,8 +1066,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                     <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Source</th>
                     <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Travel Dates</th>
                     <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Heat</th>
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
+                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Stage</th>
                     <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Assigned</th>
+                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Score</th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>
@@ -1048,12 +1117,35 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                           </div>
                         </td>
                         <td className="p-4">
-                          <Badge variant="outline" className={`${getStatusBadgeColor(lead.status)} text-xs font-medium`}>
-                            {lead.status.replace(/_/g, " ").toLowerCase()}
-                          </Badge>
+                          {(() => {
+                            const stage = pipelineStages.find(s => s._id === lead.stageId);
+                            if (!stage) return (
+                              <Badge variant="outline" className={`${getStatusBadgeColor(lead.status)} text-xs font-medium`}>
+                                {lead.status.replace(/_/g, " ").toLowerCase()}
+                              </Badge>
+                            );
+                            return (
+                              <Badge
+                                variant="outline"
+                                style={{
+                                  backgroundColor: `${stage.color}15`,
+                                  color: stage.color,
+                                  borderColor: `${stage.color}30`
+                                }}
+                                className="text-xs font-medium"
+                              >
+                                {stage.name}
+                              </Badge>
+                            );
+                          })()}
                         </td>
                         <td className="p-4 text-slate-600">
                           {assignedUser ? assignedUser.name || assignedUser.email : "Unassigned"}
+                        </td>
+                        <td className="p-4">
+                          <div className={`font-semibold ${getScoreColor(lead.score || 0)}`}>
+                            {lead.score || 0}/10
+                          </div>
                         </td>
                         <td className="p-4" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
@@ -1898,21 +1990,96 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Within 5 hrs">Within 5 hrs</SelectItem>
-                    <SelectItem value="Within 24 hrs">Within 24 hrs</SelectItem>
-                    <SelectItem value="Yet to decide final plan">Yet to decide final plan</SelectItem>
+                    <SelectItem value="6-12 hrs">6-12 hrs</SelectItem>
+                    <SelectItem value="13-24 hrs">13-24 hrs</SelectItem>
+                    <SelectItem value="Next Day">Next Day</SelectItem>
+                    <SelectItem value="2-7 days">2-7 days</SelectItem>
+                    <SelectItem value="1-4 weeks">1-4 weeks</SelectItem>
+                    <SelectItem value="1-3 months">1-3 months</SelectItem>
+                    <SelectItem value="3+ months">3+ months</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-medium">Auto-Tag Budget</label>
+                <label className="text-xs font-medium">Budget</label>
                 <Input
                   type="number"
                   value={form.budget}
                   onChange={(e) => onChange("budget", e.target.value)}
-                  placeholder="e.g. 15000"
+                  placeholder="Total or per night budget"
                 />
               </div>
             </div>
+
+            {/* Dynamic Custom Fields Section */}
+            {customFields.length > 0 && (
+              <>
+                <div className="border-t border-slate-200 mt-6 pt-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Additional Information</h3>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {customFields.map(field => (
+                      <div key={field._id} className="space-y-2">
+                        <label className="text-xs font-medium flex gap-1">
+                          {field.label} {field.isRequired && <span className="text-red-500">*</span>}
+                        </label>
+                        {field.dataType === "TEXT" && (
+                          <Input
+                            placeholder={field.label}
+                            value={form.customData[field.fieldName] || ""}
+                            onChange={e => setForm(prev => ({ ...prev, customData: { ...prev.customData, [field.fieldName]: e.target.value } }))}
+                          />
+                        )}
+                        {field.dataType === "NUMBER" && (
+                          <Input
+                            type="number"
+                            placeholder={field.label}
+                            value={form.customData[field.fieldName] || ""}
+                            onChange={e => setForm(prev => ({ ...prev, customData: { ...prev.customData, [field.fieldName]: Number(e.target.value) || "" } }))}
+                          />
+                        )}
+                        {field.dataType === "TEXTAREA" && (
+                          <Textarea
+                            placeholder={field.label}
+                            value={form.customData[field.fieldName] || ""}
+                            onChange={e => setForm(prev => ({ ...prev, customData: { ...prev.customData, [field.fieldName]: e.target.value } }))}
+                          />
+                        )}
+                        {field.dataType === "DATE" && (
+                          <Input
+                            type="date"
+                            value={form.customData[field.fieldName] || ""}
+                            onChange={e => setForm(prev => ({ ...prev, customData: { ...prev.customData, [field.fieldName]: e.target.value } }))}
+                          />
+                        )}
+                        {field.dataType === "BOOLEAN" && (
+                          <div className="flex items-center h-10 space-x-2">
+                            <Switch
+                              checked={!!form.customData[field.fieldName]}
+                              onCheckedChange={checked => setForm(prev => ({ ...prev, customData: { ...prev.customData, [field.fieldName]: checked } }))}
+                            />
+                          </div>
+                        )}
+                        {field.dataType === "DROPDOWN" && (
+                          <Select
+                            value={form.customData[field.fieldName] || ""}
+                            onValueChange={value => setForm(prev => ({ ...prev, customData: { ...prev.customData, [field.fieldName]: value } }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={`Select ${field.label}`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {field.options?.map(opt => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Account Selection - Show for B2B sources */}
             {(form.source === "TRAVEL_AGENT" ||
@@ -2142,7 +2309,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
           }
         }}
       />
-    </div>
+    </div >
   );
 };
 

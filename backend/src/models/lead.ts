@@ -36,16 +36,19 @@ export interface ILead extends Document {
   contactDetails?: ILeadContactDetails;
   accountId?: Types.ObjectId;
   propertyId?: Types.ObjectId;
+  orgId?: Types.ObjectId;
   source: LeadSource;
   leadType: LeadType;
 
   // Status & Pipeline
   status: LeadStatus; // Legacy/Backward compat
-  stage: LeadStage;   // New SOP pipeline stage
+  stageId?: Types.ObjectId;   // Reference to PipelineStage
 
   // Scoring & Qualification
   heatLevel: HeatLevel;
   score: number;      // 0-10 SOP score
+  color?: string;     // Added for dynamic scoring thresholds
+  thresholdId?: Types.ObjectId;
   budget?: number;    // Numeric budget for scoring
   bookingWindow?: string; // "Within 5 hrs", "Within 24 hrs", "Yet to decide"
   customerType?: string; // B2C, B2B, Corporate, Influencer, NRI, HNI, Reference
@@ -83,6 +86,9 @@ export interface ILead extends Document {
   lastSMSFollowUpAt?: Date;
   followUpCount: number; // Track number of follow-ups
   tags?: string[];
+
+  // Dynamic Custom Fields
+  customData?: Map<string, any>;
 }
 
 const leadSchema = new Schema<ILead>(
@@ -96,6 +102,7 @@ const leadSchema = new Schema<ILead>(
     },
     accountId: AccountRef,
     propertyId: PropertyRef,
+    orgId: { type: Schema.Types.ObjectId },
     source: { type: String, enum: Object.values(LeadSource), required: true },
     leadType: { type: String, enum: Object.values(LeadType), required: true },
 
@@ -106,20 +113,20 @@ const leadSchema = new Schema<ILead>(
       default: LeadStatus.NEW,
       index: true,
     },
-    stage: {
-      type: String,
-      enum: Object.values(LeadStage),
-      default: LeadStage.NEW_LEAD, // Default to first SOP stage
+    stageId: {
+      type: Schema.Types.ObjectId,
+      ref: "PipelineStage",
       index: true,
     },
 
     // Scoring & Heat
     heatLevel: {
       type: String,
-      enum: Object.values(HeatLevel),
       default: HeatLevel.WARM,
     },
     score: { type: Number, default: 0 }, // 0-10 score
+    color: String,
+    thresholdId: Schema.Types.ObjectId,
     budget: Number,
     bookingWindow: String,
     customerType: String,
@@ -156,7 +163,6 @@ const leadSchema = new Schema<ILead>(
     notes: String,
     roomCategory: String,
     roomPreference: String,
-    // Call status and payment tracking
     callStatus: {
       type: String,
       enum: Object.values(CallStatus),
@@ -165,6 +171,13 @@ const leadSchema = new Schema<ILead>(
     lastSMSFollowUpAt: Date,
     followUpCount: { type: Number, default: 0 },
     tags: [{ type: String, index: true }],
+
+    // Dynamic Custom Fields
+    customData: {
+      type: Map,
+      of: Schema.Types.Mixed,
+      default: {},
+    },
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );

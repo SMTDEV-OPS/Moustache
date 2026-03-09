@@ -120,13 +120,16 @@ export const deleteProfile = async (req: Request, res: Response) => {
 export const cloneProfile = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { newName, description } = req.body;
+        const body = req.body ?? {};
+        const { newName, name, description } = body;
+        const profileName = (typeof (newName ?? name) === "string" ? (newName ?? name).trim() : "") || undefined;
 
         if (!isValidObjectId(id)) {
             return res.status(400).json({ error: { message: "Invalid profile ID format" } });
         }
 
-        if (!newName) {
+        if (!profileName) {
+            logger.warn("Clone profile missing or empty name", { bodyKeys: Object.keys(body) });
             return res.status(400).json({ error: { message: "New profile name is required" } });
         }
 
@@ -136,7 +139,7 @@ export const cloneProfile = async (req: Request, res: Response) => {
         }
 
         const newProfile = await ProfileModel.create({
-            name: newName,
+            name: profileName,
             description: description || `Cloned from ${sourceProfile.name}`,
             modulePermissions: sourceProfile.modulePermissions,
             setupPermissions: sourceProfile.setupPermissions,

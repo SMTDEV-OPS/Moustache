@@ -3,6 +3,8 @@ import { LeadModel } from "../models/lead";
 import { ReservationModel } from "../models/reservation";
 import { PropertyModel } from "../models/property";
 import { GuestModel } from "../models/guest"; // Assuming GuestModel exists
+import { PipelineModel } from "../models/pipeline";
+import { PipelineStageModel } from "../models/pipelineStage";
 import { PMSFactory } from "./pms/PMSFactory";
 import { BookingRequest, BookingResponse } from "./pms/IPMSService";
 import { badRequest, notFound } from "../utils/httpError"; // Assuming these exist
@@ -121,7 +123,20 @@ export class BookingService {
 
         // 4. Update Lead
         lead.status = LeadStatus.CONFIRMED; // Or WON if using SOP?
-        lead.stage = LeadStage.BOOKED;
+
+        // Find default Booked stage
+        const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).exec();
+        if (pipeline) {
+            const wonStage = await PipelineStageModel.findOne({
+                pipelineId: pipeline._id,
+                isTerminal: true,
+                terminalType: "WON"
+            }).exec();
+            if (wonStage) {
+                lead.stageId = wonStage._id as Types.ObjectId;
+            }
+        }
+
         lead.pmsReservationId = pmsResponse?.pmsBookingId;
         lead.closedAt = new Date();
         // lead.closedReason = ClosedReason.BOOKED; // If enum existed

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Layers } from "lucide-react";
 
 interface SettingsCategory {
     title: string;
@@ -107,6 +108,27 @@ export function SettingsDashboard({
                     url: "property-management",
                     icon: <Building2 className="h-4 w-4" />,
                     requiredPermission: canManageProperties ? 'true' : 'false'
+                },
+                {
+                    title: "Module Builder",
+                    description: "Customize fields and layouts for modules.",
+                    url: "module-builder",
+                    icon: <Layers className="h-4 w-4" />,
+                    requiredPermission: isAdminLike ? 'true' : 'false'
+                },
+                {
+                    title: "Pipeline Management",
+                    description: "Configure sales pipelines and custom stages.",
+                    url: "pipeline-management",
+                    icon: <GitBranch className="h-4 w-4" />,
+                    requiredPermission: isAdminLike ? 'true' : 'false'
+                },
+                {
+                    title: "Scoring Rules",
+                    description: "Automate lead quality scoring based on rules.",
+                    url: "scoring-rules",
+                    icon: <Settings2 className="h-4 w-4" />,
+                    requiredPermission: isAdminLike ? 'true' : 'false'
                 }
             ]
         },

@@ -36,6 +36,9 @@ import { BuddyManagement } from "@/components/BuddyManagement";
 import { TicketManagement } from "@/components/TicketManagement";
 import { IntegrationSettings } from "@/components/IntegrationSettings";
 import { SettingsDashboard } from "@/components/SettingsDashboard";
+import { PipelineManagement } from "@/components/PipelineManagement";
+import { ModuleBuilder } from "@/pages/settings/ModuleBuilder";
+import { ScoringRuleManagement } from "@/components/ScoringRuleManagement";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -306,15 +309,34 @@ export const ProfessionalCRM = ({
           );
         }
         return <AdminApiConsole />;
-      case 'integration-settings':
-        if (!isAdmin && !permissions?.includes("users.manage")) { // Use a high-level admin check
+        return <IntegrationSettings />;
+      case 'pipeline-management':
+        if (!isAdmin && !permissions?.includes("leads.manage")) {
           return (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              You do not have permission to manage integrations.
+              You do not have permission to manage pipelines.
             </div>
           );
         }
-        return <IntegrationSettings />;
+        return <PipelineManagement />;
+      case 'module-builder':
+        if (!isAdmin && !permissions?.includes("leads.manage")) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage modules.
+            </div>
+          );
+        }
+        return <ModuleBuilder />;
+      case 'scoring-rules':
+        if (!isAdmin && !permissions?.includes("leads.manage")) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage scoring rules.
+            </div>
+          );
+        }
+        return <ScoringRuleManagement />;
       case 'admin-leads':
         // Lead CRM – available to any backend user with lead view/control permissions.
         if (
@@ -444,7 +466,7 @@ export const ProfessionalCRM = ({
     'security/roles', 'security/profiles', 'security/groups', 'security/data-sharing',
     'user-management', 'account-management', 'property-management',
     'assignment-rules', 'workflow-management', 'message-templates',
-    'email-provider-settings', 'integration-settings'
+    'email-provider-settings', 'integration-settings', 'pipeline-management', 'module-builder', 'scoring-rules'
   ].includes(activeView);
 
   return (

@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { EmailDialog } from "@/components/communication/EmailDialog";
 import { listLeads, Lead } from "@/services/leads";
 import { listUsers, User } from "@/services/users";
+import { PipelineService, PipelineStage } from "@/services/pipelines";
 
 interface ProfessionalLeadManagementProps {
   userRole: string;
@@ -86,6 +87,8 @@ const ProfessionalLeadManagement = ({
   const [leads, setLeads] = useState<Lead[]>([]);
   const [userList, setUserList] = useState<User[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState(false);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [isLoadingStages, setIsLoadingStages] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const canViewTeamLeads =
@@ -126,6 +129,21 @@ const ProfessionalLeadManagement = ({
     };
 
     void fetchData();
+
+    const fetchStages = async () => {
+      try {
+        setIsLoadingStages(true);
+        const defaultPipeline = await PipelineService.getDefaultPipeline("leads");
+        if (defaultPipeline) {
+          setPipelineStages(defaultPipeline.stages);
+        }
+      } catch (err) {
+        console.error("Failed to fetch pipeline stages", err);
+      } finally {
+        setIsLoadingStages(false);
+      }
+    };
+    void fetchStages();
   }, [backendUserId, scope]);
 
   const [showEmailDialog, setShowEmailDialog] = useState(false);
@@ -225,6 +243,9 @@ const ProfessionalLeadManagement = ({
             ? "Cold"
             : "Cold";
 
+    const stage = pipelineStages.find(s => s._id === lead.stageId);
+    const stageName = stage ? stage.name : "N/A";
+
     return {
       id: lead.id,
       name: lead.leadNumber ?? lead.id,
@@ -237,7 +258,8 @@ const ProfessionalLeadManagement = ({
       budget: lead.budget ? formatCurrency(lead.budget) : "",
       pricePerNight: 0,
       status: lead.status,
-      stage: lead.stage,
+      stage: stageName,
+      stageId: lead.stageId,
       temperature,
       bookingType: "Direct Customer",
       assignedTo: assignedName,
@@ -273,7 +295,7 @@ const ProfessionalLeadManagement = ({
     }
 
     // Stage filter
-    if (selectedFilters.stage !== "all" && lead.stage !== selectedFilters.stage) {
+    if (selectedFilters.stage !== "all" && lead.stageId !== selectedFilters.stage) {
       return false;
     }
 
@@ -1010,17 +1032,16 @@ const ProfessionalLeadManagement = ({
                       </Select>
 
                       <Select value={selectedFilters.stage} onValueChange={(value) => setSelectedFilters(prev => ({ ...prev, stage: value }))}>
-                        <SelectTrigger className="w-32">
+                        <SelectTrigger className="w-40">
                           <SelectValue placeholder="Stage" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Stages</SelectItem>
-                          <SelectItem value="NEW_LEAD">New Lead</SelectItem>
-                          <SelectItem value="FIRST_CONNECT">1st Connect</SelectItem>
-                          <SelectItem value="DISCUSSION">Discussion</SelectItem>
-                          <SelectItem value="PAYMENT_REQUEST">Payment Request</SelectItem>
-                          <SelectItem value="BOOKED">Booked</SelectItem>
-                          <SelectItem value="LOST">Lost</SelectItem>
+                          {pipelineStages.map(stage => (
+                            <SelectItem key={stage._id} value={stage._id}>
+                              {stage.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
 

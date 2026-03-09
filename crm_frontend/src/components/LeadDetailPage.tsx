@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Phone, Mail, MessageCircle, Video, FileText, Calendar, User as UserIcon, Hotel, Flame, Clock, CheckCircle, XCircle, RefreshCw, IndianRupee, Loader2, Edit, Save, Building2, Users, ThermometerSun, MessageSquare } from "lucide-react";
-import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, LeadStage, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
+import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
+import { PipelineService, PipelineStage } from "@/services/pipelines";
 import { listEmails, EmailMessage } from "@/services/email";
 import { EmailComposer } from "@/components/EmailComposer";
 import { ScheduleFollowUpDialog } from "@/components/ScheduleFollowUpDialog";
@@ -23,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { EditContactDetailsDialog } from "@/components/EditContactDetailsDialog";
 import { EditLeadDetailsDialog, LeadTripDetails } from "@/components/EditLeadDetailsDialog";
 import { CreateBookingDialog } from "@/components/CreateBookingDialog";
+import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
 
 interface LeadDetailPageProps {
   leadId: string;
@@ -179,6 +181,11 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [leadEmails, setLeadEmails] = useState<EmailMessage[]>([]);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
   const [isComposeEmailOpen, setIsComposeEmailOpen] = useState(false);
+
+  // Custom fields state
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [isLoadingFields, setIsLoadingFields] = useState(false);
+
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
   const [scheduleType, setScheduleType] = useState<"call" | "email" | "whatsapp" | "meeting">("call");
   const [isQuotationDialogOpen, setIsQuotationDialogOpen] = useState(false);
@@ -190,7 +197,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   // State for editable fields - must be declared before any early returns
   const [editingStatus, setEditingStatus] = useState(false);
   const [localStatus, setLocalStatus] = useState<LeadStatus>("NEW");
-  const [localStage, setLocalStage] = useState<LeadStage>("NEW_LEAD");
+  const [localStage, setLocalStage] = useState<string>("");
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [localClosedReason, setLocalClosedReason] = useState<string>("");
   const [localHeatLevel, setLocalHeatLevel] = useState<HeatLevel>("WARM");
   const [localCallStatus, setLocalCallStatus] = useState<string>("");
@@ -212,6 +220,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     void loadUsers();
     void loadPaymentLinks();
     void loadCommunicationTimeline();
+    void loadCustomFieldsData();
+    void loadPipeline();
   }, [leadId]);
 
   // Update local state when lead changes - must be before any early returns
@@ -219,7 +229,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     if (leadDetail) {
       const lead = leadDetail.lead;
       setLocalStatus(lead.status);
-      setLocalStage(lead.stage || "NEW_LEAD");
+      setLocalStage(lead.stageId || "");
       setLocalClosedReason(lead.closedReason || "");
       setLocalHeatLevel(lead.heatLevel);
       setLocalCallStatus((lead as any).callStatus || "");
@@ -241,6 +251,17 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadPipeline = async () => {
+    try {
+      const defaultPipeline = await PipelineService.getDefaultPipeline("leads");
+      if (defaultPipeline && defaultPipeline.stages) {
+        setPipelineStages(defaultPipeline.stages);
+      }
+    } catch (err) {
+      console.error("Failed to load pipeline stages", err);
     }
   };
 
@@ -278,6 +299,19 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       setPaymentLinks([]);
     } finally {
       setIsLoadingPaymentLinks(false);
+    }
+  };
+
+  const loadCustomFieldsData = async () => {
+    try {
+      setIsLoadingFields(true);
+      const fields = await CustomFieldsService.getActiveFieldsForModule("leads");
+      setCustomFields(fields.sort((a, b) => a.order - b.order));
+    } catch (error) {
+      console.error("Failed to load custom fields:", error);
+      setCustomFields([]);
+    } finally {
+      setIsLoadingFields(false);
     }
   };
 
@@ -416,18 +450,9 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     return "bg-red-100 text-red-800 border-red-200";
   };
 
-  const STAGES: LeadStage[] = ["NEW_LEAD", "FIRST_CONNECT", "DISCUSSION", "PAYMENT_REQUEST", "BOOKED"];
-
-  const getStageLabel = (stage: string) => {
-    switch (stage) {
-      case "NEW_LEAD": return "New Lead";
-      case "FIRST_CONNECT": return "1st Connect";
-      case "DISCUSSION": return "Discussion";
-      case "PAYMENT_REQUEST": return "Payment Request";
-      case "BOOKED": return "Booked";
-      case "LOST": return "Lost";
-      default: return stage.replace(/_/g, " ");
-    }
+  const getStageLabel = (stageId: string) => {
+    const stage = pipelineStages.find(s => s._id === stageId);
+    return stage?.name || "Unknown Stage";
   };
 
   const handleStatusChange = async () => {
@@ -451,13 +476,16 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
 
     try {
       setIsSavingStatus(true);
+      const currentTerminalType = pipelineStages.find(s => s._id === localStage)?.terminalType;
+
       await updateLead(leadId, {
         status: localStatus,
-        stage: localStage,
-        closedReason: localStatus === "LOST" ? localClosedReason : undefined,
+        stageId: localStage,
+        closedReason: currentTerminalType === "LOST" ? localClosedReason : undefined,
         heatLevel: localHeatLevel,
         callStatus: localCallStatus || undefined,
       });
+
       await loadLeadDetail();
       toast({
         title: "Status updated",
@@ -547,13 +575,22 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
 
   const handleSaveLeadDetails = async (details: LeadTripDetails) => {
     try {
-      await updateLead(leadId, {
+      setIsSavingStatus(true);
+
+      const payload: any = {
         checkInDate: details.checkInDate,
         checkOutDate: details.checkOutDate,
         roomsRequested: details.roomsRequested,
         guests: details.guests,
         occasion: details.occasion,
-      });
+      };
+
+      if (details.customData) {
+        payload.customData = details.customData;
+      }
+
+      await updateLead(lead.id, payload);
+
       await loadLeadDetail();
       toast({
         title: "Trip details updated",
@@ -645,32 +682,31 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         <CardContent className="pt-6">
           <div className="relative flex items-center justify-between w-full">
             <div className="absolute left-0 top-1/2 w-full h-1 bg-gray-200 -z-0"></div>
-            {STAGES.map((stage, index) => {
-              const currentStageIndex = STAGES.indexOf(lead.stage as LeadStage) > -1
-                ? STAGES.indexOf(lead.stage as LeadStage)
-                : (lead.stage === "LOST" ? -1 : 0);
+            {pipelineStages.filter((s) => !s.isTerminal || s.terminalType === "WON").map((stage, index) => {
+              const currentStageIndex = pipelineStages.findIndex(s => s._id === lead.stageId);
 
               const isCompleted = index <= currentStageIndex;
               const isCurrent = index === currentStageIndex;
 
               return (
-                <div key={stage} className="relative z-10 flex flex-col items-center bg-white px-2">
+                <div key={stage._id} className="relative z-10 flex flex-col items-center bg-white px-2">
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center border-2 
                       ${isCompleted ? "bg-primary border-primary text-primary-foreground" : "bg-white border-gray-300 text-gray-300"}
                       ${isCurrent ? "ring-4 ring-primary/20" : ""}
                     `}
+                    style={{ backgroundColor: isCompleted ? stage.color || "currentColor" : "white" }}
                   >
                     {index + 1}
                   </div>
                   <span className={`text-xs mt-2 font-medium ${isCompleted ? "text-primary" : "text-gray-400"}`}>
-                    {getStageLabel(stage)}
+                    {stage.name}
                   </span>
                 </div>
               );
             })}
           </div>
-          {lead.stage === "LOST" && (
+          {pipelineStages.find(s => s._id === lead.stageId)?.terminalType === "LOST" && (
             <div className="flex justify-center mt-4">
               <Badge variant="destructive">LOST LEAD</Badge>
             </div>
@@ -770,19 +806,18 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                   <label className="text-xs text-muted-foreground uppercase mb-2 block">Stage</label>
                   <Select
                     value={localStage}
-                    onValueChange={(value) => setLocalStage(value as LeadStage)}
+                    onValueChange={(value) => setLocalStage(value)}
                     disabled={!canUpdate}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {STAGES.map((stage) => (
-                        <SelectItem key={stage} value={stage}>
-                          {getStageLabel(stage)}
+                      {pipelineStages.map((stage) => (
+                        <SelectItem key={stage._id} value={stage._id}>
+                          {stage.name}
                         </SelectItem>
                       ))}
-                      <SelectItem value="LOST">Lost</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -807,7 +842,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                     </SelectContent>
                   </Select>
                 </div>
-                {(localStatus === "LOST" || localStage === "LOST") && (
+                {(localStatus === "LOST" || pipelineStages.find(s => s._id === localStage)?.terminalType === "LOST") && (
                   <div>
                     <label className="text-xs text-muted-foreground uppercase mb-2 block">Closed Reason</label>
                     <Select
@@ -979,6 +1014,36 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                     ))}
                   </div>
                 </div>
+              )}
+
+              {/* Dynamic Custom Fields Display */}
+              {customFields.length > 0 && lead.customData && Object.keys(lead.customData).length > 0 && (
+                <>
+                  <div className="my-4 border-t border-slate-200" />
+                  <div className="space-y-3">
+                    {customFields.map(field => {
+                      const val = lead.customData![field.fieldName];
+                      if (val === undefined || val === null || val === "") return null;
+
+                      let displayVal = String(val);
+                      if (field.dataType === "BOOLEAN") {
+                        displayVal = val ? "Yes" : "No";
+                      } else if (field.dataType === "DATE") {
+                        displayVal = format(new Date(val), "MM/dd/yyyy");
+                      } else if (field.dataType === "DROPDOWN" && field.options) {
+                        const opt = field.options.find(o => o.value === val);
+                        displayVal = opt ? opt.label : val;
+                      }
+
+                      return (
+                        <div key={field._id}>
+                          <p className="text-xs text-muted-foreground uppercase">{field.label}</p>
+                          <p className="font-medium whitespace-pre-wrap">{displayVal}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -1185,12 +1250,14 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       <EditLeadDetailsDialog
         open={isEditLeadDetailsDialogOpen}
         onOpenChange={setIsEditLeadDetailsDialogOpen}
+        customFields={customFields}
         currentDetails={{
           checkInDate: lead.checkInDate,
           checkOutDate: lead.checkOutDate,
           roomsRequested: lead.roomsRequested,
           guests: lead.guests,
           occasion: lead.occasion,
+          customData: lead.customData,
         }}
         onSave={handleSaveLeadDetails}
       />

@@ -7,6 +7,9 @@ import { LeadModel } from "../models/lead";
 import { UserBuddyAssignmentModel } from "../models/userBuddyAssignment";
 import { logger } from "../config/logger";
 
+import { getAvailableAgents } from "./allocationService";
+
+// ... will add isOverflow to AssignmentResult ...
 export interface AssignmentResult {
   assignedToUserId?: Types.ObjectId;
   employeeGroupId?: Types.ObjectId;
@@ -14,6 +17,7 @@ export interface AssignmentResult {
   reason?: string;
   wasRedirectedToBuddy?: boolean;
   originalAssigneeId?: Types.ObjectId;
+  isOverflow?: boolean;
 }
 
 export interface EligibleUser {
@@ -159,16 +163,12 @@ export async function getUserWithLeastLeads(
 }
 
 /**
- * Helper to determine team type based on LeadType and Source
- */
-
-
-/**
  * Auto-assign a lead based on lead type rules
  */
 export async function autoAssignLead(
   leadType: LeadType,
-  source?: LeadSource
+  source?: LeadSource,
+  orgId?: string
 ): Promise<AssignmentResult> {
   // Get the assignment rule for this lead type
   const rule = await getAssignmentRule(leadType);
@@ -179,8 +179,6 @@ export async function autoAssignLead(
       reason: `No active assignment rule found for lead type: ${leadType}`,
     };
   }
-
-
 
   let eligibleUsers = await findEligibleUsers(rule.employeeGroupId);
 
@@ -193,6 +191,23 @@ export async function autoAssignLead(
         employeeGroupId: rule.employeeGroupId,
         assignmentMethod: "none",
         reason: `No active users found in the assigned employee group`,
+      };
+    }
+  }
+
+  // Apply capacity filtering if orgId is present
+  if (orgId) {
+    const availableAgentIds = await getAvailableAgents(orgId, rule.employeeGroupId.toString());
+    const availableSet = new Set(availableAgentIds.map(id => id.toString()));
+
+    eligibleUsers = eligibleUsers.filter(u => availableSet.has(u._id.toString()));
+
+    if (eligibleUsers.length === 0) {
+      return {
+        employeeGroupId: rule.employeeGroupId,
+        assignmentMethod: "none",
+        reason: `Capacity reached. No available agents under capacity.`,
+        isOverflow: true
       };
     }
   }

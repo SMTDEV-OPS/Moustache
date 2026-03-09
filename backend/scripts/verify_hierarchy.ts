@@ -6,7 +6,7 @@ import { UserModel } from "../src/models/user";
 import { RoleModel } from "../src/models/role";
 import { UserRoleModel } from "../src/models/userRole";
 import { LeadModel } from "../src/models/lead";
-import { TeamType, LeadSource, LeadType, LeadStatus, LeadStage } from "../src/models/common";
+import { LeadSource, LeadType, LeadStatus } from "../src/models/common";
 import { AccessControlService } from "../src/services/auth/AccessControlService";
 
 /**
@@ -46,50 +46,40 @@ async function runTests() {
         // 3. CREATE USERS (HIERARCHY)
         console.log("Creating User Hierarchy...");
 
-        // CEO
         const ceo = await UserModel.create({
             name: "Test CEO",
             email: "ceo@test.com",
-            teamType: TeamType.MANAGEMENT,
             status: "ACTIVE",
             passwordHash: "test1234",
         });
 
-        // B2C Manager -> CEO
         const b2cManager = await UserModel.create({
             name: "Test B2C Manager",
             email: "b2c.mgr@test.com",
-            teamType: TeamType.SALES,
             reportsTo: ceo._id,
             status: "ACTIVE",
             passwordHash: "test1234",
         });
 
-        // B2C Team Lead -> B2C Manager
         const b2cLead = await UserModel.create({
             name: "Test B2C Team Lead",
             email: "b2c.lead@test.com",
-            teamType: TeamType.SALES,
             reportsTo: b2cManager._id,
             status: "ACTIVE",
             passwordHash: "test1234",
         });
 
-        // B2C Exec 1 -> B2C Team Lead
         const b2cExec1 = await UserModel.create({
             name: "Test B2C Exec 1",
             email: "exec1@test.com",
-            teamType: TeamType.SALES,
             reportsTo: b2cLead._id,
             status: "ACTIVE",
             passwordHash: "test1234",
         });
 
-        // B2C Exec 2 -> B2C Team Lead
         const b2cExec2 = await UserModel.create({
             name: "Test B2C Exec 2",
             email: "exec2@test.com",
-            teamType: TeamType.SALES,
             reportsTo: b2cLead._id,
             status: "ACTIVE",
             passwordHash: "test1234",
@@ -115,7 +105,7 @@ async function runTests() {
             source: LeadSource.BRAND_WEBSITE,
             leadType: LeadType.STAY,
             status: LeadStatus.NEW,
-            stage: LeadStage.NEW_LEAD,
+            stageId: new mongoose.Types.ObjectId(),
             assignedToUserId: b2cExec1._id, // Owned by Exec 1
         });
 
@@ -124,7 +114,7 @@ async function runTests() {
             source: LeadSource.BRAND_WEBSITE,
             leadType: LeadType.STAY,
             status: LeadStatus.NEW,
-            stage: LeadStage.NEW_LEAD,
+            stageId: new mongoose.Types.ObjectId(),
             assignedToUserId: b2cExec2._id, // Owned by Exec 2
         });
 

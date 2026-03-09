@@ -103,7 +103,7 @@ export function RolesManager() {
         try {
             const isNew = !selectedRole;
             const url = isNew ? `${API_BASE_URL}/roles` : `${API_BASE_URL}/roles/${selectedRole._id}`;
-            const method = isNew ? 'POST' : 'PUT';
+            const method = isNew ? 'POST' : 'PATCH';
 
             const payload = { ...formData };
             if (!payload.parentRoleId) delete (payload as any).parentRoleId;

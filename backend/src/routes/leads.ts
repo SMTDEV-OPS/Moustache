@@ -14,7 +14,7 @@ import { LeadModel, ILead } from "../models/lead";
 import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import { CommunicationModel } from "../models/communication";
 import { badRequest, notFound, forbidden } from "../utils/httpError";
-import { createLead, reassignLead } from "../services/leadService";
+import { createLead, reassignLead, validateStageMove, leadEventBus } from "../services/leadService";
 import { getEligibleUsersForManualAssignment } from "../services/assignmentService";
 import { UserModel } from "../models/user";
 import { getCommunicationTimeline } from "../services/communicationService";
@@ -123,6 +123,8 @@ const leadCreateSchema = z.object({
   // Assignment options
   assignmentMode: z.enum(["auto", "manual"]).optional(),
   assignedToUserId: z.string().optional(),
+  // Dynamic custom fields
+  customData: z.record(z.any()).optional(),
 });
 
 // Get eligible users for manual assignment based on lead type
@@ -200,6 +202,7 @@ leadsRouter.post("/", async (req, res, next) => {
       assignmentMode: data.assignmentMode ?? "auto",
       assignedToUserId: data.assignedToUserId,
       createdByUserId: req.user?.id,
+      customData: data.customData,
     });
 
     // Note: Activity logging is now handled in leadService.createLead
@@ -449,6 +452,8 @@ leadsRouter.get("/:id", async (req, res, next) => {
   }
 });
 
+import { ScoringService } from "../services/scoringService";
+
 const leadUpdateSchema = z.object({
   status: z.nativeEnum(LeadStatus).optional(),
   heatLevel: z.nativeEnum(HeatLevel).optional(),
@@ -465,6 +470,7 @@ const leadUpdateSchema = z.object({
     .optional(),
   occasion: z.string().optional(),
   assignedToUserId: z.string().optional(),
+  stageId: z.string().optional(),
   // Allow updating contact details (the inquiry snapshot)
   contactDetails: z
     .object({
@@ -473,6 +479,7 @@ const leadUpdateSchema = z.object({
       email: z.string().email().optional(),
     })
     .optional(),
+  customData: z.record(z.any()).optional(),
 });
 
 leadsRouter.patch("/:id", async (req, res, next) => {
@@ -550,6 +557,11 @@ leadsRouter.patch("/:id", async (req, res, next) => {
     if (parsed.data.occasion) {
       existing.occasion = parsed.data.occasion;
     }
+    if (parsed.data.customData) {
+      existing.customData = new Map(Object.entries(parsed.data.customData));
+      // Using markModified to ensure Mongoose knows it changed
+      existing.markModified("customData");
+    }
 
     // Handle contactDetails update (with normalization)
     if (parsed.data.contactDetails) {
@@ -613,6 +625,49 @@ leadsRouter.patch("/:id", async (req, res, next) => {
       } else {
         throw forbidden("Insufficient permissions to assign leads");
       }
+    }
+
+    // Recalculate score using dynamic scoring rules based on latest lead data
+    try {
+      const updatedLeadData = existing.toObject();
+      const newScore = await ScoringService.calculateScoreForLead(updatedLeadData);
+      existing.score = newScore;
+    } catch (scoreError) {
+      // If scoring fails, log but do not block lead update
+      console.error("Failed to recalculate lead score on update:", scoreError);
+    }
+
+    // Handle Stage Move (Pipeline Builder E2)
+    if (parsed.data.stageId && parsed.data.stageId !== existing.stageId?.toString()) {
+      const validation = await validateStageMove(existing._id.toString(), parsed.data.stageId);
+
+      if (!validation.allowed) {
+        if (validation.reason === 'already_terminal') {
+          return res.status(422).json({
+            error: 'Cannot move lead from a terminal stage.',
+            reason: validation.reason
+          });
+        } else if (validation.missingFields && validation.missingFields.length > 0) {
+          return res.status(422).json({
+            error: 'Mandatory fields are missing for this stage.',
+            missingFields: validation.missingFields
+          });
+        } else {
+          return res.status(422).json({ error: 'Stage move not allowed', reason: validation.reason });
+        }
+      }
+
+      const previousStageId = existing.stageId;
+      existing.stageId = parsed.data.stageId as any;
+
+      // Emit event locally without awaiting or breaking the request
+      process.nextTick(() => {
+        leadEventBus.emit('lead.stage_moved', {
+          leadId: existing._id.toString(),
+          fromStageId: previousStageId?.toString() || null,
+          toStageId: parsed.data.stageId,
+        });
+      });
     }
 
     await existing.save();
@@ -856,5 +911,68 @@ leadsRouter.post("/:id/notes", async (req, res, next) => {
   }
 });
 
+import { CallQualityService } from "../services/callQualityService";
+import { CallQualityScoreModel } from "../models/callQualityScore";
 
+// Submit Call Quality Score
+const callQualitySchema = z.object({
+  scoresJson: z.record(z.string(), z.number()),
+  notes: z.string().optional(),
+});
 
+leadsRouter.post("/:id/call-quality", async (req, res, next) => {
+  try {
+    const parsed = callQualitySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest("Invalid call quality payload");
+    }
+
+    if (!req.user) {
+      throw badRequest("Missing authenticated user");
+    }
+
+    // Role Validation (TL or Admin)
+    if (!hasPermission(req.user, "leads.manage") && !hasPermission(req.user, "settings.manage")) {
+      throw forbidden("Insufficient permissions to score call quality");
+    }
+
+    const orgId = "default_org"; // Moustache CRM fallback for single tenant deployments
+
+    const score = await CallQualityService.submitCallQualityScore(
+      req.params.id,
+      req.user.id,
+      parsed.data.scoresJson,
+      parsed.data.notes || "",
+      orgId.toString()
+    );
+
+    res.status(201).json(score);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get Call Quality Scores for lead
+leadsRouter.get("/:id/call-quality", async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw badRequest("Missing authenticated user");
+    }
+
+    const lead = await LeadModel.findById(req.params.id);
+    if (!lead) {
+      throw notFound("Lead not found");
+    }
+
+    await assertLeadAccess(req.user, lead);
+
+    const scores = await CallQualityScoreModel.find({ leadId: req.params.id })
+      .populate("scored_by", "name email")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json(scores);
+  } catch (err) {
+    next(err);
+  }
+});
