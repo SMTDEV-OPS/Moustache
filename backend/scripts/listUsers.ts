@@ -8,7 +8,7 @@ async function listUsers() {
   await mongoose.connect(config.mongoUri);
   logger.info("Connected to MongoDB");
 
-  const users = await UserModel.find({}).select("name email status teamType roleId").lean();
+  const users = await UserModel.find({}).select("name email status roleId").lean();
   
   console.log("\n=== Users in Database ===\n");
   if (users.length === 0) {
@@ -18,7 +18,6 @@ async function listUsers() {
       console.log(`${index + 1}. ${user.name}`);
       console.log(`   Email: ${user.email}`);
       console.log(`   Status: ${user.status}`);
-      console.log(`   Team Type: ${user.teamType}`);
       console.log(`   Role ID: ${user.roleId || "None"}`);
       console.log("");
     });

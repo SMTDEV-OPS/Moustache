@@ -6,6 +6,7 @@ import { badRequest, unauthorized } from "../utils/httpError";
 import { signJwt, requireAuth } from "../middleware/auth";
 import { logger } from "../config/logger";
 import { AccessControlService } from "../services/auth/AccessControlService";
+import { logAudit } from "../utils/auditLog";
 
 export const authRouter = Router();
 
@@ -70,6 +71,8 @@ authRouter.post("/login", async (req, res, next) => {
       userId: user.id,
     });
 
+    logAudit("login", "user", user.id, null, { email: user.email }, req, { userId: user.id });
+
     const { permissions, isAdmin } = await AccessControlService.getUserPermissions(user.id);
 
     res.json({
@@ -123,6 +126,8 @@ authRouter.post("/logout", requireAuth, async (req, res, next) => {
     await UserModel.findByIdAndUpdate(req.user.id, {
       isOnline: false,
     });
+
+    logAudit("logout", "user", req.user.id, null, null, req);
 
     res.json({ success: true });
   } catch (err) {

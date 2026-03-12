@@ -42,6 +42,8 @@ import { pmsRouter } from "./routes/pms";
 import profilesRouter from "./routes/profiles";
 import customFieldsRouter from "./routes/customFields";
 import adminFieldsRouter from "./routes/adminFields";
+// Eagerly register LeadItinerary model so virtual populate("itineraries") works
+import "./models/leadItinerary";
 import { pipelinesRouter } from "./routes/pipelines";
 import { scoringRouter } from "./routes/scoringRules";
 
@@ -119,7 +121,22 @@ app.use("/scoring-rules", scoringRouter);
 app.use("/api/admin/scoring/thresholds", scoringThresholdsRouter);
 app.use("/api/admin/call-quality/dimensions", callQualityDimensionsRouter);
 import { adminFollowupRulesRouter } from "./routes/adminFollowupRules";
+import { adminWorkflowsRouter } from "./routes/adminWorkflows";
+import { filtersRouter } from "./routes/filters";
+import { adminAuditLogRouter } from "./routes/adminAuditLog";
+import { webhookIntakeRouter } from "./routes/webhookIntake";
+import { adminIntegrationsRouter } from "./routes/adminIntegrations";
+import { dashboardRouter } from "./routes/dashboard";
+import { allocationRouter } from "./routes/allocation";
+
+app.use("/api/filters", filtersRouter);
+app.use("/api/dashboard", dashboardRouter);
+app.use("/webhook/intake", webhookIntakeRouter);
+app.use("/api/admin/audit-log", adminAuditLogRouter);
+app.use("/api/admin/integrations", adminIntegrationsRouter);
+app.use("/api/admin/allocation", allocationRouter);
 app.use("/api/admin/followup-rules", adminFollowupRulesRouter);
+app.use("/api/admin/workflows", adminWorkflowsRouter);
 
 // Public endpoints (no authentication required)
 app.use("/api/public/website-leads", publicWebsiteLeadsRouter);
@@ -131,7 +148,10 @@ app.use("/api/public/email-webhook", publicEmailWebhooksRouter);
 app.use(errorHandler);
 
 import { FollowupService } from "./services/followupService";
+import { initializeWorkflowEngine } from "./services/workflowEngine";
+
 FollowupService.initialize();
+initializeWorkflowEngine();
 
 logger.info("Express app initialized");
 

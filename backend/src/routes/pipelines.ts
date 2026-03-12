@@ -5,6 +5,7 @@ import { PipelineStageModel } from "../models/pipelineStage";
 import { LeadModel } from "../models/lead";
 import { requireAuth } from "../middleware/auth";
 import { badRequest, notFound } from "../utils/httpError";
+import { logAudit } from "../utils/auditLog";
 
 export const pipelinesRouter = Router();
 
@@ -38,6 +39,7 @@ pipelinesRouter.post("/", async (req, res, next) => {
             throw badRequest("Invalid payload: " + parsed.error.message);
         }
         const pipeline = await PipelineModel.create(parsed.data);
+        logAudit("created", "pipeline", pipeline._id.toString(), null, { name: pipeline.name }, req);
         res.status(201).json(pipeline);
     } catch (err) {
         next(err);
@@ -87,9 +89,10 @@ pipelinesRouter.patch("/:id", async (req, res, next) => {
         const pipeline = await PipelineModel.findById(req.params.id);
         if (!pipeline) throw notFound("Pipeline not found");
 
+        const before = pipeline.toObject();
         Object.assign(pipeline, parsed.data);
         await pipeline.save();
-
+        logAudit("updated", "pipeline", pipeline._id.toString(), before, pipeline.toObject(), req);
         res.json(pipeline);
     } catch (err) {
         next(err);
@@ -197,6 +200,7 @@ pipelinesRouter.put("/:id/stages", async (req, res, next) => {
             }
         }
 
+        logAudit("updated", "pipeline", pipeline._id.toString(), { stagesCount: existingStages.length }, { stagesCount: resultStages.length }, req);
         res.json(resultStages);
     } catch (err) {
         next(err);
@@ -220,6 +224,7 @@ pipelinesRouter.delete("/:id", async (req, res, next) => {
         await PipelineStageModel.deleteMany({ pipelineId: pipeline._id });
         await PipelineModel.deleteOne({ _id: pipeline._id });
 
+        logAudit("deleted", "pipeline", pipeline._id.toString(), { name: pipeline.name }, null, req);
         res.status(204).send();
     } catch (err) {
         next(err);

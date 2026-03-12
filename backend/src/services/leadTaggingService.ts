@@ -7,6 +7,10 @@ export function generateTagsForLead(
 ): string[] {
     const tags: string[] = [];
 
+    const customData = leadInput.customData instanceof Map
+        ? Object.fromEntries(leadInput.customData)
+        : (leadInput.customData || {});
+
     // 1. City Name & Property Name
     if (property) {
         if (property.location && property.location.city) {
@@ -18,14 +22,16 @@ export function generateTagsForLead(
     }
 
     // 2. Customer Type
-    if (leadInput.customerType) {
+    const customerType = customData.customerType || customData.customer_type;
+    if (customerType) {
         // E.g. "B2B", "B2C", "Corporate", "Influencer"
-        tags.push(leadInput.customerType);
+        tags.push(customerType);
     }
 
     // 3. Travel Dates
-    if (leadInput.checkInDate) {
-        const checkIn = new Date(leadInput.checkInDate);
+    const checkInDateRaw = (leadInput as any).checkInDate || (leadInput as any).hotels?.[0]?.checkInDate || (leadInput as any).itineraries?.[0]?.checkInDate;
+    if (checkInDateRaw) {
+        const checkIn = new Date(checkInDateRaw);
         const now = new Date();
         // Use start of day for accurate day difference
         checkIn.setHours(0, 0, 0, 0);
@@ -46,7 +52,7 @@ export function generateTagsForLead(
     }
 
     // 4. Minimum Budget
-    const budgetAmount = leadInput.budget || (leadInput.estimatedValue ? parseFloat(leadInput.estimatedValue) : 0);
+    const budgetAmount = customData.budget || (leadInput.estimatedValue ? parseFloat(leadInput.estimatedValue) : 0);
     if (budgetAmount > 0) {
         if (budgetAmount <= 20000) {
             tags.push("Budget: < 20k");
@@ -63,8 +69,9 @@ export function generateTagsForLead(
     }
 
     // 6. Booking Window
-    if (leadInput.bookingWindow) {
-        tags.push(`Window: ${leadInput.bookingWindow}`);
+    const bookingWindow = customData.bookingWindow || customData.booking_window;
+    if (bookingWindow) {
+        tags.push(`Window: ${bookingWindow}`);
     }
 
     return tags;

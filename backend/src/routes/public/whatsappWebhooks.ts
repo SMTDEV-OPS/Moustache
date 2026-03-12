@@ -50,12 +50,14 @@ publicWhatsappWebhooksRouter.post("/", async (req, res, next) => {
                 },
                 source: LeadSource.WHATSAPP,
                 leadType: LeadType.STAY, // default
-                checkInDate: extractedData.checkInDate ? new Date(extractedData.checkInDate) : undefined,
-                checkOutDate: extractedData.checkOutDate ? new Date(extractedData.checkOutDate) : undefined,
-                roomCategory: extractedData.roomCategory || undefined,
-                occasion: extractedData.occasion || undefined,
+                hotels: extractedData.checkInDate || extractedData.checkOutDate ? [{
+                    checkInDate: extractedData.checkInDate ? new Date(extractedData.checkInDate) : undefined,
+                    checkOutDate: extractedData.checkOutDate ? new Date(extractedData.checkOutDate) : undefined,
+                    roomCategory: extractedData.roomCategory || undefined,
+                    numberOfGuests: extractedData.numberOfGuests ? String(extractedData.numberOfGuests) : undefined,
+                }] : undefined,
+                customData: extractedData.occasion ? { occasion: extractedData.occasion } : undefined,
                 specialRequests: extractedData.specialRequests || undefined,
-                roomsRequested: extractedData.numberOfGuests ? Math.ceil(extractedData.numberOfGuests / 2) : undefined,
                 notes: `Generated from WhatsApp.\nExtracted via LLM: ${JSON.stringify(extractedData, null, 2)}\nInitial message: "${data.text || 'N/A'}"`,
                 assignmentMode: "auto"
             });

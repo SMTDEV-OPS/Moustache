@@ -23,6 +23,9 @@ import { EmailDialog } from "@/components/communication/EmailDialog";
 import { listLeads, Lead } from "@/services/leads";
 import { listUsers, User } from "@/services/users";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
+import { API_BASE_URL, withAuthHeaders } from "@/services/api";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ProfessionalLeadManagementProps {
   userRole: string;
@@ -90,6 +93,8 @@ const ProfessionalLeadManagement = ({
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [customFields, setCustomFields] = useState<any[]>([]);
+  const [customData, setCustomData] = useState<Record<string, any>>({});
 
   const canViewTeamLeads =
     !!permissions?.includes("leads.view.team") ||
@@ -144,6 +149,21 @@ const ProfessionalLeadManagement = ({
       }
     };
     void fetchStages();
+
+    const fetchCustomFields = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/admin/fields?entity=lead`, {
+          headers: withAuthHeaders(),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setCustomFields(data.filter((f: any) => f.is_active).sort((a: any, b: any) => a.display_order - b.display_order));
+        }
+      } catch (err) {
+        console.error("Failed to fetch custom fields", err);
+      }
+    };
+    void fetchCustomFields();
   }, [backendUserId, scope]);
 
   const [showEmailDialog, setShowEmailDialog] = useState(false);
@@ -227,12 +247,27 @@ const ProfessionalLeadManagement = ({
     const assignedName =
       assignedUser?.name || assignedUser?.email || "Unassigned";
 
-    const checkIn = lead.checkInDate
-      ? lead.checkInDate.slice(0, 10)
-      : "";
-    const checkOut = lead.checkOutDate
-      ? lead.checkOutDate.slice(0, 10)
-      : "";
+    let primaryCheckIn = "";
+    let primaryCheckOut = "";
+
+    if (lead.itineraries && lead.itineraries.length > 0) {
+      // Find earliest check-in
+      const sortedItineraries = [...lead.itineraries].sort((a, b) => {
+        if (!a.checkInDate) return 1;
+        if (!b.checkInDate) return -1;
+        return new Date(a.checkInDate).getTime() - new Date(b.checkInDate).getTime();
+      });
+      const firstItinerary = sortedItineraries[0];
+      if (firstItinerary.checkInDate) {
+        primaryCheckIn = firstItinerary.checkInDate.slice(0, 10);
+      }
+      if (firstItinerary.checkOutDate) {
+        primaryCheckOut = firstItinerary.checkOutDate.slice(0, 10);
+      }
+    }
+
+    const checkIn = primaryCheckIn;
+    const checkOut = primaryCheckOut;
 
     const temperature =
       lead.heatLevel === "HOT"
@@ -409,10 +444,12 @@ const ProfessionalLeadManagement = ({
   };
 
   const onSubmit = (data: LeadFormData) => {
-    console.log("New lead data:", data);
+    const payload = { ...data, customData };
+    console.log("New lead data:", payload);
     toast.success("Lead added successfully!");
     setIsAddLeadOpen(false);
     form.reset();
+    setCustomData({});
   };
 
   return (
@@ -931,6 +968,105 @@ const ProfessionalLeadManagement = ({
                     </FormItem>
                   )}
                 />
+
+                {customFields.length > 0 && (
+                  <div className="pt-4">
+                    <div className="relative flex items-center mb-6">
+                      <div className="flex-grow border-t border-[#9ca3af]"></div>
+                      <span className="flex-shrink-0 mx-4 text-[13px] font-medium text-[#c0c2ce]" style={{ color: '#9ca3af' }}>
+                        Additional Details
+                      </span>
+                      <div className="flex-grow border-t border-[#9ca3af]"></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {customFields.map((field) => (
+                        <div key={field.slug} className="space-y-2">
+                          <Label className="text-[13px] font-medium text-[#374151]">
+                            {field.name}
+                          </Label>
+                          {field.type === "text" && (
+                            <Input
+                              value={customData[field.slug] || ""}
+                              onChange={(e) => setCustomData({ ...customData, [field.slug]: e.target.value })}
+                            />
+                          )}
+                          {field.type === "number" && (
+                            <Input
+                              type="number"
+                              value={customData[field.slug] || ""}
+                              onChange={(e) => setCustomData({ ...customData, [field.slug]: e.target.value ? Number(e.target.value) : "" })}
+                            />
+                          )}
+                          {field.type === "date" && (
+                            <Input
+                              type="date"
+                              value={customData[field.slug] || ""}
+                              onChange={(e) => setCustomData({ ...customData, [field.slug]: e.target.value })}
+                            />
+                          )}
+                          {field.type === "dropdown" && (
+                            <Select
+                              value={customData[field.slug] || ""}
+                              onValueChange={(val) => setCustomData({ ...customData, [field.slug]: val })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder={`Select ${field.name}`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {field.options?.map((opt: string) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {field.type === "multi_select" && (
+                            <Select
+                              value={customData[field.slug] && customData[field.slug].length > 0 ? "selected" : ""}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder={`Select ${field.name}`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {field.options?.map((opt: string) => (
+                                  <div key={opt} className="flex items-center px-2 py-1 hover:bg-muted cursor-pointer" onClick={(e) => {
+                                    e.preventDefault();
+                                    const current = customData[field.slug] || [];
+                                    const idx = current.indexOf(opt);
+                                    if (idx === -1) {
+                                      setCustomData({ ...customData, [field.slug]: [...current, opt] });
+                                    } else {
+                                      setCustomData({ ...customData, [field.slug]: current.filter((x: string) => x !== opt) });
+                                    }
+                                  }}>
+                                    <Checkbox className="mr-2" checked={(customData[field.slug] || []).includes(opt)} />
+                                    <span className="text-sm">{opt}</span>
+                                  </div>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {field.type === "boolean" && (
+                            <div className="pt-2">
+                              <Switch
+                                checked={!!customData[field.slug]}
+                                onCheckedChange={(val) => setCustomData({ ...customData, [field.slug]: val })}
+                              />
+                            </div>
+                          )}
+                          {field.type === "phone" && (
+                            <Input
+                              type="tel"
+                              value={customData[field.slug] || ""}
+                              onChange={(e) => setCustomData({ ...customData, [field.slug]: e.target.value })}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setIsAddLeadOpen(false)}>

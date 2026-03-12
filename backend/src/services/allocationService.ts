@@ -137,3 +137,51 @@ export async function checkCapacityAlerts(orgId: string): Promise<void> {
         });
     }
 }
+
+/** Return all allocation config entries for an org */
+export async function getAllocationConfig(orgId: string): Promise<Record<string, { value: string; description?: string }>> {
+    const configs = await AllocationConfigModel.find({ orgId: new Types.ObjectId(orgId) }).lean();
+    const result: Record<string, { value: string; description?: string }> = {};
+    for (const c of configs) {
+        result[c.key] = { value: c.value, description: c.description };
+    }
+    return result;
+}
+
+/** Update multiple allocation config keys for an org */
+export async function updateAllocationConfig(orgId: string, updates: Record<string, string>): Promise<void> {
+    const orgObjId = new Types.ObjectId(orgId);
+    for (const [key, value] of Object.entries(updates)) {
+        await AllocationConfigModel.updateOne(
+            { orgId: orgObjId, key },
+            { $set: { value } },
+            { upsert: true }
+        );
+    }
+}
+
+/** Return daily workload map for org/date (date defaults to today YYYY-MM-DD) */
+export async function getWorkloadsForDate(orgId: string, date?: string): Promise<Array<{ agentId: string; lead_count: number; is_available: boolean; alert_sent: boolean }>> {
+    const d = date ?? getTodayDateString();
+    const workloads = await AgentDailyWorkloadModel.find({
+        orgId: new Types.ObjectId(orgId),
+        date: d
+    }).lean();
+
+    return workloads.map(w => ({
+        agentId: w.agentId.toString(),
+        lead_count: w.lead_count,
+        is_available: w.is_available,
+        alert_sent: w.alert_sent
+    }));
+}
+
+/** Toggle is_available for an agent for a given date (defaults to today) */
+export async function toggleAgentAvailability(orgId: string, agentId: string, isAvailable: boolean, date?: string): Promise<void> {
+    const d = date ?? getTodayDateString();
+    await AgentDailyWorkloadModel.findOneAndUpdate(
+        { orgId: new Types.ObjectId(orgId), agentId: new Types.ObjectId(agentId), date: d },
+        { $set: { is_available: isAvailable }, $setOnInsert: { lead_count: 0, alert_sent: false } },
+        { upsert: true }
+    );
+}

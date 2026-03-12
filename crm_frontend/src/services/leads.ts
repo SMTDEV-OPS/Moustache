@@ -102,6 +102,18 @@ export interface AccountInfo {
   city?: string;
 }
 
+export interface LeadItinerary {
+  id?: string;
+  _id?: string;
+  hotelName?: string;
+  propertyId?: string;
+  checkInDate?: string;
+  checkOutDate?: string;
+  roomCategory?: string;
+  roomPreference?: string;
+  numberOfGuests?: string;
+}
+
 export interface Lead {
   id: string;
   leadNumber: string;
@@ -119,16 +131,11 @@ export interface Lead {
   bookingWindow?: string; // New field
   customerType?: string;  // New field
   tags?: string[];
-  checkInDate?: string;
-  checkOutDate?: string;
-  roomsRequested?: number;
   guests?: LeadGuests;
-  occasion?: string;
-  isFirstTimeGuest?: boolean;
   assignedToUserId?: string;
-  assignedTeamType?: string;
   assignedRegionId?: string;
   createdAt?: string;
+  itineraries?: LeadItinerary[]; // New populated line items
   customData?: Record<string, any>; // Dynamic custom fields
   // Additional form fields
   alternateContact?: string;
@@ -140,8 +147,6 @@ export interface Lead {
   gstin?: string;
   estimatedValue?: string;
   notes?: string;
-  roomCategory?: string;
-  roomPreference?: string;
   closedReason?: string; // Add closedReason
 }
 
@@ -170,13 +175,10 @@ export interface CreateLeadPayload {
   accountId?: string;
   source: string;
   leadType: string;
-  checkInDate?: string;
-  checkOutDate?: string;
   budget?: number;
   bookingWindow?: string;
   customerType?: string;
-  roomsRequested?: number;
-  guests?: LeadGuests;
+  hotels?: Omit<LeadItinerary, 'id' | '_id'>[]; // Payload for creating line items
   occasion?: string;
   isFirstTimeGuest?: boolean;
   heatLevel?: HeatLevel;
@@ -191,8 +193,6 @@ export interface CreateLeadPayload {
   gstin?: string;
   estimatedValue?: string;
   notes?: string;
-  roomCategory?: string;
-  roomPreference?: string;
   // Assignment options
   assignmentMode?: AssignmentMode;
   assignedToUserId?: string;
@@ -247,10 +247,7 @@ export interface UpdateLeadPayload {
   heatLevel?: HeatLevel;
   callStatus?: string;
   notes?: string;
-  checkInDate?: string;
-  checkOutDate?: string;
-  roomsRequested?: number;
-  guests?: LeadGuests;
+  hotels?: Omit<LeadItinerary, 'id' | '_id'>[];
   occasion?: string;
   assignedToUserId?: string;
   contactDetails?: LeadContactDetails;

@@ -15,6 +15,8 @@ import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import { CommunicationModel } from "../models/communication";
 import { badRequest, notFound, forbidden } from "../utils/httpError";
 import { createLead, reassignLead, validateStageMove, leadEventBus } from "../services/leadService";
+import { assertLeadAccess } from "../utils/leadAccess";
+import { logAudit } from "../utils/auditLog";
 import { getEligibleUsersForManualAssignment } from "../services/assignmentService";
 import { UserModel } from "../models/user";
 import { getCommunicationTimeline } from "../services/communicationService";
@@ -54,35 +56,15 @@ async function getTeamMemberIdsForRoleOwner(userId: string): Promise<string[]> {
   }
 }
 
-async function assertLeadAccess(
-  user: AccessUser,
-  lead: { assignedToUserId?: any }
-) {
-  // Admins and users with full lead visibility can see any lead.
-  // Admins and users with full lead management can see any lead.
-  if (
-    user.isAdmin ||
-    hasPermission(user, PERMISSIONS.LEADS.MANAGE)
-  ) {
-    return;
-  }
-
-  // Use AccessControlService for scoped checks (own vs team)
-  const { AccessControlService } = await import(
-    "../services/auth/AccessControlService"
-  );
-
-  const hasAccess = await AccessControlService.hasPermission(
-    user,
-    "leads",
-    "read",
-    { ownerId: lead.assignedToUserId }
-  );
-
-  if (hasAccess) return;
-
-  throw forbidden("Insufficient permissions to access this lead");
-}
+const hotelSchema = z.object({
+  hotelName: z.string().optional(),
+  propertyId: z.string().optional(),
+  checkInDate: z.string().optional(),
+  checkOutDate: z.string().optional(),
+  roomCategory: z.string().optional(),
+  roomPreference: z.string().optional(),
+  numberOfGuests: z.string().optional(),
+});
 
 const leadCreateSchema = z.object({
   guestId: z.string().optional(),
@@ -97,16 +79,6 @@ const leadCreateSchema = z.object({
   accountId: z.string().optional(),
   source: z.nativeEnum(LeadSource),
   leadType: z.nativeEnum(LeadType),
-  checkInDate: z.string().datetime().optional(),
-  checkOutDate: z.string().datetime().optional(),
-  roomsRequested: z.number().int().optional(),
-  guests: z
-    .object({
-      adults: z.number().int().optional(),
-      children: z.number().int().optional(),
-    })
-    .optional(),
-  occasion: z.string().optional(),
   heatLevel: z.nativeEnum(HeatLevel).optional(),
   // Additional form fields
   alternateContact: z.string().optional(),
@@ -118,13 +90,12 @@ const leadCreateSchema = z.object({
   gstin: z.string().optional(),
   estimatedValue: z.string().optional(),
   notes: z.string().optional(),
-  roomCategory: z.string().optional(),
-  roomPreference: z.string().optional(),
   // Assignment options
   assignmentMode: z.enum(["auto", "manual"]).optional(),
   assignedToUserId: z.string().optional(),
   // Dynamic custom fields
   customData: z.record(z.any()).optional(),
+  hotels: z.array(hotelSchema).optional(),
 });
 
 // Get eligible users for manual assignment based on lead type
@@ -176,15 +147,6 @@ leadsRouter.post("/", async (req, res, next) => {
       accountId: data.accountId,
       source: data.source,
       leadType: data.leadType,
-      checkInDate: data.checkInDate
-        ? new Date(data.checkInDate)
-        : undefined,
-      checkOutDate: data.checkOutDate
-        ? new Date(data.checkOutDate)
-        : undefined,
-      roomsRequested: data.roomsRequested,
-      guests: data.guests,
-      occasion: data.occasion,
       heatLevel: data.heatLevel,
       // Additional form fields
       alternateContact: data.alternateContact,
@@ -196,8 +158,6 @@ leadsRouter.post("/", async (req, res, next) => {
       gstin: data.gstin,
       estimatedValue: data.estimatedValue,
       notes: data.notes,
-      roomCategory: data.roomCategory,
-      roomPreference: data.roomPreference,
       // Pass assignment options
       assignmentMode: data.assignmentMode ?? "auto",
       assignedToUserId: data.assignedToUserId,
@@ -206,6 +166,15 @@ leadsRouter.post("/", async (req, res, next) => {
     });
 
     // Note: Activity logging is now handled in leadService.createLead
+    logAudit(
+      "created",
+      "lead",
+      lead._id.toString(),
+      null,
+      { leadNumber: lead.leadNumber, source: lead.source },
+      req,
+      { orgId: lead.orgId?.toString() }
+    );
 
     res.status(201).json(lead);
   } catch (err) {
@@ -380,6 +349,7 @@ leadsRouter.get("/", async (req, res, next) => {
 
     const leads = await LeadModel.find(filter)
       .populate("guestId", "name phone email")
+      .populate("itineraries")
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
@@ -459,16 +429,6 @@ const leadUpdateSchema = z.object({
   heatLevel: z.nativeEnum(HeatLevel).optional(),
   callStatus: z.nativeEnum(CallStatus).optional(),
   notes: z.string().optional(),
-  checkInDate: z.string().datetime().optional(),
-  checkOutDate: z.string().datetime().optional(),
-  roomsRequested: z.number().int().optional(),
-  guests: z
-    .object({
-      adults: z.number().int().optional(),
-      children: z.number().int().optional(),
-    })
-    .optional(),
-  occasion: z.string().optional(),
   assignedToUserId: z.string().optional(),
   stageId: z.string().optional(),
   // Allow updating contact details (the inquiry snapshot)
@@ -480,6 +440,7 @@ const leadUpdateSchema = z.object({
     })
     .optional(),
   customData: z.record(z.any()).optional(),
+  hotels: z.array(hotelSchema).optional(),
 });
 
 leadsRouter.patch("/:id", async (req, res, next) => {
@@ -508,15 +469,10 @@ leadsRouter.patch("/:id", async (req, res, next) => {
     }
 
     const prevStatus = existing.status;
+    const prevStageId = existing.stageId?.toString();
     const prevHeatLevel = existing.heatLevel;
     const prevCallStatus = existing.callStatus;
-
-    if (parsed.data.checkInDate) {
-      existing.checkInDate = new Date(parsed.data.checkInDate);
-    }
-    if (parsed.data.checkOutDate) {
-      existing.checkOutDate = new Date(parsed.data.checkOutDate);
-    }
+    const beforeSnapshot = existing.toObject ? existing.toObject() : {};
 
     if (parsed.data.status) {
       existing.status = parsed.data.status;
@@ -548,15 +504,7 @@ leadsRouter.patch("/:id", async (req, res, next) => {
     if (parsed.data.notes !== undefined) {
       existing.notes = parsed.data.notes;
     }
-    if (parsed.data.roomsRequested) {
-      existing.roomsRequested = parsed.data.roomsRequested;
-    }
-    if (parsed.data.guests) {
-      existing.guests = parsed.data.guests;
-    }
-    if (parsed.data.occasion) {
-      existing.occasion = parsed.data.occasion;
-    }
+
     if (parsed.data.customData) {
       existing.customData = new Map(Object.entries(parsed.data.customData));
       // Using markModified to ensure Mongoose knows it changed
@@ -595,16 +543,7 @@ leadsRouter.patch("/:id", async (req, res, next) => {
           // Reload the lead to get updated data
           const updatedLead = await LeadModel.findById(existing._id);
           if (updatedLead) {
-            // Copy over other updates
             if (parsed.data.status) updatedLead.status = parsed.data.status;
-            if (parsed.data.heatLevel) updatedLead.heatLevel = parsed.data.heatLevel;
-            if (parsed.data.roomsRequested) updatedLead.roomsRequested = parsed.data.roomsRequested;
-            if (parsed.data.guests) updatedLead.guests = parsed.data.guests;
-            if (parsed.data.occasion) updatedLead.occasion = parsed.data.occasion;
-            if (parsed.data.checkInDate) updatedLead.checkInDate = new Date(parsed.data.checkInDate);
-            if (parsed.data.checkOutDate) updatedLead.checkOutDate = new Date(parsed.data.checkOutDate);
-
-            await updatedLead.save();
 
             if (parsed.data.status && parsed.data.status !== prevStatus) {
               await LeadActivityModel.create({
@@ -617,6 +556,15 @@ leadsRouter.patch("/:id", async (req, res, next) => {
               });
             }
 
+            logAudit(
+              "assigned",
+              "lead",
+              existing._id.toString(),
+              { assignedToUserId: previousAssigneeId },
+              { assignedToUserId: newAssigneeId },
+              req,
+              { orgId: existing.orgId?.toString() }
+            );
             return res.json(updatedLead);
           }
         } else {
@@ -661,6 +609,15 @@ leadsRouter.patch("/:id", async (req, res, next) => {
       existing.stageId = parsed.data.stageId as any;
 
       // Emit event locally without awaiting or breaking the request
+      logAudit(
+        "stage_moved",
+        "lead",
+        existing._id.toString(),
+        { stageId: previousStageId?.toString() },
+        { stageId: parsed.data.stageId },
+        req,
+        { orgId: existing.orgId?.toString() }
+      );
       process.nextTick(() => {
         leadEventBus.emit('lead.stage_moved', {
           leadId: existing._id.toString(),
@@ -668,6 +625,26 @@ leadsRouter.patch("/:id", async (req, res, next) => {
           toStageId: parsed.data.stageId,
         });
       });
+    }
+
+    if (parsed.data.hotels !== undefined) {
+      const { LeadItineraryModel } = await import("../models/leadItinerary");
+      // For simplicity, replace all itineraries for this lead
+      await LeadItineraryModel.deleteMany({ leadId: existing._id });
+      if (parsed.data.hotels.length > 0) {
+        const { Types } = await import("mongoose");
+        const itinerariesToInsert = parsed.data.hotels.map((hotel: any) => ({
+          leadId: existing._id,
+          hotelName: hotel.hotelName,
+          propertyId: hotel.propertyId && Types.ObjectId.isValid(hotel.propertyId) ? new Types.ObjectId(hotel.propertyId) : undefined,
+          checkInDate: hotel.checkInDate,
+          checkOutDate: hotel.checkOutDate,
+          roomCategory: hotel.roomCategory,
+          roomPreference: hotel.roomPreference,
+          numberOfGuests: hotel.numberOfGuests,
+        }));
+        await LeadItineraryModel.insertMany(itinerariesToInsert);
+      }
     }
 
     await existing.save();
@@ -715,6 +692,68 @@ leadsRouter.patch("/:id", async (req, res, next) => {
         performedByUserId: req.user?.id,
         performedAt: new Date(),
       });
+    }
+
+    // Emit lead.field_changed for workflow triggers
+    const fieldSlugMap: Record<string, string> = {
+      contactDetails: "contact_details",
+      assignedToUserId: "assigned_agent_id",
+      stageId: "stage_id",
+      heatLevel: "bucket",
+    };
+    for (const key of Object.keys(parsed.data)) {
+      if (key === "stageId") continue; // stage_moved is emitted separately
+      const slug = fieldSlugMap[key] || key;
+      const oldVal = (beforeSnapshot as any)[key];
+      const newVal = (existing as any)[key];
+      const oldStr = oldVal !== undefined && oldVal !== null ? (typeof oldVal === "object" ? JSON.stringify(oldVal) : String(oldVal)) : undefined;
+      const newStr = newVal !== undefined && newVal !== null ? (typeof newVal === "object" ? JSON.stringify(newVal) : String(newVal)) : undefined;
+      if (oldStr !== newStr) {
+        process.nextTick(() => {
+          leadEventBus.emit("lead.field_changed", {
+            leadId: existing._id.toString(),
+            field_slug: slug,
+            old_value: oldStr,
+            new_value: newStr,
+            orgId: existing.orgId?.toString(),
+          });
+        });
+      }
+    }
+    if (parsed.data.customData) {
+      const beforeCustom = (beforeSnapshot as any).customData;
+      const afterCustom = existing.customData;
+      const beforeMap = beforeCustom instanceof Map ? Object.fromEntries(beforeCustom) : (beforeCustom || {});
+      const afterMap = afterCustom instanceof Map ? Object.fromEntries(afterCustom) : (afterCustom || {});
+      const allKeys = new Set([...Object.keys(beforeMap), ...Object.keys(afterMap)]);
+      for (const k of allKeys) {
+        const ov = beforeMap[k];
+        const nv = afterMap[k];
+        if (String(ov ?? "") !== String(nv ?? "")) {
+          process.nextTick(() => {
+            leadEventBus.emit("lead.field_changed", {
+              leadId: existing._id.toString(),
+              field_slug: k,
+              old_value: ov != null ? String(ov) : undefined,
+              new_value: nv != null ? String(nv) : undefined,
+              orgId: existing.orgId?.toString(),
+            });
+          });
+        }
+      }
+    }
+
+    const hadStageMove = parsed.data.stageId && parsed.data.stageId !== prevStageId;
+    if (!hadStageMove) {
+      logAudit(
+        "updated",
+        "lead",
+        existing._id.toString(),
+        beforeSnapshot as Record<string, any>,
+        existing.toObject ? existing.toObject() : {},
+        req,
+        { orgId: existing.orgId?.toString() }
+      );
     }
 
     res.json(existing);

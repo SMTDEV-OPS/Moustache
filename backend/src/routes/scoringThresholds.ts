@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { ScoringThresholdModel } from "../models/scoringThreshold";
-import { UserModel } from "../models/user";
-import { hasPermission } from "../middleware/auth";
+import { hasPermission, requireAuth } from "../middleware/auth";
 import { PERMISSIONS } from "../constants/permissions";
 import { z } from "zod";
+import { logger } from "../config/logger";
 
 export const scoringThresholdsRouter = Router();
+scoringThresholdsRouter.use(requireAuth);
 
 const thresholdSchema = z.object({
     label: z.string().min(1),
@@ -16,54 +17,98 @@ const thresholdSchema = z.object({
     inactive_hours_critical: z.number().int().optional().nullable(),
     inactive_color_warning: z.string().regex(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i).optional().nullable(),
     inactive_color_critical: z.string().regex(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i).optional().nullable(),
-    auto_action: z.enum(["none", "notify_tl", "auto_lost"]),
+    auto_action: z.enum(["none", "notify_tl", "auto_lost"]).default("none"),
 });
 
+/** Resolve orgId from query param, falling back to first property in DB */
+async function resolveOrgId(query: any): Promise<string | undefined> {
+    if (query.org_id && typeof query.org_id === "string") {
+        return query.org_id;
+    }
+    try {
+        const { PropertyModel } = await import("../models/property");
+        const first = await PropertyModel.findOne().select("_id").lean();
+        return first?._id?.toString();
+    } catch {
+        return undefined;
+    }
+}
+
+/** Validate no overlap between score ranges for the same org (excluding selfId) */
+async function validateNoOverlap(orgId: string, min: number, max: number, excludeId?: string) {
+    const query: any = {
+        orgId,
+        $or: [{ min_score: { $lte: max }, max_score: { $gte: min } }],
+    };
+    if (excludeId) query._id = { $ne: excludeId };
+    const existing = await ScoringThresholdModel.find(query);
+    if (existing.length > 0) {
+        return `Score range ${min}-${max} overlaps with "${existing[0].label}" (${existing[0].min_score}-${existing[0].max_score}).`;
+    }
+    return null;
+}
+
+// GET all thresholds
 scoringThresholdsRouter.get("/", async (req, res, next) => {
     try {
-        if (!req.user) {
-            return res.status(403).json({ error: "Unauthorized" });
-        }
-        const orgId = "default_org";
-        const thresholds = await ScoringThresholdModel.find({ orgId }).sort({ min_score: 1 });
+        const orgId = await resolveOrgId(req.query);
+        const thresholds = await ScoringThresholdModel.find(orgId ? { orgId } : {}).sort({ min_score: 1 });
         res.json(thresholds);
     } catch (error) {
         next(error);
     }
 });
 
+// POST — create threshold
 scoringThresholdsRouter.post("/", async (req, res, next) => {
     try {
         if (!req.user || !hasPermission(req.user, PERMISSIONS.SETTINGS.MANAGE)) {
             return res.status(403).json({ error: "Insufficient permissions." });
         }
 
-        const orgId = "default_org";
-
         const parsed = thresholdSchema.parse(req.body);
+        const orgId = await resolveOrgId(req.query);
+        if (!orgId) return res.status(400).json({ error: "Could not resolve orgId." });
 
-        const existing = await ScoringThresholdModel.find({
-            orgId,
-            $or: [
-                { min_score: { $lte: parsed.max_score }, max_score: { $gte: parsed.min_score } }
-            ]
-        });
+        const overlap = await validateNoOverlap(orgId, parsed.min_score, parsed.max_score);
+        if (overlap) return res.status(400).json({ error: overlap });
 
-        if (existing.length > 0) {
-            return res.status(400).json({ error: "Score range overlaps with an existing threshold." });
-        }
-
-        const threshold = await ScoringThresholdModel.create({
-            ...parsed,
-            orgId
-        });
-
+        const threshold = await ScoringThresholdModel.create({ ...parsed, orgId });
         res.status(201).json(threshold);
     } catch (error) {
+        if ((error as any)?.name === "ZodError") return res.status(400).json({ error: (error as any).errors });
         next(error);
     }
 });
 
+// PUT — full replace
+scoringThresholdsRouter.put("/:id", async (req, res, next) => {
+    try {
+        if (!req.user || !hasPermission(req.user, PERMISSIONS.SETTINGS.MANAGE)) {
+            return res.status(403).json({ error: "Insufficient permissions." });
+        }
+
+        const parsed = thresholdSchema.parse(req.body);
+        const orgId = await resolveOrgId(req.query);
+        if (!orgId) return res.status(400).json({ error: "Could not resolve orgId." });
+
+        const overlap = await validateNoOverlap(orgId, parsed.min_score, parsed.max_score, req.params.id);
+        if (overlap) return res.status(400).json({ error: overlap });
+
+        const updated = await ScoringThresholdModel.findByIdAndUpdate(
+            req.params.id,
+            { ...parsed, orgId },
+            { new: true, runValidators: true }
+        );
+        if (!updated) return res.status(404).json({ error: "Threshold not found." });
+        res.json(updated);
+    } catch (error) {
+        if ((error as any)?.name === "ZodError") return res.status(400).json({ error: (error as any).errors });
+        next(error);
+    }
+});
+
+// PATCH — partial update
 scoringThresholdsRouter.patch("/:id", async (req, res, next) => {
     try {
         if (!req.user || !hasPermission(req.user, PERMISSIONS.SETTINGS.MANAGE)) {
@@ -71,39 +116,35 @@ scoringThresholdsRouter.patch("/:id", async (req, res, next) => {
         }
 
         const parsed = thresholdSchema.partial().parse(req.body);
-        const orgId = "default_org";
+        const orgId = await resolveOrgId(req.query);
 
         if (parsed.min_score !== undefined || parsed.max_score !== undefined) {
-            const thresholdToUpdate = await ScoringThresholdModel.findById(req.params.id);
-            const min = parsed.min_score !== undefined ? parsed.min_score : thresholdToUpdate!.min_score;
-            const max = parsed.max_score !== undefined ? parsed.max_score : thresholdToUpdate!.max_score;
-
-            const existing = await ScoringThresholdModel.find({
-                orgId,
-                _id: { $ne: req.params.id },
-                $or: [
-                    { min_score: { $lte: max }, max_score: { $gte: min } }
-                ]
-            });
-
-            if (existing.length > 0) {
-                return res.status(400).json({ error: "Score range overlaps with an existing threshold." });
+            const current = await ScoringThresholdModel.findById(req.params.id);
+            if (!current) return res.status(404).json({ error: "Threshold not found." });
+            const min = parsed.min_score !== undefined ? parsed.min_score : current.min_score;
+            const max = parsed.max_score !== undefined ? parsed.max_score : current.max_score;
+            const resolvedOrg = orgId || current.orgId?.toString();
+            if (resolvedOrg) {
+                const overlap = await validateNoOverlap(resolvedOrg, min, max, req.params.id);
+                if (overlap) return res.status(400).json({ error: overlap });
             }
         }
 
         const updated = await ScoringThresholdModel.findByIdAndUpdate(req.params.id, parsed, { new: true });
+        if (!updated) return res.status(404).json({ error: "Threshold not found." });
         res.json(updated);
     } catch (error) {
+        if ((error as any)?.name === "ZodError") return res.status(400).json({ error: (error as any).errors });
         next(error);
     }
 });
 
+// DELETE
 scoringThresholdsRouter.delete("/:id", async (req, res, next) => {
     try {
         if (!req.user || !hasPermission(req.user, PERMISSIONS.SETTINGS.MANAGE)) {
             return res.status(403).json({ error: "Insufficient permissions." });
         }
-
         await ScoringThresholdModel.findByIdAndDelete(req.params.id);
         res.status(204).end();
     } catch (error) {

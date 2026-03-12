@@ -13,6 +13,11 @@ import { sendSMS } from "../services/smsService";
 import { CommunicationModel } from "../models/communication";
 import { GuestModel } from "../models/guest";
 import { startInactiveLeadMonitor } from "../cron/inactiveLeadMonitor";
+import { processPendingWorkflowActions, registerTrigger } from "../services/workflowEngine";
+import { leadEventBus } from "../services/leadService";
+import { WorkflowV2Model } from "../models/workflowV2";
+import { PipelineModel } from "../models/pipeline";
+import { PipelineStageModel } from "../models/pipelineStage";
 
 async function runAutoClosureJob() {
   const tomorrow = new Date();
@@ -24,8 +29,13 @@ async function runAutoClosureJob() {
     Date.UTC(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 23, 59, 59, 999)
   );
 
-  const leads = await LeadModel.find({
+  const { LeadItineraryModel } = await import("../models/leadItinerary");
+  const itineraryMatch = await LeadItineraryModel.find({
     checkInDate: { $gte: start, $lte: end },
+  }).distinct("leadId");
+
+  const leads = await LeadModel.find({
+    _id: { $in: itineraryMatch },
     status: { $nin: [LeadStatus.CONFIRMED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO] },
   });
 
@@ -81,6 +91,168 @@ async function runWorkflowJob() {
   }
 }
 
+async function runPendingWorkflowActionsJob() {
+  try {
+    const count = await processPendingWorkflowActions();
+    if (count > 0) {
+      logger.info("Processed pending workflow actions", { count });
+    }
+  } catch (error) {
+    logger.error("Error processing pending workflow actions", {}, error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+async function runFollowupMissedJob() {
+  try {
+    const now = new Date();
+    const overdueTasks = await TaskModel.find({
+      type: "followup",
+      status: "OPEN",
+      dueAt: { $lt: now },
+      leadId: { $exists: true, $ne: null },
+      $or: [
+        { "popupState.workflowFollowupMissedEmittedAt": { $exists: false } },
+        { popupState: { $exists: false } },
+      ],
+    }).populate("leadId").lean();
+
+    for (const task of overdueTasks) {
+      const leadId = (task as any).leadId?._id?.toString();
+      if (!leadId) continue;
+
+      await TaskModel.updateOne(
+        { _id: task._id },
+        { $set: { "popupState.workflowFollowupMissedEmittedAt": now } }
+      );
+
+      const updated = await LeadModel.findByIdAndUpdate(
+        leadId,
+        { $inc: { missed_followup_count: 1 } },
+        { new: true }
+      ).lean();
+
+      const newCount = (updated as any)?.missed_followup_count ?? 1;
+
+      leadEventBus.emit("lead.followup_missed", {
+        leadId,
+        taskId: task._id.toString(),
+        orgId: (task as any).leadId?.orgId?.toString(),
+        missed_count: newCount,
+      });
+
+      if (newCount >= 2) {
+        leadEventBus.emit("lead.followup_missed_count", {
+          leadId,
+          orgId: (task as any).leadId?.orgId?.toString(),
+          count: newCount,
+        });
+      }
+    }
+  } catch (error) {
+    logger.error("Error in followup missed job", {}, error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+async function runLeadUnattendedJob() {
+  try {
+    const { LeadActivityModel } = await import("../models/leadActivity");
+    const now = new Date();
+    const terminals = [LeadStatus.CONFIRMED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO];
+    const thresholds = [30, 720]; // 30 min, 12h
+    for (const minutes of thresholds) {
+      const cutoff = new Date(now.getTime() - minutes * 60 * 1000);
+      const leads = await LeadModel.find({
+        status: { $nin: terminals },
+      }).lean();
+      for (const lead of leads) {
+        const lastActivity = await LeadActivityModel.findOne({ leadId: lead._id }).sort({ performedAt: -1 }).lean();
+        const lastComm = await CommunicationModel.findOne({ leadId: lead._id }).sort({ createdAt: -1 }).lean();
+        let lastActive = new Date(lead.createdAt).getTime();
+        if (lastActivity) lastActive = Math.max(lastActive, new Date(lastActivity.performedAt).getTime());
+        if (lastComm) lastActive = Math.max(lastActive, new Date(lastComm.createdAt).getTime());
+        if (lastActive <= cutoff.getTime()) {
+          leadEventBus.emit("lead.unattended", {
+            leadId: lead._id.toString(),
+            orgId: lead.orgId?.toString(),
+            minutes_idle: minutes,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    logger.error("Error in lead unattended job", {}, error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+function cronMatchesNow(cron: string, now: Date, tz?: string): boolean {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length < 5) return false;
+  const [min, hour, dom, month, dow] = parts;
+  const match = (v: string, n: number, minVal: number, maxVal: number): boolean => {
+    if (v === "*") return true;
+    if (v.includes(",")) return v.split(",").some((x) => match(x.trim(), n, minVal, maxVal));
+    if (v.includes("-")) {
+      const [a, b] = v.split("-").map(Number);
+      return n >= a && n <= b;
+    }
+    if (v.includes("/")) {
+      const [base, step] = v.split("/");
+      const start = base === "*" ? minVal : parseInt(base, 10);
+      return (n - start) % parseInt(step, 10) === 0;
+    }
+    return parseInt(v, 10) === n;
+  };
+  return (
+    match(min, now.getMinutes(), 0, 59) &&
+    match(hour, now.getHours(), 0, 23) &&
+    match(dom, now.getDate(), 1, 31) &&
+    match(month, now.getMonth() + 1, 1, 12) &&
+    match(dow, now.getDay() || 7, 0, 7)
+  );
+}
+
+async function runScheduledWorkflowsJob() {
+  try {
+    const workflows = await WorkflowV2Model.find({
+      trigger_event: "scheduled",
+      is_active: true,
+    }).lean();
+    const now = new Date();
+    for (const wf of workflows) {
+      const params = (wf as any).trigger_params_json || {};
+      const cron = params.cron;
+      if (!cron) continue;
+      if (!cronMatchesNow(cron, now)) continue;
+
+      const orgId = (wf as any).orgId?.toString();
+      const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).lean();
+      if (!pipeline) continue;
+      const payStage = await PipelineStageModel.findOne({
+        pipelineId: pipeline._id,
+        name: /Payment Request/i,
+      }).lean();
+      if (!payStage) continue;
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const leadQuery: Record<string, any> = {
+        stageId: payStage._id,
+        updatedAt: { $lt: oneHourAgo },
+        status: { $nin: [LeadStatus.CONFIRMED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO] },
+      };
+      if (orgId) leadQuery.orgId = orgId;
+      const leads = await LeadModel.find(leadQuery).limit(100).lean();
+      for (const lead of leads) {
+        leadEventBus.emit("scheduled", {
+          workflowId: wf._id.toString(),
+          leadId: lead._id.toString(),
+          orgId: lead.orgId?.toString(),
+        });
+      }
+    }
+  } catch (error) {
+    logger.error("Error in scheduled workflows job", {}, error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
 async function runEmailSyncJob() {
   try {
     const activeAccounts = await EmailAccountModel.find({
@@ -120,14 +292,19 @@ async function runSMSFollowUpJob() {
     // - Status is QUOTATION_SHARED or PAYMENT_PENDING
     // - checkInDate is in the future (at least 1 day away)
     // - No SMS sent in last 24 hours (or never sent)
-    const leads = await LeadModel.find({
-      status: { $in: [LeadStatus.QUOTATION_SHARED, LeadStatus.PAYMENT_PENDING] },
+    const { LeadItineraryModel } = await import("../models/leadItinerary");
+    const itineraryMatch = await LeadItineraryModel.find({
       checkInDate: { $gte: tomorrow }, // At least 1 day before arrival
+    }).distinct("leadId");
+
+    const leads = await LeadModel.find({
+      _id: { $in: itineraryMatch },
+      status: { $in: [LeadStatus.QUOTATION_SHARED, LeadStatus.PAYMENT_PENDING] },
       $or: [
         { lastSMSFollowUpAt: { $exists: false } },
         { lastSMSFollowUpAt: { $lt: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }, // More than 24 hours ago
       ],
-    }).lean();
+    }).populate("itineraries").lean();
 
     let sentCount = 0;
 
@@ -147,8 +324,9 @@ async function runSMSFollowUpJob() {
         }
 
         // Generate follow-up message
-        const checkInDate = lead.checkInDate
-          ? new Date(lead.checkInDate).toLocaleDateString("en-IN", {
+        const checkIn = (lead as any).itineraries?.[0]?.checkInDate;
+        const checkInDate = checkIn
+          ? new Date(checkIn).toLocaleDateString("en-IN", {
             weekday: "long",
             year: "numeric",
             month: "long",
@@ -206,9 +384,29 @@ function setupJobs() {
     void runReminderJob();
   });
 
-  // Workflow job runs every 15 minutes to process pending workflow steps.
+  // Workflow job runs every 15 minutes to process pending workflow steps (legacy).
   cron.schedule("*/15 * * * *", () => {
     void runWorkflowJob();
+  });
+
+  // Pending workflow actions (event-driven) - every 2 minutes
+  cron.schedule("*/2 * * * *", () => {
+    void runPendingWorkflowActionsJob();
+  });
+
+  // Followup missed - every 5 minutes
+  cron.schedule("*/5 * * * *", () => {
+    void runFollowupMissedJob();
+  });
+
+  // Lead unattended - every 15 minutes
+  cron.schedule("*/15 * * * *", () => {
+    void runLeadUnattendedJob();
+  });
+
+  // Scheduled workflows (cron-based) - every minute
+  cron.schedule("* * * * *", () => {
+    void runScheduledWorkflowsJob();
   });
 
   // Email sync job runs every 5 minutes to sync emails for all active accounts.
@@ -224,7 +422,7 @@ function setupJobs() {
   // Start the inactive lead monitor
   startInactiveLeadMonitor();
 
-  logger.info("Scheduler jobs registered (auto-closure, reminders, workflow execution, email sync, SMS follow-up, inactive leads monitor)");
+  logger.info("Scheduler jobs registered (auto-closure, reminders, workflow execution, pending workflow actions, followup missed, lead unattended, scheduled workflows, email sync, SMS follow-up, inactive leads monitor)");
 }
 
 setupJobs();

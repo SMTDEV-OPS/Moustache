@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { TaskModel } from "../models/task";
+import { LeadModel } from "../models/lead";
+import { assertLeadAccess } from "../utils/leadAccess";
 import { badRequest, forbidden, notFound } from "../utils/httpError";
 
 export const tasksRouter = Router();
@@ -45,23 +47,30 @@ tasksRouter.get("/", async (req, res, next) => {
       throw badRequest("Missing authenticated user");
     }
 
-    const { ownerUserId, status, fromDue, toDue } = req.query;
+    const { ownerUserId, status, fromDue, toDue, leadId } = req.query;
     const filter: Record<string, unknown> = {};
 
-    // Enforce user privacy: users can only query their own tasks
-    // Unless they explicitly provide ownerUserId matching their own ID (for consistency)
     const currentUserId = req.user.id;
-    
-    if (ownerUserId) {
-      // If ownerUserId is provided, verify it matches the current user
-      // Only allow querying own tasks for privacy
-      if (String(ownerUserId) !== String(currentUserId)) {
-        throw forbidden("You can only access your own tasks");
+
+    // When leadId is provided, fetch tasks for that lead (user must have lead access)
+    if (leadId && typeof leadId === "string") {
+      const lead = await LeadModel.findById(leadId).lean();
+      if (!lead) {
+        throw notFound("Lead not found");
       }
-      filter.ownerUserId = ownerUserId;
+      await assertLeadAccess(req.user as any, lead);
+      filter.leadId = leadId;
+      // When filtering by lead, do not restrict by ownerUserId so all tasks for the lead are visible
     } else {
-      // Default to current user's tasks only
-      filter.ownerUserId = currentUserId;
+      // Enforce user privacy: users can only query their own tasks
+      if (ownerUserId) {
+        if (String(ownerUserId) !== String(currentUserId)) {
+          throw forbidden("You can only access your own tasks");
+        }
+        filter.ownerUserId = ownerUserId;
+      } else {
+        filter.ownerUserId = currentUserId;
+      }
     }
 
     if (status) filter.status = status;

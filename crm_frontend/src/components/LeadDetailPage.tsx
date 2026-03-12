@@ -1,10 +1,32 @@
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useState, useRef } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Phone, Mail, MessageCircle, Video, FileText, Calendar, User as UserIcon, Hotel, Flame, Clock, CheckCircle, XCircle, RefreshCw, IndianRupee, Loader2, Edit, Save, Building2, Users, ThermometerSun, MessageSquare } from "lucide-react";
+import {
+  ArrowLeft,
+  Phone,
+  Mail,
+  MessageSquare,
+  FileText,
+  Calendar,
+  User as UserIcon,
+  Clock,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Loader2,
+  Edit2,
+  MessageCircle,
+  GitBranch,
+  Star,
+  CheckSquare,
+  ChevronRight,
+  MoreVertical,
+  Zap,
+  Plus,
+  IndianRupee,
+} from "lucide-react";
+import { Button, Badge, PageHeader } from "@/components/shared";
 import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
 import { listEmails, EmailMessage } from "@/services/email";
@@ -12,19 +34,19 @@ import { EmailComposer } from "@/components/EmailComposer";
 import { ScheduleFollowUpDialog } from "@/components/ScheduleFollowUpDialog";
 import { SendQuotationDialog } from "@/components/SendQuotationDialog";
 import { listQuotations, Quotation } from "@/services/quotations";
-import { LeadWorkflowDisplay } from "@/components/LeadWorkflowDisplay";
 import { listUsers, User } from "@/services/users";
 import { formatDistanceToNow, format } from "date-fns";
 import { getPaymentLinksForLead, createPaymentLink, type PaymentLink } from "@/services/paymentLinks";
 import { getCommunicationTimeline, updateCallStatus, sendEmailFromLead, type CommunicationTimelineItem, type SendEmailPayload } from "@/services/communications";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { API_BASE_URL, withAuthHeaders } from "@/services/api";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
+import { API_BASE_URL, withAuthHeaders } from "@/services/api";
 import { EditContactDetailsDialog } from "@/components/EditContactDetailsDialog";
 import { EditLeadDetailsDialog, LeadTripDetails } from "@/components/EditLeadDetailsDialog";
 import { CreateBookingDialog } from "@/components/CreateBookingDialog";
-import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
+import { listAdminFields, AdminField } from "@/services/adminFields";
+import { listTasksForLead, Task } from "@/services/tasks";
+import { getCallQuality, submitCallQuality, getCallQualityDimensions, type CallQualityScore, type CallQualityDimension } from "@/services/callQuality";
+import { getWorkflowLogsForLead, type WorkflowExecutionLog } from "@/services/workflowLogs";
 
 interface LeadDetailPageProps {
   leadId: string;
@@ -157,6 +179,15 @@ const getActivityIcon = (type: string) => {
   }
 };
 
+const getSourceBadgeVariant = (source: string): "src_ivr" | "src_whatsapp" | "src_website" | "src_call" | "src_email" | "default" => {
+  if (source === "IVR" || source === "IVR_LIVE") return "src_ivr";
+  if (source === "WHATSAPP") return "src_whatsapp";
+  if (source === "BRAND_WEBSITE") return "src_website";
+  if (source === "DIRECT_CALL") return "src_call";
+  if (source === "EMAIL") return "src_email";
+  return "default";
+};
+
 // Helper function to get icon for communication channel
 const getCommunicationIcon = (channel: string) => {
   switch (channel) {
@@ -183,11 +214,9 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [isComposeEmailOpen, setIsComposeEmailOpen] = useState(false);
 
   // Custom fields state
-  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [customFields, setCustomFields] = useState<AdminField[]>([]);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
 
-  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
-  const [scheduleType, setScheduleType] = useState<"call" | "email" | "whatsapp" | "meeting">("call");
   const [isQuotationDialogOpen, setIsQuotationDialogOpen] = useState(false);
   const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);
   const [isLoadingPaymentLinks, setIsLoadingPaymentLinks] = useState(false);
@@ -211,6 +240,17 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [isEditLeadDetailsDialogOpen, setIsEditLeadDetailsDialogOpen] = useState(false);
   const [isCreateBookingDialogOpen, setIsCreateBookingDialogOpen] = useState(false);
 
+  const [stageMoveError, setStageMoveError] = useState<{ stageName: string; missingFields: { id: string; name: string; slug: string }[] } | null>(null);
+  const [followUps, setFollowUps] = useState<Task[]>([]);
+  const [workflowLogs, setWorkflowLogs] = useState<WorkflowExecutionLog[]>([]);
+  const [callQualityScores, setCallQualityScores] = useState<CallQualityScore[]>([]);
+  const [isScheduleFollowUpOpen, setIsScheduleFollowUpOpen] = useState(false);
+  const [isCallQualityModalOpen, setIsCallQualityModalOpen] = useState(false);
+  const [callQualityDimensions, setCallQualityDimensions] = useState<CallQualityDimension[]>([]);
+  const leadInfoRef = useRef<HTMLDivElement>(null);
+
+  const canScoreCall = !!isAdmin || permissions?.includes("leads.manage") || permissions?.includes("settings.manage");
+
   // Permission checks
   const canUpdate = !!isAdmin || permissions?.includes("leads.update") || permissions?.includes("leads.manage");
   const canAssign = !!isAdmin || permissions?.includes("leads.assign") || permissions?.includes("leads.manage");
@@ -223,6 +263,17 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     void loadCustomFieldsData();
     void loadPipeline();
   }, [leadId]);
+
+  useEffect(() => {
+    if (!leadId) return;
+    void listTasksForLead(leadId).then(setFollowUps).catch(() => setFollowUps([]));
+    void getWorkflowLogsForLead(leadId).then(setWorkflowLogs).catch(() => setWorkflowLogs([]));
+    void getCallQuality(leadId).then(setCallQualityScores).catch(() => setCallQualityScores([]));
+  }, [leadId]);
+
+  useEffect(() => {
+    void getCallQualityDimensions().then(setCallQualityDimensions).catch(() => setCallQualityDimensions([]));
+  }, []);
 
   // Update local state when lead changes - must be before any early returns
   useEffect(() => {
@@ -305,8 +356,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const loadCustomFieldsData = async () => {
     try {
       setIsLoadingFields(true);
-      const fields = await CustomFieldsService.getActiveFieldsForModule("leads");
-      setCustomFields(fields.sort((a, b) => a.order - b.order));
+      const fields = await listAdminFields("lead");
+      setCustomFields(fields.sort((a, b) => a.display_order - b.display_order));
     } catch (error) {
       console.error("Failed to load custom fields:", error);
       setCustomFields([]);
@@ -406,50 +457,6 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   // Prefer contactDetails (inquiry snapshot), fall back to guest
   const { name: guestName, email: guestEmail, phone: guestPhone } = getLeadContactInfo(lead);
 
-  // Helper function to get status badge color
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case "NEW":
-        return "bg-blue-100 text-blue-800 border-blue-200";
-      case "CONTACTED":
-        return "bg-purple-100 text-purple-800 border-purple-200";
-      case "QUOTATION_SHARED":
-        return "bg-amber-100 text-amber-800 border-amber-200";
-      case "PAYMENT_PENDING":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "CONFIRMED":
-        return "bg-green-100 text-green-800 border-green-200";
-      case "LOST":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "CLOSED_AUTO":
-        return "bg-gray-100 text-gray-800 border-gray-200";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200";
-    }
-  };
-
-  // Helper function to get heat level badge color and icon
-  const getHeatLevelBadge = (heat: string) => {
-    switch (heat) {
-      case "HOT":
-        return { color: "bg-red-100 text-red-800 border-red-200", icon: <Flame className="h-3 w-3 text-red-600" /> };
-      case "WARM":
-        return { color: "bg-orange-100 text-orange-800 border-orange-200", icon: <ThermometerSun className="h-3 w-3 text-orange-600" /> };
-      case "COLD":
-        return { color: "bg-blue-100 text-blue-800 border-blue-200", icon: <ThermometerSun className="h-3 w-3 text-blue-600" /> };
-      case "NOT_INTERESTED":
-        return { color: "bg-gray-100 text-gray-800 border-gray-200", icon: <XCircle className="h-3 w-3 text-gray-600" /> };
-      default:
-        return { color: "bg-gray-100 text-gray-800 border-gray-200", icon: <ThermometerSun className="h-3 w-3 text-gray-600" /> };
-    }
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 7) return "bg-green-100 text-green-800 border-green-200";
-    if (score >= 4) return "bg-yellow-100 text-yellow-800 border-yellow-200";
-    return "bg-red-100 text-red-800 border-red-200";
-  };
-
   const getStageLabel = (stageId: string) => {
     const stage = pipelineStages.find(s => s._id === stageId);
     return stage?.name || "Unknown Stage";
@@ -460,9 +467,10 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     if (["PAYMENT_REQUEST", "BOOKED"].includes(localStage)) {
       const missingFields: string[] = [];
       const lead = leadDetail?.lead;
-      if (!lead?.checkInDate) missingFields.push("Check-in Date");
-      if (!lead?.checkOutDate) missingFields.push("Check-out Date");
-      if (!lead?.guests?.adults && !lead?.guests?.children) missingFields.push("Guest Count");
+      const hasItinerary = lead?.itineraries && lead.itineraries.length > 0;
+      if (!hasItinerary || !lead?.itineraries?.[0]?.checkInDate) missingFields.push("Check-in Date");
+      if (!hasItinerary || !lead?.itineraries?.[0]?.checkOutDate) missingFields.push("Check-out Date");
+      if (!hasItinerary || !lead?.itineraries?.[0]?.numberOfGuests) missingFields.push("Guest Count");
 
       if (missingFields.length > 0) {
         toast({
@@ -578,10 +586,13 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       setIsSavingStatus(true);
 
       const payload: any = {
-        checkInDate: details.checkInDate,
-        checkOutDate: details.checkOutDate,
-        roomsRequested: details.roomsRequested,
-        guests: details.guests,
+        hotels: [{
+          checkInDate: details.checkInDate,
+          checkOutDate: details.checkOutDate,
+          numberOfGuests: details.guests
+            ? `${details.guests.adults || 0} Adults, ${details.guests.children || 0} Children`
+            : `${details.roomsRequested || 1} Rooms`,
+        }],
         occasion: details.occasion,
       };
 
@@ -606,573 +617,550 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     }
   };
 
+  const handleStageMoveClick = async (targetStageId: string) => {
+    setStageMoveError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}`, {
+        method: "PATCH",
+        headers: withAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ stageId: targetStageId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 422 && data.missingFields?.length) {
+        const stage = pipelineStages.find((s) => s._id === targetStageId);
+        setStageMoveError({
+          stageName: stage?.name ?? "that stage",
+          missingFields: data.missingFields,
+        });
+        return;
+      }
+      if (!res.ok) throw new Error(data.message || data.error || "Failed to move stage");
+      await loadLeadDetail();
+      toast({ title: "Stage updated", description: "Lead moved successfully" });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to move stage",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const scrollToField = (slug: string) => {
+    const el = document.getElementById(`field-${slug}`);
+    el?.scrollIntoView({ behavior: "smooth" });
+  };
+
   // Get property name
   const propertyName = typeof lead.propertyId === "object" && lead.propertyId !== null
     ? (lead.propertyId as any).name
     : lead.propertyId || "Not specified";
 
+  // Primary itinerary extraction
+  let primaryCheckIn = "";
+  let primaryCheckOut = "";
+  let primaryGuests = "";
+  if (lead.itineraries && lead.itineraries.length > 0) {
+    const sorted = [...lead.itineraries].sort((a: any, b: any) => {
+      if (!a.checkInDate) return 1;
+      if (!b.checkInDate) return -1;
+      return new Date(a.checkInDate).getTime() - new Date(b.checkInDate).getTime();
+    });
+    const first = sorted[0];
+    if (first.checkInDate) primaryCheckIn = first.checkInDate;
+    if (first.checkOutDate) primaryCheckOut = first.checkOutDate;
+    if (first.numberOfGuests) primaryGuests = first.numberOfGuests;
+  }
+
   // Format travel dates
-  const travelDates = lead.checkInDate && lead.checkOutDate
-    ? `${format(new Date(lead.checkInDate), "MMM d, yyyy")} - ${format(new Date(lead.checkOutDate), "MMM d, yyyy")}`
+  const travelDates = primaryCheckIn && primaryCheckOut
+    ? `${format(new Date(primaryCheckIn), "MMM d, yyyy")} - ${format(new Date(primaryCheckOut), "MMM d, yyyy")}`
     : "Not specified";
 
   // Format occupancy
-  const occupancy = lead.guests
-    ? `${lead.guests.adults || 0} Adults, ${lead.guests.children || 0} Children, ${lead.roomsRequested || 1} Rooms`
-    : "Not specified";
+  const occupancy = primaryGuests
+    ? primaryGuests
+    : lead.guests
+      ? `${lead.guests.adults || 0} Adults, ${lead.guests.children || 0} Children`
+      : "Not specified";
+
+  const subtitleEl = (
+    <span className="flex items-center gap-2 flex-wrap">
+      {guestPhone && <span>{guestPhone}</span>}
+      {lead.source && <Badge label={lead.source} variant={getSourceBadgeVariant(lead.source)} />}
+    </span>
+  );
 
   return (
     <div className="space-y-6">
-      {/* Header with Back Button */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">
-                {guestName || "Lead"}
-              </h1>
-              <Badge className={getStatusBadgeColor(lead.status)}>
-                {lead.status}
-              </Badge>
+      <Button variant="ghost" size="sm" onClick={onBack}>
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back
+      </Button>
+      <PageHeader
+        title={guestName || "Lead"}
+        subtitle={guestPhone || lead.source ? subtitleEl : undefined}
+        actions={
+          <>
+            <Button variant="secondary" icon={Phone} size="sm">
+              Call
+            </Button>
+            <Button variant="secondary" icon={MessageSquare} size="sm">
+              WhatsApp
+            </Button>
+            <Button variant="primary" icon={Edit2} size="sm" onClick={() => setIsEditLeadDetailsDialogOpen(true)}>
+              Edit Lead
+            </Button>
+          </>
+        }
+      />
+
+      {/* 2-column layout: 65% left, 35% right */}
+      <div className="grid grid-cols-1 lg:grid-cols-[65%_35%] gap-6">
+        {/* LEFT COLUMN */}
+        <div className="space-y-4">
+          {/* Lead Info Card */}
+          <div
+            ref={leadInfoRef}
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: 20,
+              marginBottom: 16,
+            }}
+          >
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+              {[
+                { label: "Guest Name", value: guestName || "—" },
+                { label: "Phone", value: guestPhone || "—" },
+                { label: "Email", value: guestEmail || "—" },
+                { label: "Source", value: lead.source || "—" },
+                { label: "Property/Hotel", value: propertyName },
+                { label: "Budget", value: lead.customData?.budget != null ? String(lead.customData.budget) : "—" },
+                { label: "Travel Date", value: travelDates },
+                { label: "Booking Window", value: lead.customData?.booking_window || "—" },
+                { label: "Customer Type", value: lead.customData?.customer_type || "—" },
+                { label: "Lead Score", value: lead.score != null ? `${lead.score}/10` : "—" },
+                { label: "Stage", value: getStageLabel(lead.stageId || "") },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <div style={{ fontSize: 11, textTransform: "uppercase" as const, letterSpacing: "0.05em", color: "var(--text-faint)", marginBottom: 3 }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: 14, color: "var(--text)" }}>{value}</div>
+                </div>
+              ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {lead.leadNumber ?? lead.id}
-            </p>
-            {lead.score !== undefined && (
-              <Badge variant="outline" className={`ml-2 ${getScoreColor(lead.score)}`}>
-                Score: {lead.score}/10
-              </Badge>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                paddingTop: 16,
+                borderTop: "1px solid var(--border-light)",
+                marginTop: 16,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 14,
+                  padding: "6px 12px",
+                  borderRadius: "var(--radius-sm)",
+                  background: lead.heatLevel === "HOT" ? "var(--hot-bg)" : lead.heatLevel === "WARM" ? "var(--warm-bg)" : lead.heatLevel === "COLD" ? "var(--cold-bg)" : "var(--border-light)",
+                  color: lead.heatLevel === "HOT" ? "var(--hot-text)" : lead.heatLevel === "WARM" ? "var(--warm-text)" : lead.heatLevel === "COLD" ? "var(--cold-text)" : "var(--text-muted)",
+                }}
+              >
+                {lead.heatLevel}
+              </span>
+              {lead.score != null && (
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: lead.heatLevel === "HOT" ? "var(--hot-text)" : lead.heatLevel === "WARM" ? "var(--warm-text)" : lead.heatLevel === "COLD" ? "var(--cold-text)" : "var(--text)",
+                  }}
+                >
+                  {lead.score}/10
+                </span>
+              )}
+              {(() => {
+                const activityTimes = leadDetail.activities.map((a) => (a.performedAt ? new Date(a.performedAt).getTime() : 0));
+                const commTimes = communicationTimeline.map((c) => (c.createdAt || c.receivedAt || c.sentAt ? new Date(c.createdAt || c.receivedAt || c.sentAt || "").getTime() : 0));
+                const allTimes = [...activityTimes, ...commTimes].filter((t) => t > 0);
+                const lastActivity = allTimes.length > 0 ? Math.max(...allTimes) : lead.createdAt ? new Date(lead.createdAt).getTime() : 0;
+                const hours = lastActivity ? (Date.now() - lastActivity) / (1000 * 60 * 60) : 0;
+                if (hours >= 72) return <span style={{ fontSize: 12, color: "#ef4444" }}><span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#ef4444", marginRight: 4, verticalAlign: "middle" }} />Inactive 72h</span>;
+                if (hours >= 48) return <span style={{ fontSize: 12, color: "#f59e0b" }}><span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", marginRight: 4, verticalAlign: "middle" }} />Inactive 48h</span>;
+                return null;
+              })()}
+            </div>
+          </div>
+
+          {/* Pipeline Stage Bar */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: "16px 20px",
+              marginBottom: 16,
+            }}
+          >
+            <div className="flex flex-wrap items-center gap-1">
+              {pipelineStages.map((stage, idx) => {
+                const currentStageIdx = pipelineStages.findIndex((s) => s._id === lead.stageId);
+                const isCurrent = idx === currentStageIdx;
+                const isPast = idx < currentStageIdx;
+                const isFuture = idx > currentStageIdx;
+                const isTerminal = stage.terminalType === "WON" || stage.terminalType === "LOST";
+                return (
+                  <span key={stage._id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => isFuture && canUpdate && handleStageMoveClick(stage._id)}
+                      disabled={!isFuture || !canUpdate}
+                      style={{
+                        fontSize: 13,
+                        padding: "6px 12px",
+                        borderRadius: "var(--radius-sm)",
+                        background: isCurrent ? "var(--primary-light)" : "transparent",
+                        color: isCurrent ? "var(--primary)" : "var(--text-faint)",
+                        fontWeight: isCurrent ? 500 : 400,
+                        border: isCurrent ? "1px solid #c7d2fe" : "none",
+                        cursor: isFuture && canUpdate ? "pointer" : "default",
+                      }}
+                    >
+                      {isTerminal && stage.terminalType === "WON" && <CheckCircle className="w-3 h-3 inline mr-1" />}
+                      {isTerminal && stage.terminalType === "LOST" && <XCircle className="w-3 h-3 inline mr-1" />}
+                      {stage.name}
+                    </button>
+                    {idx < pipelineStages.length - 1 && <ChevronRight className="w-4 h-4 text-[var(--text-faint)]" />}
+                  </span>
+                );
+              })}
+            </div>
+            {stageMoveError && (
+              <div
+                style={{
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: "var(--radius)",
+                  padding: "12px 16px",
+                  marginTop: 8,
+                }}
+              >
+                Cannot move to {stageMoveError.stageName}. Please fill:{" "}
+                {stageMoveError.missingFields.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => scrollToField(f.slug)}
+                    className="underline text-[#b91c1c] hover:no-underline ml-1"
+                  >
+                    {f.name}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIsComposeEmailOpen(true)}
+
+          {/* Activity Timeline */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: 20,
+            }}
           >
-            <Mail className="h-4 w-4 mr-2" />
-            Send Email
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setIsQuotationDialogOpen(true)}
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Create Quotation
-          </Button>
-          <Button
-            size="sm"
-            variant="default"
-            className="bg-green-600 hover:bg-green-700"
-            onClick={() => setIsCreateBookingDialogOpen(true)}
-          >
-            <Hotel className="h-4 w-4 mr-2" />
-            Create Booking
-          </Button>
-        </div>
-      </div>
-
-      {/* Pipeline Stepper */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="relative flex items-center justify-between w-full">
-            <div className="absolute left-0 top-1/2 w-full h-1 bg-gray-200 -z-0"></div>
-            {pipelineStages.filter((s) => !s.isTerminal || s.terminalType === "WON").map((stage, index) => {
-              const currentStageIndex = pipelineStages.findIndex(s => s._id === lead.stageId);
-
-              const isCompleted = index <= currentStageIndex;
-              const isCurrent = index === currentStageIndex;
-
-              return (
-                <div key={stage._id} className="relative z-10 flex flex-col items-center bg-white px-2">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center border-2 
-                      ${isCompleted ? "bg-primary border-primary text-primary-foreground" : "bg-white border-gray-300 text-gray-300"}
-                      ${isCurrent ? "ring-4 ring-primary/20" : ""}
-                    `}
-                    style={{ backgroundColor: isCompleted ? stage.color || "currentColor" : "white" }}
-                  >
-                    {index + 1}
-                  </div>
-                  <span className={`text-xs mt-2 font-medium ${isCompleted ? "text-primary" : "text-gray-400"}`}>
-                    {stage.name}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          {pipelineStages.find(s => s._id === lead.stageId)?.terminalType === "LOST" && (
-            <div className="flex justify-center mt-4">
-              <Badge variant="destructive">LOST LEAD</Badge>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Main Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-
-          {/* Guest Information */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Guest Information</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsEditContactDialogOpen(true)}
-                disabled={!canUpdate}
-              >
-                <Edit className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                {guestPhone && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase">Phone</p>
-                      <p className="font-medium">{guestPhone}</p>
-                    </div>
-                  </div>
-                )}
-                {guestEmail && (
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase">Email</p>
-                      <p className="font-medium">{guestEmail}</p>
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase">Hotel</p>
-                      <p className="font-medium">{propertyName}</p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditLeadDetailsDialogOpen(true)}
-                    disabled={!canUpdate}
-                    className="-mr-2 h-8 w-8 p-0"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Travel Dates</p>
-                    <p className="font-medium">{travelDates}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Occupancy</p>
-                    <p className="font-medium">{occupancy}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">Occasion</p>
-                    <p className="font-medium">{lead.occasion || "—"}</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Lead Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Lead Status</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase mb-2 block">Stage</label>
-                  <Select
-                    value={localStage}
-                    onValueChange={(value) => setLocalStage(value)}
-                    disabled={!canUpdate}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pipelineStages.map((stage) => (
-                        <SelectItem key={stage._id} value={stage._id}>
-                          {stage.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase mb-2 block">Status (Legacy)</label>
-                  <Select
-                    value={localStatus}
-                    onValueChange={(value) => setLocalStatus(value as LeadStatus)}
-                    disabled={!canUpdate}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NEW">New</SelectItem>
-                      <SelectItem value="CONTACTED">Contacted</SelectItem>
-                      <SelectItem value="QUOTATION_SHARED">Quotation Shared</SelectItem>
-                      <SelectItem value="PAYMENT_PENDING">Payment Pending</SelectItem>
-                      <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                      <SelectItem value="LOST">Lost</SelectItem>
-                      <SelectItem value="CLOSED_AUTO">Closed Auto</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {(localStatus === "LOST" || pipelineStages.find(s => s._id === localStage)?.terminalType === "LOST") && (
-                  <div>
-                    <label className="text-xs text-muted-foreground uppercase mb-2 block">Closed Reason</label>
-                    <Select
-                      value={localClosedReason}
-                      onValueChange={setLocalClosedReason}
-                      disabled={!canUpdate}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Reason" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="SOLD_OUT">Sold Out</SelectItem>
-                        <SelectItem value="BUDGET">Budget Issue</SelectItem>
-                        <SelectItem value="BOOKED_OTA">Booked OTA</SelectItem>
-                        <SelectItem value="BOOKED_WEBSITE">Booked Website</SelectItem>
-                        <SelectItem value="BOOKED_OTHER_PROPERTY">Booked Other Property</SelectItem>
-                        <SelectItem value="NO_RESPONSE">No Response</SelectItem>
-                        <SelectItem value="PRICE">Price</SelectItem>
-                        <SelectItem value="NO_AVAILABILITY">No Availability</SelectItem>
-                        <SelectItem value="POLICY_UNDER_18">Policy: Under 18</SelectItem>
-                        <SelectItem value="POLICY_LOCAL_ID">Policy: Local ID</SelectItem>
-                        <SelectItem value="POLICY_PET">Policy: Pet</SelectItem>
-                        <SelectItem value="POLICY_ALCOHOL">Policy: Alcohol</SelectItem>
-                        <SelectItem value="OTHER">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase mb-2 block">Heat Level</label>
-                  <Select
-                    value={localHeatLevel}
-                    onValueChange={(value) => setLocalHeatLevel(value as HeatLevel)}
-                    disabled={!canUpdate}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="HOT">Hot</SelectItem>
-                      <SelectItem value="WARM">Warm</SelectItem>
-                      <SelectItem value="COLD">Cold</SelectItem>
-                      <SelectItem value="NOT_INTERESTED">Not Interested</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {localHeatLevel && (
-                    <div className="mt-2">
-                      <Badge className={`${getHeatLevelBadge(localHeatLevel).color} flex items-center gap-1 w-fit`}>
-                        {getHeatLevelBadge(localHeatLevel).icon}
-                        {localHeatLevel}
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase mb-2 block">Call Disposition</label>
-                  <Select
-                    value={localCallStatus}
-                    onValueChange={(value) => setLocalCallStatus(value)}
-                    disabled={!canUpdate}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="QUOTATION_SHARED">Quotation Shared</SelectItem>
-                      <SelectItem value="PAYMENT_PENDING">Payment Pending</SelectItem>
-                      <SelectItem value="NOT_INTERESTED">Not Interested</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {canUpdate && (
-                  <Button
-                    onClick={handleStatusChange}
-                    disabled={isSavingStatus}
-                    className="w-full"
-                  >
-                    {isSavingStatus ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        Save Changes
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Notes */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Notes</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Textarea
-                value={localNotes}
-                onChange={(e) => setLocalNotes(e.target.value)}
-                placeholder="Add notes about this lead..."
-                className="min-h-[100px]"
-                disabled={!canUpdate}
-              />
-              {canUpdate && (
-                <Button
-                  onClick={handleSaveNotes}
-                  disabled={isSavingNotes}
-                  className="w-full"
-                >
-                  {isSavingNotes ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Notes
-                    </>
-                  )}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Sidebar */}
-        <div className="space-y-6">
-          {/* Quick Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Info</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Source</p>
-                <p className="font-medium">{lead.source}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Lead Type</p>
-                <p className="font-medium">{lead.leadType}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Assigned To</p>
-                <p className="font-medium">{assignedUser?.name || "Unassigned"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Repeat Guest</p>
-                <p className="font-medium">{lead.isFirstTimeGuest ? "No" : "Yes"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Created</p>
-                <p className="font-medium">
-                  {lead.createdAt ? format(new Date(lead.createdAt), "MM/dd/yyyy") : "—"}
-                </p>
-              </div>
-              {lead.tags && lead.tags.length > 0 && (
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase mt-2 mb-1">Tags</p>
-                  <div className="flex flex-wrap gap-1">
-                    {lead.tags.map((tag, idx) => (
-                      <Badge key={idx} variant="secondary" className="text-[10px] bg-slate-100 text-slate-600 border-slate-200">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Dynamic Custom Fields Display */}
-              {customFields.length > 0 && lead.customData && Object.keys(lead.customData).length > 0 && (
-                <>
-                  <div className="my-4 border-t border-slate-200" />
-                  <div className="space-y-3">
-                    {customFields.map(field => {
-                      const val = lead.customData![field.fieldName];
-                      if (val === undefined || val === null || val === "") return null;
-
-                      let displayVal = String(val);
-                      if (field.dataType === "BOOLEAN") {
-                        displayVal = val ? "Yes" : "No";
-                      } else if (field.dataType === "DATE") {
-                        displayVal = format(new Date(val), "MM/dd/yyyy");
-                      } else if (field.dataType === "DROPDOWN" && field.options) {
-                        const opt = field.options.find(o => o.value === val);
-                        displayVal = opt ? opt.label : val;
-                      }
-
-                      return (
-                        <div key={field._id}>
-                          <p className="text-xs text-muted-foreground uppercase">{field.label}</p>
-                          <p className="font-medium whitespace-pre-wrap">{displayVal}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Quotations */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quotations</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {leadDetail ? (
-                <QuotationsTab
-                  leadId={lead.id}
-                  onSendNew={() => setIsQuotationDialogOpen(true)}
-                />
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Activity</div>
+            <div style={{ borderLeft: "2px solid var(--border-light)", paddingLeft: 16 }}>
+              {timelineItems.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 16 }}>No activity yet</p>
               ) : (
-                <p className="text-sm text-muted-foreground">No quotations yet</p>
+                timelineItems.map((item, index) => {
+                  const isActivity = item.type === "activity";
+                  const activity = isActivity ? (item.data as LeadActivity) : null;
+                  const comm = !isActivity ? (item.data as LeadCommunication & { channel?: string }) : null;
+                  let iconBg = "#f3f4f6";
+                  let iconColor = "#374151";
+                  let IconComponent = FileText;
+                  if (isActivity && activity) {
+                    if (activity.type === "NOTE") {
+                      iconBg = "#f3f4f6";
+                      iconColor = "#374151";
+                      IconComponent = FileText;
+                    } else if (activity.type === "STATUS_CHANGE") {
+                      iconBg = "var(--primary-light)";
+                      iconColor = "var(--primary)";
+                      IconComponent = GitBranch;
+                    } else if (["LEAD_CREATED", "QUOTE_SENT", "PAYMENT_LINK_SENT", "PAYMENT_RECEIVED", "CLIENT_RESPONSE"].includes(activity.type)) {
+                      iconBg = "#fffbeb";
+                      iconColor = "#f59e0b";
+                      IconComponent = Star;
+                    } else if (activity.type === "FOLLOW_UP") {
+                      iconBg = "#f0fdf4";
+                      iconColor = "#166534";
+                      IconComponent = CheckSquare;
+                    } else {
+                      IconComponent = FileText;
+                    }
+                  } else if (comm) {
+                    if (comm.channel === "CALL") {
+                      iconBg = "#dbeafe";
+                      iconColor = "#1e40af";
+                      IconComponent = Phone;
+                    } else if (comm.channel === "WHATSAPP") {
+                      iconBg = "#d1fae5";
+                      iconColor = "#065f46";
+                      IconComponent = MessageSquare;
+                    } else if (comm.channel === "EMAIL") {
+                      iconBg = "#fce7f3";
+                      iconColor = "#9d174d";
+                      IconComponent = Mail;
+                    }
+                  }
+                  const title = isActivity && activity ? formatTimelineMessage(activity, users) : comm ? formatCommunicationMessage(comm, users) : "";
+                  const body = isActivity && activity?.note && activity.type !== "NOTE" ? activity.note : comm?.summary || "";
+                  return (
+                    <div key={index} className="flex gap-3 pb-4" style={{ position: "relative" }}>
+                      <div
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: "50%",
+                          background: iconBg,
+                          color: iconColor,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <IconComponent className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{title}</div>
+                        {body && <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>{body}</div>}
+                        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 4 }}>{formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}</div>
+                      </div>
+                    </div>
+                  );
+                })
               )}
-            </CardContent>
-          </Card>
-
-          {/* Activity Log */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Activity Log</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Input
-                  placeholder="Add a note..."
-                  value={activityNote}
-                  onChange={(e) => setActivityNote(e.target.value)}
-                  disabled={!canUpdate || isAddingNote}
-                />
-                <Button
-                  onClick={handleAddNote}
-                  disabled={!canUpdate || isAddingNote || !activityNote.trim()}
-                  className="w-full"
-                  size="sm"
-                >
-                  {isAddingNote ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    <>
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                      Add Note
-                    </>
-                  )}
+            </div>
+            <div className="mt-4">
+              <Textarea
+                value={activityNote}
+                onChange={(e) => setActivityNote(e.target.value)}
+                placeholder="Add a note..."
+                style={{ minHeight: 72, width: "100%", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px 12px", fontSize: 14, resize: "vertical" }}
+                disabled={!canUpdate || isAddingNote}
+              />
+              <div className="flex justify-end mt-2">
+                <Button variant="primary" size="sm" onClick={handleAddNote} loading={isAddingNote} disabled={!activityNote.trim() || !canUpdate}>
+                  Add Note
                 </Button>
               </div>
-              <ScrollArea className="h-[300px]">
-                {timelineItems.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p className="text-sm">No activity yet</p>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div className="space-y-4">
+          {/* Follow-ups Card */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: 20,
+              marginBottom: 16,
+            }}
+          >
+            <div className="flex justify-between items-center mb-3">
+              <span style={{ fontSize: 14, fontWeight: 600 }}>Follow-ups</span>
+              <Button variant="ghost" size="sm" icon={Plus} onClick={() => setIsScheduleFollowUpOpen(true)}>Add</Button>
+            </div>
+            <div>
+              {followUps.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No follow-ups</p>
+              ) : (
+                followUps.slice(0, 10).map((task) => {
+                  const isOverdue = task.status === "OPEN" && task.dueAt && new Date(task.dueAt) < new Date();
+                  return (
+                    <div
+                      key={task.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "10px 0",
+                        borderBottom: "1px solid var(--border-light)",
+                        borderLeft: isOverdue ? "3px solid #ef4444" : undefined,
+                        background: isOverdue ? "#fef2f220" : undefined,
+                      }}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2" style={{ fontSize: 13, color: "var(--text)" }}>
+                          <Clock className="w-4 h-4" style={{ color: "var(--text-faint)" }} />
+                          {task.dueAt && format(new Date(task.dueAt), "MMM d, h:mm a")}
+                        </div>
+                        {task.title && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{task.title}</div>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          style={{
+                            fontSize: 11,
+                            padding: "2px 6px",
+                            borderRadius: "var(--radius-sm)",
+                            background: task.status === "COMPLETED" ? "#d1fae5" : isOverdue ? "#fef2f2" : "#f3f4f6",
+                            color: task.status === "COMPLETED" ? "#065f46" : isOverdue ? "#ef4444" : "var(--text-muted)",
+                          }}
+                        >
+                          {task.status === "COMPLETED" ? "Done" : isOverdue ? "Overdue" : "Pending"}
+                        </span>
+                        <button type="button" className="opacity-0 hover:opacity-100 transition-opacity" aria-label="More">
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Assignment Card */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: 20,
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ fontSize: 11, textTransform: "uppercase" as const, letterSpacing: "0.05em", color: "var(--text-faint)", marginBottom: 8 }}>Assigned To</div>
+            {assignedUser ? (
+              <div>
+                <div className="flex items-center gap-2">
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      background: "var(--primary-light)",
+                      color: "var(--primary)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {assignedUser.name?.slice(0, 2).toUpperCase() || "?"}
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {timelineItems
-                      .filter((item) => {
-                        // Filter out REMINDER_TRIGGERED, but keep other activities and communications
-                        if (item.type === "activity") {
-                          const activity = item.data as LeadActivity;
-                          return activity.type !== "REMINDER_TRIGGERED";
-                        }
-                        return true;
-                      })
-                      .map((item, index) => {
-                        const isActivity = item.type === "activity";
-                        const isCommunication = item.type === "communication" || item.type === "email";
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>{assignedUser.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{(assignedUser as any).roleId || "Agent"}</div>
+                  </div>
+                </div>
+                {canAssign && <Button variant="ghost" size="sm" className="mt-2">Reassign</Button>}
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontStyle: "italic", color: "var(--text-faint)", marginBottom: 8 }}>Unassigned</div>
+                {canAssign && <Button variant="secondary" size="sm">Assign</Button>}
+              </div>
+            )}
+          </div>
 
-                        const activity = isActivity ? (item.data as LeadActivity) : null;
-                        const comm = isCommunication ? (item.data as LeadCommunication) : null;
+          {/* Workflow Execution Log Card */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: 20,
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Automations</div>
+            {workflowLogs.length === 0 ? (
+              <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No automations run yet</p>
+            ) : (
+              <>
+                {workflowLogs.slice(0, 5).map((log) => {
+                  const wf = typeof log.workflowId === "object" ? log.workflowId : null;
+                  const statusColor = log.status === "completed" ? "#22c55e" : log.status === "failed" ? "#f97316" : "#9ca3af";
+                  return (
+                    <div key={log.id} className="flex items-center justify-between gap-2 py-2">
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4" style={{ color: statusColor }} />
+                        <span style={{ fontSize: 13 }}>{wf?.name ?? "Workflow"}</span>
+                      </div>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatDistanceToNow(new Date(log.executed_at), { addSuffix: true })}</span>
+                    </div>
+                  );
+                })}
+                {workflowLogs.length > 5 && <a href="#" className="text-sm text-[var(--primary)] mt-2 block">View all</a>}
+              </>
+            )}
+          </div>
 
-                        if (!activity && !comm) return null;
-
-                        const performedByName = isActivity && activity
-                          ? getUserName(activity.performedByUserId, users)
-                          : isCommunication && comm
-                            ? getUserName(comm.performedByUserId, users)
-                            : "System";
-
+          {/* Call Quality Card */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: 20,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Call Quality</div>
+            {callQualityScores.length === 0 ? (
+              <div>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No scores yet</p>
+                {canScoreCall && (
+                  <Button variant="secondary" size="sm" icon={Star} className="mt-2" onClick={() => setIsCallQualityModalOpen(true)}>Score This Call</Button>
+                )}
+              </div>
+            ) : (
+              <div>
+                {(() => {
+                  const latest = callQualityScores[0];
+                  const scoredBy = typeof latest.scored_by === "object" ? latest.scored_by?.name : "Unknown";
+                  return (
+                    <>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)" }}>{latest.weighted_total}/100</div>
+                      {latest.scores_json && Object.entries(latest.scores_json).map(([dimId, score]) => {
+                        const dim = callQualityDimensions.find((d) => d.id === dimId || String(d.id) === dimId);
                         return (
-                          <div key={item.timestamp + index} className="flex items-start gap-3 text-sm">
-                            <div className="mt-0.5 flex-shrink-0">
-                              {isActivity && activity ? getActivityIcon(activity.type) : null}
-                              {isCommunication && comm ? getCommunicationIcon(comm.channel) : null}
+                          <div key={dimId} className="flex items-center gap-2 mt-2">
+                            <span style={{ fontSize: 12 }}>{dim?.name ?? dimId}</span>
+                            <div style={{ flex: 1, height: 4, background: "var(--border-light)", borderRadius: 2 }}>
+                              <div style={{ width: `${score * 10}%`, height: "100%", background: "var(--primary)", borderRadius: 2 }} />
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium">
-                                {isActivity && activity ? formatTimelineMessage(activity, users) : ""}
-                                {isCommunication && comm ? formatCommunicationMessage(comm, users) : ""}
-                              </p>
-                              {isActivity && activity && activity.note && activity.type !== "NOTE" && (
-                                <p className="text-muted-foreground mt-1 text-sm">{activity.note}</p>
-                              )}
-                              {isCommunication && comm && comm.messageContent && (
-                                <p className="text-muted-foreground mt-1 text-sm line-clamp-3 overflow-hidden text-ellipsis bg-muted/30 p-2 rounded border border-muted/50 mt-2">
-                                  {comm.messageContent.replace(/<[^>]*>?/gm, ' ').substring(0, 150)}
-                                  {comm.messageContent.length > 150 ? "..." : ""}
-                                </p>
-                              )}
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className="text-xs text-muted-foreground">
-                                  {performedByName !== "System" && (
-                                    <span className="font-medium text-slate-600">by {performedByName}</span>
-                                  )}
-                                  <span className={performedByName !== "System" ? "ml-2" : ""}>
-                                    {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
-                                  </span>
-                                </p>
-                              </div>
-                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 500 }}>{score}</span>
                           </div>
                         );
                       })}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
+                      <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8 }}>Scored by {scoredBy} · {format(new Date(latest.createdAt), "MMM d, yyyy")}</div>
+                      {canScoreCall && (
+                        <Button variant="secondary" size="sm" icon={Star} className="mt-3" onClick={() => setIsCallQualityModalOpen(true)}>Score This Call</Button>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Dialogs */}
-
-      {/* Compose Email Dialog */}
       <EmailComposer
         open={isComposeEmailOpen}
         onOpenChange={setIsComposeEmailOpen}
@@ -1200,20 +1188,16 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
 
       {/* Schedule Follow-up Dialog */}
       <ScheduleFollowUpDialog
-        open={isScheduleDialogOpen}
-        onOpenChange={(open) => {
-          setIsScheduleDialogOpen(open);
-        }}
+        open={isScheduleFollowUpOpen}
+        onOpenChange={setIsScheduleFollowUpOpen}
         leadId={lead.id}
         leadNumber={lead.leadNumber}
-        defaultFollowUpType={scheduleType}
+        defaultFollowUpType="call"
         pauseWorkflowOnSchedule={true}
         onSuccess={() => {
-          toast({
-            title: "Success",
-            description: `${scheduleType === "meeting" ? "Meeting" : "Follow-up"} scheduled successfully`,
-          });
+          toast({ title: "Success", description: "Follow-up scheduled successfully" });
           void loadLeadDetail();
+          void listTasksForLead(leadId).then(setFollowUps).catch(() => setFollowUps([]));
         }}
       />
 
@@ -1252,11 +1236,11 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         onOpenChange={setIsEditLeadDetailsDialogOpen}
         customFields={customFields}
         currentDetails={{
-          checkInDate: lead.checkInDate,
-          checkOutDate: lead.checkOutDate,
-          roomsRequested: lead.roomsRequested,
+          checkInDate: primaryCheckIn,
+          checkOutDate: primaryCheckOut,
+          roomsRequested: (lead as any).roomsRequested,
           guests: lead.guests,
-          occasion: lead.occasion,
+          occasion: (lead as any).occasion,
           customData: lead.customData,
         }}
         onSave={handleSaveLeadDetails}
@@ -1269,9 +1253,104 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
           void loadLeadDetail();
         }}
       />
+
+      {/* Call Quality Score Modal (TL only) */}
+      {isCallQualityModalOpen && (
+        <CallQualityScoreModal
+          dimensions={callQualityDimensions}
+          onClose={() => setIsCallQualityModalOpen(false)}
+          onSubmit={async (scoresJson, notes) => {
+            await submitCallQuality(leadId, { scoresJson, notes });
+            setIsCallQualityModalOpen(false);
+            void getCallQuality(leadId).then(setCallQualityScores).catch(() => setCallQualityScores([]));
+            toast({ title: "Success", description: "Call quality scored" });
+          }}
+        />
+      )}
     </div>
   );
 };
+
+function CallQualityScoreModal({
+  dimensions,
+  onClose,
+  onSubmit,
+}: {
+  dimensions: CallQualityDimension[];
+  onClose: () => void;
+  onSubmit: (scoresJson: Record<string, number>, notes: string) => Promise<void>;
+}) {
+  const [scores, setScores] = useState<Record<string, number>>({});
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    const scoresJson: Record<string, number> = {};
+    dimensions.forEach((d) => {
+      const v = scores[d.id];
+      scoresJson[d.id] = typeof v === "number" && v >= 0 && v <= 10 ? v : 0;
+    });
+    setLoading(true);
+    try {
+      await onSubmit(scoresJson, notes);
+    } catch {
+      // Toast handled by parent
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.4)" }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          borderRadius: "var(--radius-md)",
+          padding: 24,
+          maxWidth: 480,
+          width: "90%",
+          boxShadow: "var(--shadow)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Score Call Quality</div>
+        <div className="space-y-4">
+          {dimensions.map((d) => (
+            <div key={d.id} className="flex justify-between items-center gap-4">
+              <label className="flex-1" style={{ fontSize: 14 }}>{d.name}</label>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{d.weight_percent}%</span>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                value={scores[d.id] ?? ""}
+                onChange={(e) => setScores((prev) => ({ ...prev, [d.id]: parseFloat(e.target.value) || 0 }))}
+                style={{ width: 64, textAlign: "center", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "6px 8px" }}
+              />
+            </div>
+          ))}
+          <div>
+            <label style={{ fontSize: 14, display: "block", marginBottom: 4 }}>Notes</label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "8px 12px" }}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-6">
+          <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" size="sm" onClick={handleSubmit} loading={loading}>Submit</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Quotations Tab Component
 const QuotationsTab = ({
@@ -1360,9 +1439,7 @@ const QuotationsTab = ({
               <div className="flex items-center gap-2">
                 {getStatusIcon(quote.status)}
                 <span className="font-medium">Version {quote.versionNumber}</span>
-                <Badge className={getStatusColor(quote.status)}>
-                  {quote.status}
-                </Badge>
+                <Badge label={quote.status} className={getStatusColor(quote.status)} />
               </div>
               <div className="text-right text-sm text-muted-foreground">
                 {quote.sentAt && (

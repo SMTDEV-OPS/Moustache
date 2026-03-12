@@ -4,6 +4,7 @@ import { PipelineStageModel } from "../models/pipelineStage";
 import { requireAuth, requirePermissions } from "../middleware/auth";
 import { PERMISSIONS } from "../constants/permissions";
 import mongoose from "mongoose";
+import { logAudit } from "../utils/auditLog";
 
 const router = Router();
 
@@ -118,6 +119,7 @@ router.post("/", validateFieldPayload, async (req: Request, res: Response) => {
         const newField = new CustomFieldModel(req.body);
         await newField.save();
 
+        logAudit("created", "field_definition", newField._id.toString(), null, { name: newField.name, slug: newField.slug }, req);
         res.status(201).json(newField);
     } catch (error: any) {
         console.error("Error creating custom field:", error);
@@ -173,6 +175,7 @@ router.put("/:id", validateFieldPayload, async (req: Request, res: Response) => 
         delete req.body.slug;
         delete req.body.entity_type; // Prevent moving entities
 
+        const existingField = await CustomFieldModel.findById(id).lean();
         const updatedField = await CustomFieldModel.findByIdAndUpdate(
             id,
             { $set: req.body },
@@ -183,6 +186,7 @@ router.put("/:id", validateFieldPayload, async (req: Request, res: Response) => 
             return res.status(404).json({ message: "Field not found" });
         }
 
+        logAudit("updated", "field_definition", id, existingField || {}, updatedField.toObject(), req);
         res.json(updatedField);
     } catch (error: any) {
         console.error("Error updating custom field:", error);
@@ -198,6 +202,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
 
+        const beforeDelete = await CustomFieldModel.findById(id).lean();
         // Perform soft delete
         const deletedField = await CustomFieldModel.findByIdAndUpdate(
             id,
@@ -209,6 +214,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
             return res.status(404).json({ message: "Field not found" });
         }
 
+        logAudit("deleted", "field_definition", id, beforeDelete || {}, { is_active: false }, req);
         res.json({ message: "Field deleted successfully", field: deletedField });
     } catch (error: any) {
         console.error("Error soft deleting custom field:", error);

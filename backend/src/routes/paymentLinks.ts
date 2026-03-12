@@ -144,15 +144,19 @@ paymentLinksRouter.patch(
         lead.pendingAmount = 0;
         await lead.save();
 
+        const { LeadItineraryModel } = await import("../models/leadItinerary");
+        const itineraries = await LeadItineraryModel.find({ leadId: lead._id }).sort({ checkInDate: 1 }).lean();
+        const primaryItinerary = itineraries[0];
+
         // Create reservation record
-        if (lead.checkInDate && lead.checkOutDate) {
+        if (primaryItinerary && primaryItinerary.checkInDate && primaryItinerary.checkOutDate) {
           const reservation = await ReservationModel.create({
             leadId: lead._id,
             guestId: lead.guestId,
             propertyId: lead.propertyId,
-            checkInDate: lead.checkInDate,
-            checkOutDate: lead.checkOutDate,
-            roomsBooked: lead.roomsRequested,
+            checkInDate: primaryItinerary.checkInDate,
+            checkOutDate: primaryItinerary.checkOutDate,
+            roomsBooked: primaryItinerary.numberOfGuests ? Math.ceil(Number(primaryItinerary.numberOfGuests) / 2) : 1,
             totalAmount: link.amount,
             status: "CONFIRMED",
           });

@@ -37,6 +37,7 @@ export interface Task {
 
 export interface TaskListQuery {
   ownerUserId?: string;
+  leadId?: string;
   status?: TaskStatus;
   fromDue?: string;
   toDue?: string;
@@ -87,6 +88,14 @@ export const listTasks = async (query?: TaskListQuery): Promise<Task[]> => {
   }
 
   const raw = (await response.json()) as any[];
+  return mapTasks(raw);
+};
+
+/** List tasks for a specific lead (user must have lead access) */
+export const listTasksForLead = (leadId: string): Promise<Task[]> =>
+  listTasks({ leadId });
+
+function mapTasks(raw: any[]): Task[] {
   return raw.map((t) => {
     const { _id, id, leadId, ...rest } = t;
     const task: Task = {

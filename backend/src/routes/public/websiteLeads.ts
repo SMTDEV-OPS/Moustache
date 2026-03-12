@@ -50,13 +50,14 @@ publicWebsiteLeadsRouter.post("/", async (req, res, next) => {
       },
       source: LeadSource.BRAND_WEBSITE,
       leadType: data.leadType || LeadType.STAY,
-      checkInDate: data.checkInDate ? new Date(data.checkInDate) : undefined,
-      checkOutDate: data.checkOutDate ? new Date(data.checkOutDate) : undefined,
-      roomsRequested: data.roomsRequested,
-      guests: data.guests,
+      hotels: data.checkInDate || data.checkOutDate ? [{
+        checkInDate: data.checkInDate ? new Date(data.checkInDate) : undefined,
+        checkOutDate: data.checkOutDate ? new Date(data.checkOutDate) : undefined,
+        numberOfGuests: data.guests ? `${data.guests.adults || 0} Adults` : undefined,
+      }] : undefined,
       specialRequests: data.specialRequests,
       propertyId: data.propertyId,
-      occasion: data.occasion,
+      customData: data.occasion ? { occasion: data.occasion } : undefined,
       assignmentMode: "auto",
       // No createdByUserId for public submissions
     });

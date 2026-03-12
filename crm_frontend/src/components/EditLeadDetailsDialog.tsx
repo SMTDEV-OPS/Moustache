@@ -30,7 +30,7 @@ interface EditLeadDetailsDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     currentDetails: LeadTripDetails;
-    customFields?: CustomFieldDefinition[];
+    customFields?: any[];
     onSave: (details: LeadTripDetails) => Promise<void>;
 }
 
@@ -85,9 +85,9 @@ export function EditLeadDetailsDialog({
         }
 
         // Validate required custom fields
-        const missingCustomRequired = customFields.filter(f => f.isRequired && !customData[f.fieldName]);
+        const missingCustomRequired = customFields.filter(f => (f.isRequired || f.is_required) && !customData[f.slug || f.fieldName]);
         if (missingCustomRequired.length > 0) {
-            newErrors.custom = `Please fill in required fields: ${missingCustomRequired.map(f => f.label).join(", ")}`;
+            newErrors.custom = `Please fill in required fields: ${missingCustomRequired.map(f => f.name || f.label).join(", ")}`;
         }
 
         setErrors(newErrors);
@@ -209,65 +209,76 @@ export function EditLeadDetailsDialog({
                         <div className="border-t border-slate-200 mt-2 pt-4">
                             <h4 className="text-sm font-semibold mb-3">Additional Information</h4>
                             <div className="grid gap-4">
-                                {customFields.map(field => (
-                                    <div key={field._id} className="grid gap-2">
-                                        <Label className="flex gap-1">
-                                            {field.label} {field.isRequired && <span className="text-red-500">*</span>}
-                                        </Label>
-                                        {field.dataType === "TEXT" && (
-                                            <Input
-                                                placeholder={field.label}
-                                                value={customData[field.fieldName] || ""}
-                                                onChange={e => setCustomData(prev => ({ ...prev, [field.fieldName]: e.target.value }))}
-                                            />
-                                        )}
-                                        {field.dataType === "NUMBER" && (
-                                            <Input
-                                                type="number"
-                                                placeholder={field.label}
-                                                value={customData[field.fieldName] || ""}
-                                                onChange={e => setCustomData(prev => ({ ...prev, [field.fieldName]: Number(e.target.value) || "" }))}
-                                            />
-                                        )}
-                                        {field.dataType === "TEXTAREA" && (
-                                            <Textarea
-                                                placeholder={field.label}
-                                                value={customData[field.fieldName] || ""}
-                                                onChange={e => setCustomData(prev => ({ ...prev, [field.fieldName]: e.target.value }))}
-                                            />
-                                        )}
-                                        {field.dataType === "DATE" && (
-                                            <Input
-                                                type="date"
-                                                value={customData[field.fieldName] || ""}
-                                                onChange={e => setCustomData(prev => ({ ...prev, [field.fieldName]: e.target.value }))}
-                                            />
-                                        )}
-                                        {field.dataType === "BOOLEAN" && (
-                                            <div className="flex items-center h-10 space-x-2">
-                                                <Switch
-                                                    checked={!!customData[field.fieldName]}
-                                                    onCheckedChange={checked => setCustomData(prev => ({ ...prev, [field.fieldName]: checked }))}
+                                {customFields.map(field => {
+                                    const fieldSlug = field.slug || field.fieldName;
+                                    const fieldName = field.name || field.label;
+                                    const isRequired = field.isRequired || field.is_required;
+                                    const dataType = (field.dataType || field.type || "").toUpperCase();
+
+                                    return (
+                                        <div key={field._id || fieldSlug} className="grid gap-2">
+                                            <Label className="flex gap-1">
+                                                {fieldName} {isRequired && <span className="text-red-500">*</span>}
+                                            </Label>
+                                            {dataType === "TEXT" && (
+                                                <Input
+                                                    placeholder={fieldName}
+                                                    value={customData[fieldSlug] || ""}
+                                                    onChange={e => setCustomData(prev => ({ ...prev, [fieldSlug]: e.target.value }))}
                                                 />
-                                            </div>
-                                        )}
-                                        {field.dataType === "DROPDOWN" && (
-                                            <Select
-                                                value={customData[field.fieldName] || ""}
-                                                onValueChange={value => setCustomData(prev => ({ ...prev, [field.fieldName]: value }))}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder={`Select ${field.label}`} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {field.options?.map(opt => (
-                                                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        )}
-                                    </div>
-                                ))}
+                                            )}
+                                            {dataType === "NUMBER" && (
+                                                <Input
+                                                    type="number"
+                                                    placeholder={fieldName}
+                                                    value={customData[fieldSlug] || ""}
+                                                    onChange={e => setCustomData(prev => ({ ...prev, [fieldSlug]: Number(e.target.value) || "" }))}
+                                                />
+                                            )}
+                                            {dataType === "TEXTAREA" && (
+                                                <Textarea
+                                                    placeholder={fieldName}
+                                                    value={customData[fieldSlug] || ""}
+                                                    onChange={e => setCustomData(prev => ({ ...prev, [fieldSlug]: e.target.value }))}
+                                                />
+                                            )}
+                                            {dataType === "DATE" && (
+                                                <Input
+                                                    type="date"
+                                                    value={customData[fieldSlug] || ""}
+                                                    onChange={e => setCustomData(prev => ({ ...prev, [fieldSlug]: e.target.value }))}
+                                                />
+                                            )}
+                                            {dataType === "BOOLEAN" && (
+                                                <div className="flex items-center h-10 space-x-2">
+                                                    <Switch
+                                                        checked={!!customData[fieldSlug]}
+                                                        onCheckedChange={checked => setCustomData(prev => ({ ...prev, [fieldSlug]: checked }))}
+                                                    />
+                                                </div>
+                                            )}
+                                            {dataType === "DROPDOWN" && (
+                                                <Select
+                                                    value={customData[fieldSlug] || ""}
+                                                    onValueChange={value => setCustomData(prev => ({ ...prev, [fieldSlug]: value }))}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder={`Select ${fieldName}`} />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {field.options?.map((opt: any) => {
+                                                            const val = typeof opt === "string" ? opt : opt.value;
+                                                            const lbl = typeof opt === "string" ? opt : opt.label;
+                                                            return (
+                                                                <SelectItem key={val} value={val}>{lbl}</SelectItem>
+                                                            );
+                                                        })}
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

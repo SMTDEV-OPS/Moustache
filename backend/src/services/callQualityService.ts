@@ -41,8 +41,9 @@ export class CallQualityService {
             }
 
             const scoreReceived = Number(scoresJson[dimIdString]);
-            // Calculate proportional score for this dimension
-            weightedScore += (scoreReceived * (dim.weight_percent / 100));
+            // Spec: weighted_total = Σ (score_given / 10 * weight_percent)
+            // This yields a 0–100 score
+            weightedScore += (scoreReceived / 10) * dim.weight_percent;
         }
 
         // Assuming scoreReceived is out of 10 or 100, the weightedScore scales accordingly.

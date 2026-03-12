@@ -192,13 +192,18 @@ async function renderTemplate(
   // Replace placeholders
   rendered = rendered.replace(/\{\{guestName\}\}/g, guestName);
   rendered = rendered.replace(/\{\{propertyName\}\}/g, propertyName);
+  // Get primary itinerary if it exists
+  const { LeadItineraryModel } = await import("../models/leadItinerary");
+  const itineraries = await LeadItineraryModel.find({ leadId: lead._id }).sort({ checkInDate: 1 }).lean();
+  const primaryItin = itineraries[0];
+
   rendered = rendered.replace(
     /\{\{checkInDate\}\}/g,
-    lead.checkInDate ? lead.checkInDate.toLocaleDateString() : "TBD"
+    primaryItin?.checkInDate ? new Date(primaryItin.checkInDate).toLocaleDateString() : "TBD"
   );
   rendered = rendered.replace(
     /\{\{checkOutDate\}\}/g,
-    lead.checkOutDate ? lead.checkOutDate.toLocaleDateString() : "TBD"
+    primaryItin?.checkOutDate ? new Date(primaryItin.checkOutDate).toLocaleDateString() : "TBD"
   );
   rendered = rendered.replace(/\{\{leadNumber\}\}/g, lead.leadNumber);
 
@@ -298,10 +303,10 @@ async function sendAutomatedMessage(
           // Get guest email
           const guest = lead.guestId ? await GuestModel.findById(lead.guestId).lean() : null;
           const guestEmail = guest?.email;
-          
+
           if (guestEmail) {
             const toAddresses: IEmailAddress[] = [{ email: guestEmail, name: guest?.name }];
-            
+
             const emailMessage = await sendEmail(emailAccount._id.toString(), {
               to: toAddresses,
               subject: subject || "Follow-up",
@@ -310,7 +315,7 @@ async function sendAutomatedMessage(
             });
 
             communicationId = emailMessage._id as Types.ObjectId;
-            
+
             logger.info(
               `Sent automated EMAIL via user account for lead ${lead._id}, step ${step.stepNumber}`
             );

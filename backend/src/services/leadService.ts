@@ -49,11 +49,17 @@ export interface CreateLeadInput {
   accountId?: string;
   source: LeadSource;
   leadType: LeadType;
-  checkInDate?: Date;
-  checkOutDate?: Date;
-  roomsRequested?: number;
-  guests?: ILeadGuestDetails;
   occasion?: string;
+  // Itineraries
+  hotels?: {
+    hotelName?: string;
+    propertyId?: string;
+    checkInDate?: Date;
+    checkOutDate?: Date;
+    roomCategory?: string;
+    roomPreference?: string;
+    numberOfGuests?: string;
+  }[];
   heatLevel?: HeatLevel;
   // Additional form fields
   alternateContact?: string;
@@ -65,8 +71,6 @@ export interface CreateLeadInput {
   gstin?: string;
   estimatedValue?: string;
   notes?: string;
-  roomCategory?: string;
-  roomPreference?: string;
   // New assignment options
   assignmentMode?: AssignmentMode;
   assignedToUserId?: string;
@@ -220,6 +224,19 @@ async function performAssignment(
 
   // Fallback to legacy assignment if no rules configured
   return legacyAutoAssignLead(leadType, source);
+}
+
+/** Resolve default org ID for allocation when lead has no property/account (e.g. bulk CSV) */
+async function getDefaultOrgId(): Promise<Types.ObjectId | undefined> {
+  const envId = process.env.DEFAULT_ORG_ID;
+  if (envId && Types.ObjectId.isValid(envId)) {
+    return new Types.ObjectId(envId);
+  }
+  const firstProperty = await PropertyModel.findOne().select("_id").lean();
+  if (firstProperty) return firstProperty._id as Types.ObjectId;
+  const firstAccount = await AccountModel.findOne().select("_id").lean();
+  if (firstAccount) return firstAccount._id as Types.ObjectId;
+  return undefined;
 }
 
 function generateLeadNumber(): string {
@@ -460,7 +477,7 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     guest.totalLeadsCount === 0 &&
     guest.totalReservationsCount === 0;
 
-  const orgIdForLead = propertyId || accountId;
+  const orgIdForLead = propertyId || accountId || (await getDefaultOrgId());
 
   // Perform assignment based on mode
   const assignment = await performAssignment(
@@ -474,9 +491,18 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
   const leadNumber = generateLeadNumber();
   const contactDetails = buildContactDetails(input.guestContact, guest);
 
+  // Extract primary dates for scoring (use earliest checkin)
+  let earliestCheckIn: Date | undefined;
+  if (input.hotels && input.hotels.length > 0) {
+    const dates = input.hotels
+      .map(h => h.checkInDate)
+      .filter((d): d is Date => d !== undefined)
+      .sort((a, b) => a.getTime() - b.getTime());
+    if (dates.length > 0) earliestCheckIn = dates[0];
+  }
+
   // Prepare initial lead object for scoring/heat calculation
   const initialLeadState: Partial<ILead> = {
-    checkInDate: input.checkInDate,
     budget: input.budget,
     estimatedValue: input.estimatedValue,
     contactDetails,
@@ -491,7 +517,6 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
   const loadedProperty = propertyId ? await PropertyModel.findById(propertyId).exec() : null;
   const tagInputParams: Partial<ILead> = {
     customerType: input.customerType,
-    checkInDate: input.checkInDate,
     budget: input.budget,
     estimatedValue: input.estimatedValue,
     source: input.source,
@@ -523,15 +548,6 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     color,
     thresholdId,
     score: calculatedScore, // Set score
-    budget: input.budget,
-    bookingWindow: input.bookingWindow,
-    customerType: input.customerType,
-    checkInDate: input.checkInDate,
-    checkOutDate: input.checkOutDate,
-    roomsRequested: input.roomsRequested,
-    guests: input.guests,
-    occasion: input.occasion,
-    isFirstTimeGuest,
     assignedToUserId: assignment.assignedToUserId, leadAssignedAt: assignment.assignedToUserId ? new Date() : undefined,
     // Additional form fields
     alternateContact: input.alternateContact,
@@ -543,10 +559,24 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     gstin: input.gstin,
     estimatedValue: input.estimatedValue,
     notes: input.notes,
-    roomCategory: input.roomCategory,
-    roomPreference: input.roomPreference,
     customData: input.customData ? new Map(Object.entries(input.customData)) : undefined,
   });
+
+  // Create Itineraries (Line Items)
+  if (input.hotels && input.hotels.length > 0) {
+    const { LeadItineraryModel } = await import("../models/leadItinerary");
+    const itinerariesToInsert = input.hotels.map(hotel => ({
+      leadId: lead._id,
+      hotelName: hotel.hotelName,
+      propertyId: hotel.propertyId && Types.ObjectId.isValid(hotel.propertyId) ? new Types.ObjectId(hotel.propertyId) : undefined,
+      checkInDate: hotel.checkInDate,
+      checkOutDate: hotel.checkOutDate,
+      roomCategory: hotel.roomCategory,
+      roomPreference: hotel.roomPreference,
+      numberOfGuests: hotel.numberOfGuests,
+    }));
+    await LeadItineraryModel.insertMany(itinerariesToInsert);
+  }
 
   // Schedule follow-ups (fire and forget) using the FollowupRule Engine
   import("./followupService").then(({ FollowupService }) => {
@@ -568,6 +598,12 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     note: "Lead created",
     performedByUserId: input.createdByUserId,
     performedAt: new Date(),
+  });
+
+  leadEventBus.emit("lead.created", {
+    leadId: lead._id.toString(),
+    leadNumber,
+    orgId: orgIdForLead?.toString(),
   });
 
   // Log assignment activity
@@ -669,6 +705,13 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
   return lead;
 }
 
+export async function getLeadById(id: string): Promise<ILead | null> {
+  return await LeadModel.findById(id)
+    .populate("stageId", "name isTerminal order")
+    .populate("itineraries") // Populate Line Items
+    .exec();
+}
+
 /**
  * Reassign a lead to a different user
  */
@@ -733,6 +776,17 @@ export async function reassignLead(
   lead.assignedToUserId = finalAssigneeId;
   lead.leadAssignedAt = new Date();
   await lead.save();
+
+  // Increment workload for the new assignee (manual reassignment)
+  const orgId = lead.orgId ?? lead.propertyId ?? lead.accountId;
+  if (orgId) {
+    incrementAgentWorkload(orgId.toString(), finalAssigneeId.toString()).catch(err => {
+      logger.error("Failed to increment workload on reassignment", { leadId }, err);
+    });
+    checkCapacityAlerts(orgId.toString()).catch(err => {
+      logger.error("Failed to check capacity alerts", err);
+    });
+  }
 
   // Get user names for activity log
   const [previousUser, finalUser, originalUser, reassignedByUser] = await Promise.all([

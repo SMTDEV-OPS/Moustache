@@ -14,11 +14,13 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { createLead, getLeadDetail, Lead, LeadDetail, listLeads, updateLead, getEligibleAssignees, EligibleAssignee, AssignmentMode, getLeadContactInfo } from "@/services/leads";
+import { listFilters, applyFilter, type SavedFilter } from "@/services/filters";
+import { listProperties } from "@/services/properties";
 import { listUsers, User } from "@/services/users";
 import { listAccounts, Account, AccountType } from "@/services/accounts";
 import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
-import { Search, Filter, User as UserIcon, Calendar, Flame, Users, Zap, Plus, Phone, Mail, MessageCircle, CalendarPlus, Video, Trash2, Hotel, MoreVertical, FileText, Edit, UserPlus } from "lucide-react";
+import { Search, Filter, User as UserIcon, Calendar, Flame, Users, Zap, Plus, Phone, Mail, MessageCircle, CalendarPlus, Video, Trash2, Hotel, MoreVertical, FileText, Edit, UserPlus, ChevronLeft, ChevronRight, Snowflake } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
@@ -55,6 +57,7 @@ import {
   RefreshCw,
   IndianRupee,
 } from "lucide-react";
+import { PageHeader, Badge as SharedBadge, Button as SharedButton, Input as SharedInput, Select as SharedSelect } from "@/components/shared";
 
 const getScoreColor = (score: number) => {
   if (score >= 7) return "text-green-600";
@@ -300,6 +303,18 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
   const [activeScope, setActiveScope] = useState<"own" | "team" | "all">("own");
 
+  // Saved filters & pagination
+  const [useSavedFilter, setUseSavedFilter] = useState(false);
+  const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
+  const [filterResultData, setFilterResultData] = useState<Lead[]>([]);
+  const [filterResultTotal, setFilterResultTotal] = useState(0);
+  const [filterResultPage, setFilterResultPage] = useState(1);
+  const [savedFiltersOpen, setSavedFiltersOpen] = useState(false);
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [clientPage, setClientPage] = useState(1);
+  const PAGE_SIZE = 25;
+
   // Strict permission checks - users must have explicit permissions
   useEffect(() => {
     const loadStages = async () => {
@@ -490,6 +505,8 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   };
 
   useEffect(() => {
+    setUseSavedFilter(false);
+    setActiveFilterId(null);
     void loadLeads();
     if (canManageUsers) {
       void loadUsers();
@@ -497,13 +514,41 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     // Load accounts on mount, but don't fail if it errors
     loadAccounts().catch((err) => {
       console.error("Failed to load accounts on mount:", err);
-      // Set empty array as fallback
       setAccounts([]);
     });
-
-    // Load custom fields for leads module
     void loadCustomFields();
   }, [canManageUsers, activeScope]);
+
+  // Derive orgId for saved filters: from first lead or first property
+  useEffect(() => {
+    const resolveOrgId = async () => {
+      if (leads.length > 0) {
+        const first = leads[0] as Lead & { orgId?: string };
+        if (first?.orgId) {
+          setOrgId(first.orgId);
+          return;
+        }
+      }
+      try {
+        const props = await listProperties();
+        if (props.length > 0 && props[0]._id) {
+          setOrgId(props[0]._id);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void resolveOrgId();
+  }, [leads]);
+
+  // Load saved filters when panel opens
+  useEffect(() => {
+    if (savedFiltersOpen && orgId) {
+      listFilters("lead", orgId)
+        .then(setSavedFilters)
+        .catch(() => setSavedFilters([]));
+    }
+  }, [savedFiltersOpen, orgId]);
 
   const loadCustomFields = async () => {
     try {
@@ -655,6 +700,66 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     setSourceFilter("ALL");
     setAssigneeFilter("ALL");
     setSearchQuery("");
+    setUseSavedFilter(false);
+    setClientPage(1);
+  };
+
+  const handleApplySavedFilter = async (filterId: string) => {
+    if (!orgId) return;
+    try {
+      const result = await applyFilter<Lead & { _id?: string }>(filterId, {
+        orgId,
+        scope: activeScope,
+        page: 1,
+        limit: PAGE_SIZE,
+      });
+      const mapped = (result.data || []).map((l) => ({
+        ...l,
+        id: (l as any).id ?? (l as any)._id,
+      })) as Lead[];
+      setFilterResultData(mapped);
+      setFilterResultTotal(result.total);
+      setFilterResultPage(1);
+      setActiveFilterId(filterId);
+      setUseSavedFilter(true);
+      setSavedFiltersOpen(false);
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Unable to apply filter",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSavedFilterPage = async (page: number) => {
+    if (!orgId || !activeFilterId) return;
+    try {
+      const result = await applyFilter<Lead & { _id?: string }>(activeFilterId, {
+        orgId,
+        scope: activeScope,
+        page,
+        limit: PAGE_SIZE,
+      });
+      const mapped = (result.data || []).map((l) => ({
+        ...l,
+        id: (l as any).id ?? (l as any)._id,
+      })) as Lead[];
+      setFilterResultData(mapped);
+      setFilterResultTotal(result.total);
+      setFilterResultPage(page);
+    } catch {
+      // ignore
+    }
+  };
+
+  const clearSavedFilter = () => {
+    setUseSavedFilter(false);
+    setActiveFilterId(null);
+    setFilterResultData([]);
+    setFilterResultTotal(0);
+    setFilterResultPage(1);
+    setClientPage(1);
   };
 
   const loadLeadEmails = async (leadId: string) => {
@@ -925,275 +1030,502 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
   const formatTravelDates = (lead: Lead): string => {
     if (lead.checkInDate) {
-      const checkIn = new Date(lead.checkInDate).toISOString().split('T')[0];
-      return checkIn;
+      const d = new Date(lead.checkInDate);
+      return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
     }
     return "—";
   };
 
+  // Badge variant helpers per spec
+  const getSourceBadgeVariant = (source: string): "src_ivr" | "src_whatsapp" | "src_website" | "src_call" | "src_email" | "default" => {
+    if (source === "IVR" || source === "IVR_LIVE") return "src_ivr";
+    if (source === "WHATSAPP") return "src_whatsapp";
+    if (source === "BRAND_WEBSITE") return "src_website";
+    if (source === "DIRECT_CALL") return "src_call";
+    if (source === "EMAIL") return "src_email";
+    return "default";
+  };
+
+  const getStageBadgeVariant = (stage: PipelineStage | undefined, status: string): "stage_new" | "stage_active" | "stage_terminal" | "default" => {
+    if (!stage) return "default";
+    const name = (stage.name || "").toLowerCase();
+    if (name.includes("new")) return "stage_new";
+    if (stage.isTerminal || stage.terminalType === "WON" || stage.terminalType === "LOST" || name.includes("booked") || name.includes("won") || name.includes("lost") || name.includes("closed")) return "stage_terminal";
+    return "stage_active";
+  };
+
+  const displayLeads = useSavedFilter ? filterResultData : filteredLeads;
+  const totalLeads = useSavedFilter ? filterResultTotal : filteredLeads.length;
+  const paginatedLeads = useSavedFilter
+    ? displayLeads
+    : displayLeads.slice((clientPage - 1) * PAGE_SIZE, clientPage * PAGE_SIZE);
+  const totalPages = Math.ceil(totalLeads / PAGE_SIZE);
+  const currentPageNum = useSavedFilter ? filterResultPage : clientPage;
+  const paginationStart = totalLeads === 0 ? 0 : (currentPageNum - 1) * PAGE_SIZE + 1;
+  const paginationEnd = totalLeads === 0 ? 0 : Math.min(currentPageNum * PAGE_SIZE, totalLeads);
+
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Leads</h1>
-          <p className="text-slate-500 mt-1">Manage and track all hotel inquiries</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Tabs
-            value={activeScope}
-            onValueChange={(value) =>
-              setActiveScope(value as "own" | "team" | "all")
-            }
-          >
-            <TabsList className="h-10">
-              {canViewOwn && (
-                <TabsTrigger value="own" className="px-4">My Leads</TabsTrigger>
-              )}
-              {canViewTeam && (
-                <TabsTrigger value="team" className="px-4">My Team Leads</TabsTrigger>
-              )}
-              {canViewAll && (
-                <TabsTrigger value="all" className="px-4">All Leads</TabsTrigger>
-              )}
-            </TabsList>
-          </Tabs>
-          <Button
-            size="default"
-            onClick={() => setIsCreateDialogOpen(true)}
-            className="h-10 font-medium bg-slate-900 hover:bg-slate-800 text-white"
-          >
-            <Plus className="h-4 w-4 mr-2" />
+    <div className="space-y-0">
+      <PageHeader
+        title="Leads"
+        subtitle="Manage and track all hotel inquiries"
+        actions={
+          <SharedButton variant="primary" icon={Plus} onClick={() => setIsCreateDialogOpen(true)}>
             New Lead
-          </Button>
-        </div>
+          </SharedButton>
+        }
+      />
+
+      {/* Tab Bar - simple underline, no pill */}
+      <div
+        style={{
+          display: "flex",
+          gap: 0,
+          borderBottom: "1px solid var(--border)",
+          marginBottom: 16,
+        }}
+      >
+        {canViewOwn && (
+          <button
+            type="button"
+            onClick={() => setActiveScope("own")}
+            style={{
+              height: 36,
+              padding: "0 16px",
+              fontSize: 14,
+              color: activeScope === "own" ? "var(--primary)" : "var(--text-muted)",
+              cursor: "pointer",
+              borderBottom: `2px solid ${activeScope === "own" ? "var(--primary)" : "transparent"}`,
+              marginBottom: -1,
+              fontWeight: activeScope === "own" ? 500 : 400,
+              background: "none",
+              borderTop: "none",
+              borderLeft: "none",
+              borderRight: "none",
+            }}
+          >
+            My Leads
+          </button>
+        )}
+        {canViewTeam && (
+          <button
+            type="button"
+            onClick={() => setActiveScope("team")}
+            style={{
+              height: 36,
+              padding: "0 16px",
+              fontSize: 14,
+              color: activeScope === "team" ? "var(--primary)" : "var(--text-muted)",
+              cursor: "pointer",
+              borderBottom: `2px solid ${activeScope === "team" ? "var(--primary)" : "transparent"}`,
+              marginBottom: -1,
+              fontWeight: activeScope === "team" ? 500 : 400,
+              background: "none",
+              borderTop: "none",
+              borderLeft: "none",
+              borderRight: "none",
+            }}
+          >
+            My Team Leads
+          </button>
+        )}
+        {canViewAll && (
+          <button
+            type="button"
+            onClick={() => setActiveScope("all")}
+            style={{
+              height: 36,
+              padding: "0 16px",
+              fontSize: 14,
+              color: activeScope === "all" ? "var(--primary)" : "var(--text-muted)",
+              cursor: "pointer",
+              borderBottom: `2px solid ${activeScope === "all" ? "var(--primary)" : "transparent"}`,
+              marginBottom: -1,
+              fontWeight: activeScope === "all" ? 500 : 400,
+              background: "none",
+              borderTop: "none",
+              borderLeft: "none",
+              borderRight: "none",
+            }}
+          >
+            All Leads
+          </button>
+        )}
       </div>
 
-      {/* Search and Filters */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input
-                placeholder="Search by name, email, phone..."
-                className="pl-10 h-10 border-slate-200"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <Select
-              value={stageFilter}
-              onValueChange={setStageFilter}
-            >
-              <SelectTrigger className="w-[160px] h-10 border-slate-200">
-                <SelectValue placeholder="Pipeline Stage" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Stages</SelectItem>
-                {pipelineStages.map(stage => (
-                  <SelectItem key={stage._id} value={stage._id}>
-                    {stage.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={heatFilter}
-              onValueChange={setHeatFilter}
-            >
-              <SelectTrigger className="w-[140px] h-10 border-slate-200">
-                <SelectValue placeholder="Heat Level" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Heat</SelectItem>
-                <SelectItem value="HOT">Hot</SelectItem>
-                <SelectItem value="WARM">Warm</SelectItem>
-                <SelectItem value="COLD">Cold</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={sourceFilter}
-              onValueChange={setSourceFilter}
-            >
-              <SelectTrigger className="w-[150px] h-10 border-slate-200">
-                <SelectValue placeholder="Source" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Sources</SelectItem>
-                {Array.from(new Set(leads.map(l => l.source))).map((source) => (
-                  <SelectItem key={source} value={source}>
-                    {source.replace(/_/g, " ")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      {/* Filter Bar */}
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginBottom: 16,
+          alignItems: "center",
+        }}
+      >
+        <div style={{ flex: 1, maxWidth: 400 }}>
+          <SharedInput
+            icon={Search}
+            placeholder="Search by name, email, phone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div style={{ width: 140 }}>
+          <SharedSelect
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+          >
+            <option value="ALL">All Stages</option>
+            {pipelineStages.map((s) => (
+              <option key={s._id} value={s._id}>
+                {s.name}
+              </option>
+            ))}
+          </SharedSelect>
+        </div>
+        <div style={{ width: 120 }}>
+          <SharedSelect
+            value={heatFilter}
+            onChange={(e) => setHeatFilter(e.target.value)}
+          >
+            <option value="ALL">All Heat</option>
+            <option value="HOT">Hot</option>
+            <option value="WARM">Warm</option>
+            <option value="COLD">Cold</option>
+          </SharedSelect>
+        </div>
+        <div style={{ width: 140 }}>
+          <SharedSelect
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+          >
+            <option value="ALL">All Sources</option>
+            {["DIRECT_CALL", "EMAIL", "BRAND_WEBSITE", "WHATSAPP", "IVR", "IVR_LIVE", "UNIT", "REPEAT_GUEST", "REFERRAL", "CORPORATE_OFFICE", "SOCIAL", "VIP_MR_CHOPRA", "TRAVEL_AGENT", "WALK_IN", "EVENT_MICE", "MANUAL", "CSV_UPLOAD"].map((s) => (
+              <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+            ))}
+          </SharedSelect>
+        </div>
+        <SharedButton variant="secondary" icon={Filter} size="sm" onClick={() => setSavedFiltersOpen(true)}>
+          Filters
+        </SharedButton>
+      </div>
+
+      {/* Saved Filters Slide-Over */}
+      {savedFiltersOpen && (
+        <>
+          <div
+            role="presentation"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 40,
+              background: "transparent",
+            }}
+            onClick={() => setSavedFiltersOpen(false)}
+            aria-hidden
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 320,
+              background: "var(--surface)",
+              borderLeft: "1px solid var(--border)",
+              zIndex: 50,
+              overflowY: "auto",
+              padding: 16,
+            }}
+          >
+            <p style={{ fontSize: 14, fontWeight: 500, marginBottom: 12, color: "var(--text)" }}>Saved Filters</p>
+            {savedFilters.length === 0 && !orgId && (
+              <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No saved filters available.</p>
+            )}
+            {savedFilters.map((f) => (
+              <button
+                key={f._id}
+                type="button"
+                onClick={() => void handleApplySavedFilter(f._id)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  height: 36,
+                  padding: "0 12px",
+                  fontSize: 14,
+                  textAlign: "left",
+                  color: "var(--text)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  borderRadius: "var(--radius)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "var(--hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                {f.name}
+              </button>
+            ))}
           </div>
-        </CardContent>
-      </Card>
+        </>
+      )}
 
       {/* Leads Table */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardContent className="p-0">
-          {isLoadingList ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
-              <p className="text-sm text-muted-foreground">Loading leads...</p>
-            </div>
-          ) : filteredLeads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Users className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
-              <p className="text-base font-medium text-slate-900 mb-1">No leads found</p>
-              <p className="text-sm text-slate-500 mb-4">
-                {searchQuery || statusFilter !== "ALL" || heatFilter !== "ALL" || sourceFilter !== "ALL"
-                  ? "Try adjusting your filters"
-                  : "Create your first lead to get started"}
-              </p>
-              {!searchQuery && statusFilter === "ALL" && heatFilter === "ALL" && sourceFilter === "ALL" && (
-                <Button onClick={() => setIsCreateDialogOpen(true)} className="mt-2 bg-slate-900 hover:bg-slate-800">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Lead
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-md)",
+          overflow: "hidden",
+        }}
+      >
+        {isLoadingList && !useSavedFilter ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "48px 0",
+              gap: 12,
+            }}
+          >
+            <RefreshCw style={{ width: 32, height: 32, color: "var(--text-faint)" }} className="animate-spin" />
+            <p style={{ fontSize: 14, color: "var(--text-muted)" }}>Loading leads...</p>
+          </div>
+        ) : paginatedLeads.length === 0 ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "48px 0",
+              gap: 12,
+            }}
+          >
+            <Users style={{ width: 40, height: 40, color: "var(--text-faint)" }} />
+            <p style={{ fontSize: 15, fontWeight: 500, color: "var(--text)", marginTop: 12 }}>
+              No leads found
+            </p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Try adjusting your filters or add a new lead.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Guest</th>
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Hotel</th>
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Source</th>
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Travel Dates</th>
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Heat</th>
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Stage</th>
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Assigned</th>
-                    <th className="text-left p-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Score</th>
-                    <th className="w-10"></th>
+                  <tr
+                    style={{
+                      height: 36,
+                      background: "var(--bg)",
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    <th style={{ fontSize: 12, fontWeight: 500, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 16px", textAlign: "left" }}>Guest</th>
+                    <th style={{ fontSize: 12, fontWeight: 500, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 16px", textAlign: "left" }}>Hotel</th>
+                    <th style={{ fontSize: 12, fontWeight: 500, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 16px", textAlign: "left" }}>Source</th>
+                    <th style={{ fontSize: 12, fontWeight: 500, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 16px", textAlign: "left" }}>Travel Dates</th>
+                    <th style={{ fontSize: 12, fontWeight: 500, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 16px", textAlign: "left" }}>Heat</th>
+                    <th style={{ fontSize: 12, fontWeight: 500, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 16px", textAlign: "left" }}>Stage</th>
+                    <th style={{ fontSize: 12, fontWeight: 500, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 16px", textAlign: "left" }}>Assigned</th>
+                    <th style={{ fontSize: 12, fontWeight: 500, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 16px", textAlign: "left" }}>Score</th>
+                    <th style={{ width: 40 }} />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredLeads.map((lead) => {
+                <tbody>
+                  {paginatedLeads.map((lead) => {
                     const assignedUser = users.find((u) => u.id === lead.assignedToUserId);
                     const guestName = getGuestName(lead);
                     const guestPhone = getGuestPhone(lead);
                     const propertyName = getPropertyName(lead);
                     const travelDates = formatTravelDates(lead);
+                    const stage = pipelineStages.find((s) => s._id === lead.stageId);
+                    const score = lead.score ?? 0;
+                    const scoreStyle =
+                      score >= 7 ? { fontWeight: 600, color: "#ef4444" } as React.CSSProperties :
+                      score >= 4 ? { fontWeight: 600, color: "#f59e0b" } as React.CSSProperties :
+                      { fontWeight: 400, color: "var(--text-muted)" } as React.CSSProperties;
+
+                    const initials = guestName
+                      .split(/\s+/)
+                      .map((n) => n[0])
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2) || "?";
 
                     return (
                       <tr
                         key={lead.id}
                         onClick={() => void selectLead(lead.id)}
-                        className="hover:bg-slate-50 cursor-pointer transition-colors"
+                        style={{
+                          height: 52,
+                          borderBottom: "1px solid var(--border-light)",
+                          cursor: "pointer",
+                          transition: "background 120ms ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = "var(--hover)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                        }}
                       >
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 bg-slate-900 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
-                              {guestName.charAt(0).toUpperCase()}
+                        <td style={{ padding: "0 16px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div
+                              style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: "50%",
+                                background: "var(--primary-light)",
+                                color: "var(--primary)",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {initials}
                             </div>
-                            <div className="min-w-0">
-                              <p className="font-medium text-slate-900 truncate">{guestName}</p>
+                            <div>
+                              <span style={{ display: "block", fontSize: 14, color: "var(--text)", fontWeight: 500 }}>{guestName}</span>
                               {guestPhone && (
-                                <p className="text-sm text-slate-500 truncate">{guestPhone}</p>
+                                <span style={{ display: "block", fontSize: 12, color: "var(--text-muted)" }}>{guestPhone}</span>
                               )}
                             </div>
                           </div>
                         </td>
-                        <td className="p-4 text-slate-600">{propertyName}</td>
-                        <td className="p-4 text-slate-600 capitalize">{lead.source.replace(/_/g, " ")}</td>
-                        <td className="p-4 text-slate-600">
-                          {travelDates !== "—" ? (
-                            <span className="font-mono text-sm">{travelDates}</span>
+                        <td style={{ padding: "0 16px", fontSize: 13, color: "var(--text)" }}>
+                          {propertyName === "—" ? (
+                            <span style={{ color: "var(--text-faint)", fontStyle: "italic" }}>—</span>
                           ) : (
-                            <span className="text-slate-400">—</span>
+                            propertyName
                           )}
                         </td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            {getHeatIcon(lead.heatLevel)}
-                            <Badge variant="outline" className={`${getHeatBadgeColor(lead.heatLevel)} text-xs font-medium`}>
-                              {lead.heatLevel.toLowerCase()}
-                            </Badge>
+                        <td style={{ padding: "0 16px" }}>
+                          <SharedBadge
+                            label={lead.source.replace(/_/g, " ")}
+                            variant={getSourceBadgeVariant(lead.source)}
+                          />
+                        </td>
+                        <td style={{ padding: "0 16px", fontSize: 13, color: "var(--text)" }}>
+                          {travelDates === "—" ? (
+                            <span style={{ color: "var(--text-faint)", fontStyle: "italic" }}>—</span>
+                          ) : (
+                            travelDates
+                          )}
+                        </td>
+                        <td style={{ padding: "0 16px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            {lead.heatLevel === "HOT" && <Flame size={12} style={{ flexShrink: 0 }} />}
+                            {lead.heatLevel === "WARM" && <Flame size={12} style={{ flexShrink: 0 }} />}
+                            {lead.heatLevel === "COLD" && <Snowflake size={12} style={{ flexShrink: 0 }} />}
+                            <SharedBadge
+                              label={lead.heatLevel === "NOT_INTERESTED" ? "Not Interested" : lead.heatLevel.toLowerCase()}
+                              variant={
+                                lead.heatLevel === "HOT" ? "heat_hot" :
+                                lead.heatLevel === "WARM" ? "heat_warm" :
+                                lead.heatLevel === "COLD" ? "heat_cold" : "default"
+                              }
+                            />
+                          </span>
+                        </td>
+                        <td style={{ padding: "0 16px" }}>
+                          <SharedBadge
+                            label={stage ? stage.name : (lead.status || "").replace(/_/g, " ")}
+                            variant={getStageBadgeVariant(stage, lead.status || "")}
+                          />
+                        </td>
+                        <td style={{ padding: "0 16px", fontSize: 13, color: assignedUser ? "var(--text)" : "var(--text-faint)" }}>
+                          {assignedUser ? assignedUser.name || assignedUser.email : (
+                            <span style={{ fontStyle: "italic" }}>Unassigned</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "0 16px" }}>
+                          <span style={scoreStyle}>{score}/10</span>
+                        </td>
+                        <td
+                          style={{ padding: "0 16px" }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div
+                            style={{
+                              opacity: 0,
+                              transition: "opacity 120ms ease",
+                            }}
+                            className="leads-row-menu-trigger"
+                          >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    padding: 4,
+                                    cursor: "pointer",
+                                    color: "var(--text-faint)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <MoreVertical size={16} />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" style={{ boxShadow: "var(--shadow)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
+                                <DropdownMenuItem
+                                  onClick={() => void selectLead(lead.id)}
+                                  style={{ fontSize: 13, height: 32, padding: "0 14px" }}
+                                >
+                                  View Lead
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    void selectLead(lead.id);
+                                  }}
+                                  style={{ fontSize: 13, height: 32, padding: "0 14px" }}
+                                >
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setAssigningLeadId(lead.id);
+                                    setAssignUserId(lead.assignedToUserId ?? "");
+                                    setIsAssignDialogOpen(true);
+                                  }}
+                                  style={{ fontSize: 13, height: 32, padding: "0 14px" }}
+                                >
+                                  Reassign
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={async () => {
+                                    const lostStage = pipelineStages.find((s) => s.terminalType === "LOST" || (s.name || "").toLowerCase().includes("lost"));
+                                    try {
+                                      await updateLead(lead.id, lostStage ? { stageId: lostStage._id } : { status: "LOST" as const });
+                                      toast({ title: "Lead updated", description: "Lead marked as lost." });
+                                      void loadLeads();
+                                      if (useSavedFilter) clearSavedFilter();
+                                    } catch (err) {
+                                      toast({ title: "Error", description: err instanceof Error ? err.message : "Unable to update lead", variant: "destructive" });
+                                    }
+                                  }}
+                                  style={{ fontSize: 13, height: 32, padding: "0 14px" }}
+                                >
+                                  Mark as Lost
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
-                        </td>
-                        <td className="p-4">
-                          {(() => {
-                            const stage = pipelineStages.find(s => s._id === lead.stageId);
-                            if (!stage) return (
-                              <Badge variant="outline" className={`${getStatusBadgeColor(lead.status)} text-xs font-medium`}>
-                                {lead.status.replace(/_/g, " ").toLowerCase()}
-                              </Badge>
-                            );
-                            return (
-                              <Badge
-                                variant="outline"
-                                style={{
-                                  backgroundColor: `${stage.color}15`,
-                                  color: stage.color,
-                                  borderColor: `${stage.color}30`
-                                }}
-                                className="text-xs font-medium"
-                              >
-                                {stage.name}
-                              </Badge>
-                            );
-                          })()}
-                        </td>
-                        <td className="p-4 text-slate-600">
-                          {assignedUser ? assignedUser.name || assignedUser.email : "Unassigned"}
-                        </td>
-                        <td className="p-4">
-                          <div className={`font-semibold ${getScoreColor(lead.score || 0)}`}>
-                            {lead.score || 0}/10
-                          </div>
-                        </td>
-                        <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  void selectLead(lead.id);
-                                }}
-                              >
-                                <Edit className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSchedulingLead(lead);
-                                  setScheduleType("call");
-                                  setIsScheduleDialogOpen(true);
-                                }}
-                              >
-                                <Phone className="h-4 w-4 mr-2 text-green-600" />
-                                Schedule Call
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setQuotationLead(lead);
-                                  setIsQuotationDialogOpen(true);
-                                }}
-                              >
-                                <FileText className="h-4 w-4 mr-2 text-amber-600" />
-                                Send Quotation
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setAssigningLeadId(lead.id);
-                                  setAssignUserId(lead.assignedToUserId ?? "");
-                                  setIsAssignDialogOpen(true);
-                                }}
-                              >
-                                <UserPlus className="h-4 w-4 mr-2 text-indigo-600" />
-                                Assign Lead
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
                         </td>
                       </tr>
                     );
@@ -1201,9 +1533,52 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                 </tbody>
               </table>
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            {/* Pagination */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "12px 16px",
+                borderTop: "1px solid var(--border-light)",
+              }}
+            >
+              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                Showing {totalLeads === 0 ? 0 : paginationStart}–{paginationEnd} of {totalLeads} leads
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <SharedButton
+                  variant="secondary"
+                  size="sm"
+                  icon={ChevronLeft}
+                  onClick={() => {
+                    if (useSavedFilter && activeFilterId) {
+                      void handleSavedFilterPage(filterResultPage - 1);
+                    } else {
+                      setClientPage((p) => Math.max(1, p - 1));
+                    }
+                  }}
+                  disabled={paginationStart <= 1}
+                />
+                <SharedButton
+                  variant="secondary"
+                  size="sm"
+                  icon={ChevronRight}
+                  onClick={() => {
+                    if (useSavedFilter && activeFilterId) {
+                      void handleSavedFilterPage(filterResultPage + 1);
+                    } else {
+                      setClientPage((p) => Math.min(totalPages, p + 1));
+                    }
+                  }}
+                  disabled={paginationEnd >= totalLeads || totalLeads === 0}
+                />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Lead Details Dialog */}
       <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>

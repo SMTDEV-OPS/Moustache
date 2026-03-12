@@ -69,9 +69,9 @@ async function runTests() {
             TEST_ORG_ID
         );
 
-        // Expected weighted score: (10 * 0.20) + (5 * 0.80) = 2.0 + 4.0 = 6.0
-        if (Math.abs(scoreVal.weighted_total - 6.0) > 0.01) {
-            throw new Error(`Call quality test failed. Expected 6.0, got ${scoreVal.weighted_total}`);
+        // Expected weighted score: (10/10 * 20) + (5/10 * 80) = 20 + 40 = 60.0  (0-100 scale per spec)
+        if (Math.abs(scoreVal.weighted_total - 60.0) > 0.01) {
+            throw new Error(`Call quality test failed. Expected 60.0, got ${scoreVal.weighted_total}`);
         } else {
             console.log("Call Quality logic works!");
         }

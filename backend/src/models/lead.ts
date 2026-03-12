@@ -53,10 +53,6 @@ export interface ILead extends Document {
   bookingWindow?: string; // "Within 5 hrs", "Within 24 hrs", "Yet to decide"
   customerType?: string; // B2C, B2B, Corporate, Influencer, NRI, HNI, Reference
 
-  checkInDate?: Date;
-  checkOutDate?: Date;
-  roomsRequested?: number;
-  guests?: ILeadGuestDetails;
   occasion?: string;
   isFirstTimeGuest: boolean;
   assignedToUserId?: Types.ObjectId;
@@ -78,13 +74,12 @@ export interface ILead extends Document {
   gstin?: string;
   estimatedValue?: string;
   notes?: string;
-  roomCategory?: string;
-  roomPreference?: string;
   // Call status and payment tracking
   callStatus?: CallStatus;
   pendingAmount?: number;
   lastSMSFollowUpAt?: Date;
   followUpCount: number; // Track number of follow-ups
+  missed_followup_count?: number; // Count of missed follow-up tasks (for workflow triggers)
   tags?: string[];
 
   // Dynamic Custom Fields
@@ -127,19 +122,6 @@ const leadSchema = new Schema<ILead>(
     score: { type: Number, default: 0 }, // 0-10 score
     color: String,
     thresholdId: Schema.Types.ObjectId,
-    budget: Number,
-    bookingWindow: String,
-    customerType: String,
-
-    checkInDate: Date,
-    checkOutDate: Date,
-    roomsRequested: Number,
-    guests: {
-      adults: Number,
-      children: Number,
-    },
-    occasion: String,
-    isFirstTimeGuest: { type: Boolean, default: false },
     assignedToUserId: UserRef,
     assignedRegionId: RegionRef,
     leadAssignedAt: { type: Date },
@@ -161,8 +143,6 @@ const leadSchema = new Schema<ILead>(
     gstin: String,
     estimatedValue: String,
     notes: String,
-    roomCategory: String,
-    roomPreference: String,
     callStatus: {
       type: String,
       enum: Object.values(CallStatus),
@@ -170,6 +150,7 @@ const leadSchema = new Schema<ILead>(
     pendingAmount: Number,
     lastSMSFollowUpAt: Date,
     followUpCount: { type: Number, default: 0 },
+    missed_followup_count: { type: Number, default: 0 },
     tags: [{ type: String, index: true }],
 
     // Dynamic Custom Fields
@@ -182,7 +163,18 @@ const leadSchema = new Schema<ILead>(
   { timestamps: { createdAt: true, updatedAt: true } }
 );
 
-leadSchema.index({ assignedToUserId: 1, status: 1, checkInDate: 1 });
+// Set up virtual population for Itineraries (Line Items)
+leadSchema.virtual("itineraries", {
+  ref: "LeadItinerary",
+  localField: "_id",
+  foreignField: "leadId",
+});
+
+// Ensure virtuals are included when converting documents to JSON
+leadSchema.set("toJSON", { virtuals: true });
+leadSchema.set("toObject", { virtuals: true });
+
+leadSchema.index({ assignedToUserId: 1, status: 1 });
 leadSchema.index({ createdAt: -1 });
 
 export const LeadModel = model<ILead>("Lead", leadSchema);

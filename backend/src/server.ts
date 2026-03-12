@@ -1,11 +1,15 @@
 import "dotenv/config";
 import { createServer } from "http";
 import mongoose from "mongoose";
+import { Types } from "mongoose";
 import { app } from "./app";
 import { config } from "./config/env";
 import { logger } from "./config/logger";
 import { initializeWebSocket } from "./websocket";
 import { initializeImapListeners } from "./services/imapListener";
+import { seedAllocationConfig } from "./services/allocationService";
+import { PropertyModel } from "./models/property";
+import { AccountModel } from "./models/account";
 import "./jobs/scheduler";
 
 // Global error handlers
@@ -37,6 +41,28 @@ async function start() {
 
     await mongoose.connect(config.mongoUri);
     logger.info("Connected to MongoDB", { uri: config.mongoUri });
+
+    // Seed allocation config for default org
+    const defaultOrgId = process.env.DEFAULT_ORG_ID;
+    let orgId: string | null = null;
+    if (defaultOrgId && Types.ObjectId.isValid(defaultOrgId)) {
+      orgId = defaultOrgId;
+    }
+    if (!orgId) {
+      const firstProperty = await PropertyModel.findOne().select("_id").lean();
+      if (firstProperty) orgId = firstProperty._id.toString();
+    }
+    if (!orgId) {
+      const firstAccount = await AccountModel.findOne().select("_id").lean();
+      if (firstAccount) orgId = firstAccount._id.toString();
+    }
+    if (orgId) {
+      seedAllocationConfig(orgId).catch((err) =>
+        logger.error("Failed to seed allocation config", { orgId }, err instanceof Error ? err : new Error(String(err)))
+      );
+    } else {
+      logger.warn("No default org for allocation config seeding (set DEFAULT_ORG_ID or add properties/accounts)");
+    }
 
     // Create HTTP server
     const httpServer = createServer(app);

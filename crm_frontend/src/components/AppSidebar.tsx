@@ -22,8 +22,11 @@ import {
   Bell,
   UserCheck,
   Activity,
-  Plug
+  Plug,
+  Moon,
+  Sun,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 
 import {
   Sidebar,
@@ -78,7 +81,9 @@ export function AppSidebar({
   simulateIncomingCall,
 }: AppSidebarProps) {
   const { state } = useSidebar();
+  const { theme, setTheme } = useTheme();
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const isDark = theme === "dark";
   const hasUsersManagePermission = permissions?.includes("users.manage");
   const canManageAccounts = !!isAdmin || permissions?.includes("accounts.manage");
   const isAdminLike = !!isAdmin || userRole === "admin";
@@ -147,12 +152,12 @@ export function AppSidebar({
     ];
 
     const roleSpecificItems = [
-      {
+      /*{
         title: "Call Center",
         url: "calls",
         icon: Phone,
         roles: ['callcenter']
-      },
+      },*/
       {
         title: "Leads",
         url: "admin-leads",
@@ -171,13 +176,13 @@ export function AppSidebar({
         icon: CalendarDays,
         roles: ['callcenter', 'salesexecutive', 'saleshead', 'ccmanager', 'management', 'admin']
       },
-      {
+      /*{
         title: "Reports",
         url: "reports",
         icon: TrendingUp,
         roles: ['management', 'admin']
         // For backend sessions, this will be additionally gated by `reports.view` in the main app.
-      },
+      },*/
       {
         title: "Buddy",
         url: "buddy-management",
@@ -283,7 +288,7 @@ export function AppSidebar({
         <div className="flex items-center gap-3 px-1">
           <div className="flex items-center justify-center h-8 w-8 rounded-md bg-primary/10">
             <img
-              src="/lovable-uploads/e26310ec-726d-4063-b241-25a7abbba814.png"
+              src="/lovable-uploads/moustache-logo.png"
               alt="Logo"
               className="h-6 w-auto"
             />
@@ -486,7 +491,16 @@ export function AppSidebar({
             {/* Quick Actions */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-sidebar-accent text-sidebar-foreground"
+                  onClick={() => setTheme(isDark ? "light" : "dark")}
+                  title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                  aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                </Button>
                 {userRole === 'callcenter' && simulateIncomingCall && (
                   <Button
                     variant="ghost"
@@ -541,6 +555,16 @@ export function AppSidebar({
           </div>
         ) : (
           <div className="flex flex-col items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 hover:bg-sidebar-accent text-sidebar-foreground"
+              onClick={() => setTheme(isDark ? "light" : "dark")}
+              title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">

@@ -85,7 +85,14 @@ async function handleInactiveLead(lead: any, threshold: any, level: "critical" |
             performedAt: new Date()
         });
 
-        if (level === "critical") {
+        if (level === "warning") {
+            leadEventBus.emit("lead.inactive_warning", {
+                leadId: lead._id.toString(),
+                leadNumber: lead.leadNumber,
+                orgId: lead.orgId?.toString()
+            });
+            logger.info(`[InactiveMonitor] Emitted lead.inactive_warning for ${lead._id}`);
+        } else if (level === "critical") {
             if (threshold.auto_action === 'notify_tl') {
                 leadEventBus.emit("lead.inactive_critical", {
                     leadId: lead._id.toString(),

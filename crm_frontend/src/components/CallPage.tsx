@@ -24,6 +24,23 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
   const [isSearching, setIsSearching] = useState(false);
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [isCreatingLead, setIsCreatingLead] = useState(false);
+  const [dynamicFields, setDynamicFields] = useState<any[]>([]);
+
+  // Fetch dynamic fields when form is shown
+  useEffect(() => {
+    if (showLeadForm && dynamicFields.length === 0) {
+      fetch(`${API_BASE_URL}/admin/fields?entity_type=lead&is_active=true`, {
+        headers: withAuthHeaders()
+      })
+        .then(res => res.json())
+        .then(data => {
+          // Sort by display_order
+          const sortedFields = (data || []).sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
+          setDynamicFields(sortedFields);
+        })
+        .catch(console.error);
+    }
+  }, [showLeadForm]);
 
   // Lead form state
   const [leadFormData, setLeadFormData] = useState<Partial<CreateLeadPayload & { callStatus?: string }>>({
@@ -35,19 +52,15 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
     source: "DIRECT_CALL",
     leadType: "STAY",
     heatLevel: "WARM",
-    checkInDate: "",
-    checkOutDate: "",
-    roomsRequested: 1,
-    guests: {
-      adults: 2,
-      children: 0,
-    },
+    hotels: [{
+      checkInDate: "",
+      checkOutDate: "",
+      numberOfGuests: "2 Adults",
+      roomCategory: "",
+    }],
     occasion: "",
-    isFirstTimeGuest: false,
     callStatus: undefined,
-    customerType: "",
-    bookingWindow: "",
-    budget: undefined,
+    customData: {},
   });
 
   const { toast } = useToast();
@@ -135,15 +148,9 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
         source: leadFormData.source || "DIRECT_CALL",
         leadType: leadFormData.leadType || "STAY",
         heatLevel: leadFormData.heatLevel || "WARM",
-        checkInDate: leadFormData.checkInDate || undefined,
-        checkOutDate: leadFormData.checkOutDate || undefined,
-        roomsRequested: leadFormData.roomsRequested,
-        guests: leadFormData.guests,
+        hotels: leadFormData.hotels?.filter(h => h.checkInDate || h.checkOutDate) || [],
         occasion: leadFormData.occasion,
-        isFirstTimeGuest: leadFormData.isFirstTimeGuest || false,
-        customerType: leadFormData.customerType || undefined,
-        bookingWindow: leadFormData.bookingWindow || undefined,
-        budget: leadFormData.budget ? Number(leadFormData.budget) : undefined,
+        customData: leadFormData.customData || {},
         assignmentMode: "auto",
       };
 
@@ -287,11 +294,22 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
                           <p className="text-sm text-gray-600">
                             {lead.status} • {lead.heatLevel}
                           </p>
-                          {lead.checkInDate && (
-                            <p className="text-xs text-gray-500">
-                              Check-in: {formatDate(lead.checkInDate)}
-                            </p>
-                          )}
+                          {(() => {
+                            let primaryCheckIn = "";
+                            if (lead.itineraries && lead.itineraries.length > 0) {
+                              const sorted = [...lead.itineraries].sort((a: any, b: any) => {
+                                if (!a.checkInDate) return 1;
+                                if (!b.checkInDate) return -1;
+                                return new Date(a.checkInDate).getTime() - new Date(b.checkInDate).getTime();
+                              });
+                              if (sorted[0].checkInDate) primaryCheckIn = sorted[0].checkInDate;
+                            }
+                            return primaryCheckIn ? (
+                              <p className="text-xs text-gray-500">
+                                Check-in: {formatDate(primaryCheckIn)}
+                              </p>
+                            ) : null;
+                          })()}
                         </div>
                         <Badge variant="outline">{lead.status}</Badge>
                       </div>
@@ -425,80 +443,103 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="isFirstTime">Guest Type</Label>
-                <Select
-                  value={leadFormData.isFirstTimeGuest ? "false" : "true"}
-                  onValueChange={(value) =>
-                    setLeadFormData({ ...leadFormData, isFirstTimeGuest: value === "false" })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="true">First Time Guest</SelectItem>
-                    <SelectItem value="false">Repeat Guest</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
 
-              {/* Tag Dimensions (SOP 1.2, 1.3, 1.5 fields) */}
-              <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="customerType">Customer Type</Label>
-                  <Select
-                    value={leadFormData.customerType || ""}
-                    onValueChange={(value) =>
-                      setLeadFormData({ ...leadFormData, customerType: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="B2C">B2C</SelectItem>
-                      <SelectItem value="B2B">B2B</SelectItem>
-                      <SelectItem value="Corporate">Corporate</SelectItem>
-                      <SelectItem value="Influencer">Influencer</SelectItem>
-                      <SelectItem value="NRI">NRI</SelectItem>
-                      <SelectItem value="HNI">HNI</SelectItem>
-                      <SelectItem value="Reference">Reference</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {/* Tag Dimensions (Dynamic Custom Fields) */}
+              <div className="md:col-span-2">
+                <div className="flex items-center space-x-2 mb-4 mt-2">
+                  <div className="h-px bg-gray-200 flex-1"></div>
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Dynamic Fields</span>
+                  <div className="h-px bg-gray-200 flex-1"></div>
                 </div>
-                <div>
-                  <Label htmlFor="bookingWindow">Booking Window</Label>
-                  <Select
-                    value={leadFormData.bookingWindow || ""}
-                    onValueChange={(value) =>
-                      setLeadFormData({ ...leadFormData, bookingWindow: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select window" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Within 5 hrs">Within 5 hrs</SelectItem>
-                      <SelectItem value="Within 24 hrs">Within 24 hrs</SelectItem>
-                      <SelectItem value="Yet to decide final plan">Yet to decide final plan</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="budget">Auto-Tag Budget</Label>
-                  <Input
-                    id="budget"
-                    type="number"
-                    value={leadFormData.budget || ""}
-                    onChange={(e) =>
-                      setLeadFormData({
-                        ...leadFormData,
-                        budget: e.target.value ? Number(e.target.value) : undefined,
-                      })
-                    }
-                    placeholder="e.g. 15000"
-                  />
+
+                <div className="grid grid-cols-2 gap-4">
+                  {dynamicFields.map(field => (
+                    <div key={field.slug}>
+                      <Label htmlFor={`custom_${field.slug}`}>
+                        {field.name} {field.is_required && "*"}
+                      </Label>
+                      {field.type === "dropdown" ? (
+                        <Select
+                          value={leadFormData.customData?.[field.slug]?.toString() || ""}
+                          onValueChange={(value) =>
+                            setLeadFormData({
+                              ...leadFormData,
+                              customData: {
+                                ...(leadFormData.customData || {}),
+                                [field.slug]: value
+                              }
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={`Select ${field.name}`} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {field.options?.map((opt: string) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : field.type === "number" ? (
+                        <Input
+                          id={`custom_${field.slug}`}
+                          type="number"
+                          placeholder={field.name}
+                          value={leadFormData.customData?.[field.slug] || ""}
+                          onChange={(e) =>
+                            setLeadFormData({
+                              ...leadFormData,
+                              customData: {
+                                ...(leadFormData.customData || {}),
+                                [field.slug]: e.target.value ? Number(e.target.value) : undefined
+                              }
+                            })
+                          }
+                        />
+                      ) : field.type === "boolean" ? (
+                        <Select
+                          value={leadFormData.customData?.[field.slug] !== undefined ? String(leadFormData.customData?.[field.slug]) : ""}
+                          onValueChange={(value) =>
+                            setLeadFormData({
+                              ...leadFormData,
+                              customData: {
+                                ...(leadFormData.customData || {}),
+                                [field.slug]: value === "true"
+                              }
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={`Select ${field.name}`} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="true">Yes</SelectItem>
+                            <SelectItem value="false">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          id={`custom_${field.slug}`}
+                          placeholder={field.name}
+                          value={leadFormData.customData?.[field.slug] || ""}
+                          onChange={(e) =>
+                            setLeadFormData({
+                              ...leadFormData,
+                              customData: {
+                                ...(leadFormData.customData || {}),
+                                [field.slug]: e.target.value
+                              }
+                            })
+                          }
+                        />
+                      )}
+                    </div>
+                  ))}
+                  {dynamicFields.length === 0 && (
+                    <div className="col-span-2 text-sm text-gray-500 italic py-2">
+                      No custom fields configured for Leads.
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -507,10 +548,13 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
                 <Input
                   id="checkInDate"
                   type="date"
-                  value={leadFormData.checkInDate || ""}
-                  onChange={(e) =>
-                    setLeadFormData({ ...leadFormData, checkInDate: e.target.value })
-                  }
+                  value={leadFormData.hotels?.[0]?.checkInDate || ""}
+                  onChange={(e) => {
+                    const newHotels = [...(leadFormData.hotels || [])];
+                    if (!newHotels[0]) newHotels[0] = {};
+                    newHotels[0].checkInDate = e.target.value;
+                    setLeadFormData({ ...leadFormData, hotels: newHotels });
+                  }}
                 />
               </div>
               <div>
@@ -518,25 +562,27 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
                 <Input
                   id="checkOutDate"
                   type="date"
-                  value={leadFormData.checkOutDate || ""}
-                  onChange={(e) =>
-                    setLeadFormData({ ...leadFormData, checkOutDate: e.target.value })
-                  }
+                  value={leadFormData.hotels?.[0]?.checkOutDate || ""}
+                  onChange={(e) => {
+                    const newHotels = [...(leadFormData.hotels || [])];
+                    if (!newHotels[0]) newHotels[0] = {};
+                    newHotels[0].checkOutDate = e.target.value;
+                    setLeadFormData({ ...leadFormData, hotels: newHotels });
+                  }}
                 />
               </div>
               <div>
-                <Label htmlFor="roomsRequested">Rooms</Label>
+                <Label htmlFor="numberOfGuests">Number of Guests</Label>
                 <Input
-                  id="roomsRequested"
-                  type="number"
-                  min="1"
-                  value={leadFormData.roomsRequested || 1}
-                  onChange={(e) =>
-                    setLeadFormData({
-                      ...leadFormData,
-                      roomsRequested: parseInt(e.target.value) || 1,
-                    })
-                  }
+                  id="numberOfGuests"
+                  value={leadFormData.hotels?.[0]?.numberOfGuests || "2"}
+                  onChange={(e) => {
+                    const newHotels = [...(leadFormData.hotels || [])];
+                    if (!newHotels[0]) newHotels[0] = {};
+                    newHotels[0].numberOfGuests = e.target.value;
+                    setLeadFormData({ ...leadFormData, hotels: newHotels });
+                  }}
+                  placeholder="e.g. 2 Adults, 1 Child"
                 />
               </div>
               <div>
@@ -546,42 +592,6 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
                   value={leadFormData.occasion || ""}
                   onChange={(e) =>
                     setLeadFormData({ ...leadFormData, occasion: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="adults">Adults</Label>
-                <Input
-                  id="adults"
-                  type="number"
-                  min="1"
-                  value={leadFormData.guests?.adults || 2}
-                  onChange={(e) =>
-                    setLeadFormData({
-                      ...leadFormData,
-                      guests: {
-                        ...leadFormData.guests,
-                        adults: parseInt(e.target.value) || 2,
-                      },
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="children">Children</Label>
-                <Input
-                  id="children"
-                  type="number"
-                  min="0"
-                  value={leadFormData.guests?.children || 0}
-                  onChange={(e) =>
-                    setLeadFormData({
-                      ...leadFormData,
-                      guests: {
-                        ...leadFormData.guests,
-                        children: parseInt(e.target.value) || 0,
-                      },
-                    })
                   }
                 />
               </div>
@@ -607,6 +617,7 @@ const CallPage = ({ incomingPhoneNumber, onLeadCreated }: CallPageProps) => {
                     source: "DIRECT_CALL",
                     leadType: "STAY",
                     heatLevel: "WARM",
+                    customData: {},
                   });
                 }}
               >

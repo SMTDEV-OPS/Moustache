@@ -845,7 +845,10 @@ export const UserManagement = () => {
                                             )}
                                         </td>
 
-
+                                        {/* Team */}
+                                        <td className="py-3.5 px-4 text-sm hidden sm:table-cell">
+                                            <span className="text-muted-foreground">—</span>
+                                        </td>
 
                                         {/* Reports To */}
                                         <td className="py-3.5 px-4 text-sm hidden md:table-cell">

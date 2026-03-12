@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/AppSidebar";
+import { getUnreadCount } from "@/services/notifications";
+import { AppShell, Sidebar } from "@/components/layout";
 import { AgentDashboard } from "@/components/AgentDashboard";
 import { EnhancedCallInterface } from "@/components/EnhancedCallInterface";
 import ProfessionalLeadManagement from "@/components/ProfessionalLeadManagement";
@@ -39,6 +39,14 @@ import { SettingsDashboard } from "@/components/SettingsDashboard";
 import { PipelineManagement } from "@/components/PipelineManagement";
 import { ModuleBuilder } from "@/pages/settings/ModuleBuilder";
 import { ScoringRuleManagement } from "@/components/ScoringRuleManagement";
+import { FieldBuilder } from "@/pages/setup/FieldBuilder";
+import { PipelineBuilder } from "@/pages/setup/PipelineBuilder";
+import { ScoringEngine } from "@/pages/setup/ScoringEngine";
+import { FollowupRules } from "@/pages/setup/FollowupRules";
+import { WorkflowBuilder } from "@/pages/setup/WorkflowBuilder";
+import { AllocationRules } from "@/pages/setup/AllocationRules";
+import { IntegrationHub } from "@/pages/setup/IntegrationHub";
+import { AuditLog } from "@/pages/setup/AuditLog";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -64,6 +72,21 @@ export const ProfessionalCRM = ({
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [previousView, setPreviousView] = useState<string>('dashboard');
   const [pendingLeadView, setPendingLeadView] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      try {
+        const count = await getUnreadCount();
+        setUnreadCount(count);
+      } catch {
+        setUnreadCount(0);
+      }
+    };
+    void loadUnreadCount();
+    const interval = setInterval(() => void loadUnreadCount(), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Debug: Log navigation state changes
   useEffect(() => {
@@ -95,11 +118,6 @@ export const ProfessionalCRM = ({
       { date: "2024-06-08", type: "Email", channel: "Email", agent: "Harleen Mehta", summary: "Follow-up on spa services" },
       { date: "2024-05-20", type: "Call", channel: "Phone", agent: "Harleen Mehta", summary: "Post-stay feedback call" },
     ]
-  };
-
-  const simulateIncomingCall = () => {
-    setIncomingCall(true);
-    setActiveView("calls");
   };
 
   const canManageUsers = !!isAdmin || permissions?.includes("users.manage");
@@ -228,6 +246,13 @@ export const ProfessionalCRM = ({
       case 'knowledge-properties':
       case 'knowledge-factsheets':
       case 'knowledge-templates':
+      case 'knowledge-resources':
+        return (
+          <KnowledgeBaseMain
+            isAdmin={!!isAdmin}
+            permissions={permissions || []}
+          />
+        );
       case 'settings':
         return (
           <SettingsDashboard
@@ -274,6 +299,7 @@ export const ProfessionalCRM = ({
         }
         return <GroupsManager />;
       case 'security/data-sharing':
+      case 'setup/data-sharing':
         if (!canManageUsers) {
           return (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -282,6 +308,153 @@ export const ProfessionalCRM = ({
           );
         }
         return <DataSharingManager />;
+      case 'setup/roles':
+        if (!canManageUsers) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage roles.
+            </div>
+          );
+        }
+        return <RolesManager />;
+      case 'setup/profiles':
+        if (!canManageUsers) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage profiles.
+            </div>
+          );
+        }
+        return <ProfilesManager />;
+      case 'setup/groups':
+        if (!canManageUsers) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage groups.
+            </div>
+          );
+        }
+        return <GroupsManager />;
+      case 'setup/users':
+        if (!canManageUsers) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage users.
+            </div>
+          );
+        }
+        return <UserRoleManagement />;
+      case 'setup/accounts':
+        if (!canManageAccounts) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage accounts.
+            </div>
+          );
+        }
+        return <AccountManagement />;
+      case 'setup/properties':
+        if (!isAdmin && !permissions?.includes("properties.manage")) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage properties.
+            </div>
+          );
+        }
+        return <PropertyManagement />;
+      case 'setup/fields':
+        if (!isAdmin) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage fields.
+            </div>
+          );
+        }
+        return <FieldBuilder />;
+      case 'setup/pipelines':
+        if (!isAdmin && !permissions?.includes("leads.manage")) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage pipelines.
+            </div>
+          );
+        }
+        return <PipelineBuilder />;
+      case 'setup/scoring':
+      case 'setup/call-quality':
+        if (!isAdmin && !permissions?.includes("leads.manage")) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage scoring.
+            </div>
+          );
+        }
+        return <ScoringEngine />;
+      case 'setup/allocation':
+        if (!canManageLeads && !isAdmin) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage allocation.
+            </div>
+          );
+        }
+        return <AllocationRules />;
+      case 'setup/followup-rules':
+        if (!canManageLeads && !canManageWorkflows) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage follow-up rules.
+            </div>
+          );
+        }
+        return <FollowupRules />;
+      case 'setup/workflows':
+        if (!canManageWorkflows) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage workflows.
+            </div>
+          );
+        }
+        return <WorkflowBuilder />;
+      case 'setup/templates':
+        if (!canManageTemplates) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage templates.
+            </div>
+          );
+        }
+        return <MessageTemplates />;
+      case 'setup/email-provider':
+        if (!canManageLeads) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage email provider.
+            </div>
+          );
+        }
+        return <EmailProviderSettings />;
+      case 'setup/integrations':
+        if (!isAdmin && !canManageUsers) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage integrations.
+            </div>
+          );
+        }
+        return <IntegrationHub />;
+      case 'setup/webhooks':
+        return <IntegrationSettings />;
+      case 'setup/audit-log':
+        if (!isAdmin && !canManageUsers) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to view audit log.
+            </div>
+          );
+        }
+        return <AuditLog />;
       case 'account-management':
         if (!canManageAccounts) {
           return (
@@ -309,6 +482,7 @@ export const ProfessionalCRM = ({
           );
         }
         return <AdminApiConsole />;
+      case 'integration-settings':
         return <IntegrationSettings />;
       case 'pipeline-management':
         if (!isAdmin && !permissions?.includes("leads.manage")) {
@@ -466,46 +640,44 @@ export const ProfessionalCRM = ({
     'security/roles', 'security/profiles', 'security/groups', 'security/data-sharing',
     'user-management', 'account-management', 'property-management',
     'assignment-rules', 'workflow-management', 'message-templates',
-    'email-provider-settings', 'integration-settings', 'pipeline-management', 'module-builder', 'scoring-rules'
+    'email-provider-settings', 'integration-settings', 'pipeline-management', 'module-builder', 'scoring-rules',
+    'setup/roles', 'setup/profiles', 'setup/groups', 'setup/data-sharing',
+    'setup/users', 'setup/accounts', 'setup/properties', 'setup/fields', 'setup/pipelines',
+    'setup/scoring', 'setup/allocation', 'setup/followup-rules', 'setup/workflows',
+    'setup/templates', 'setup/email-provider', 'setup/call-quality', 'setup/integrations',
+    'setup/webhooks', 'setup/audit-log',
   ].includes(activeView);
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-background">
-        <AppSidebar
-          userRole={userRole}
-          isAdmin={!!isAdmin}
-          permissions={permissions}
+    <AppShell
+      sidebar={
+        <Sidebar
           activeView={activeView}
           onViewChange={setActiveView}
-          incomingCall={incomingCall}
           userName={userName}
+          userRole={userRole}
+          roleDisplay={userRole === "callcenter" ? "Call Center" : userRole}
           onLogout={onLogout}
-          simulateIncomingCall={simulateIncomingCall}
+          unreadCount={unreadCount}
+          isAdmin={!!isAdmin}
+          permissions={permissions || []}
         />
-
-        <div className="flex-1 flex flex-col h-screen overflow-hidden">
-          {/* Main Content */}
-          <main className="flex-1 overflow-auto bg-background">
-            {isSettingsView && (
-              <div className="px-6 pt-6 -mb-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setActiveView('settings')}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Settings
-                </Button>
-              </div>
-            )}
-            <div className="p-6">
-              {renderContent()}
-            </div>
-          </main>
+      }
+    >
+      {isSettingsView && (
+        <div className="-mt-1 mb-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setActiveView("settings")}
+            className="text-text-muted hover:text-text"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Settings
+          </Button>
         </div>
-      </div>
-    </SidebarProvider>
+      )}
+      {renderContent()}
+    </AppShell>
   );
 };

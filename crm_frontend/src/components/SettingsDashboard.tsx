@@ -1,250 +1,351 @@
 import {
-    ShieldCheck,
-    Building2,
-    GitBranch,
-    Workflow,
-    Mail,
-    UserPlus,
-    Users,
-    Settings2,
-    LayoutDashboard,
-    Plug
+  Shield,
+  User,
+  Users2,
+  Share2,
+  Settings,
+  UserCog,
+  Building2,
+  Hotel,
+  Blocks,
+  GitBranch,
+  Star,
+  Zap,
+  Shuffle,
+  Clock,
+  Workflow,
+  MessageSquare,
+  Mail,
+  Plug,
+  Code,
+  FileText,
+  Info,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Layers } from "lucide-react";
+import { PageHeader } from "@/components/shared";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+interface SettingsItem {
+  name: string;
+  description: string;
+  path: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  setupGuide: string;
+}
 
 interface SettingsCategory {
-    title: string;
-    icon: React.ReactNode;
-    items: {
-        title: string;
-        description: string;
-        url: string;
-        icon: React.ReactNode;
-        requiredPermission?: string;
-        requiredAdmin?: boolean;
-        showIfAdminLike?: boolean;
-    }[];
+  title: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  items: SettingsItem[];
 }
 
 interface SettingsDashboardProps {
-    onViewChange: (view: string) => void;
-    isAdmin: boolean;
-    permissions: string[];
-    userRole: string;
+  onViewChange: (view: string) => void;
+  isAdmin: boolean;
+  permissions: string[];
+  userRole: string;
 }
 
 export function SettingsDashboard({
-    onViewChange,
-    isAdmin,
-    permissions,
-    userRole,
+  onViewChange,
+  isAdmin,
+  permissions,
+  userRole,
 }: SettingsDashboardProps) {
-    const isAdminLike = isAdmin || userRole === "admin";
-    const canManageUsers = isAdminLike || permissions.includes("users.manage");
-    const canManageAccounts = isAdminLike || permissions.includes("accounts.manage");
-    const canManageProperties = isAdminLike || permissions.includes("properties.manage");
-    const canManageLeads = isAdminLike || permissions.includes("leads.manage") || permissions.includes("leads.view.all");
-    const canManageWorkflows = isAdminLike || permissions.includes("workflows.manage");
-    const canManageTemplates = isAdminLike || permissions.includes("templates.manage");
+  const isAdminLike = isAdmin || userRole === "admin";
+  const canManageUsers = isAdminLike || permissions.includes("users.manage");
+  const canManageAccounts = isAdminLike || permissions.includes("accounts.manage");
+  const canManageProperties = isAdminLike || permissions.includes("properties.manage");
+  const canManageLeads =
+    isAdminLike || permissions.includes("leads.manage") || permissions.includes("leads.view.all");
+  const canManageWorkflows = isAdminLike || permissions.includes("workflows.manage");
+  const canManageTemplates = isAdminLike || permissions.includes("templates.manage");
 
-    const settingsCategories: SettingsCategory[] = [
+  const categories: SettingsCategory[] = [
+    {
+      title: "Security Control",
+      icon: Shield,
+      items: [
         {
-            title: "Security Control",
-            icon: <ShieldCheck className="h-5 w-5 text-blue-600" />,
-            items: [
-                {
-                    title: "Roles",
-                    description: "Define your company hierarchy.",
-                    url: "security/roles",
-                    icon: <Users className="h-4 w-4" />,
-                    requiredPermission: canManageUsers ? 'true' : 'false'
-                },
-                {
-                    title: "Profiles",
-                    description: "Control what users can do.",
-                    url: "security/profiles",
-                    icon: <ShieldCheck className="h-4 w-4" />,
-                    requiredPermission: canManageUsers ? 'true' : 'false'
-                },
-                {
-                    title: "Groups",
-                    description: "Manage collaborative teams.",
-                    url: "security/groups",
-                    icon: <Users className="h-4 w-4" />,
-                    requiredPermission: canManageUsers ? 'true' : 'false'
-                },
-                {
-                    title: "Data Sharing Settings",
-                    description: "Control data visibility across roles.",
-                    url: "security/data-sharing",
-                    icon: <Settings2 className="h-4 w-4" />,
-                    requiredPermission: canManageUsers ? 'true' : 'false'
-                }
-            ]
+          name: "Roles",
+          description: "Define your company hierarchy.",
+          path: "setup/roles",
+          icon: Shield,
+          setupGuide: "Create roles (e.g. Sales, Support) to match your team structure. Assign users to roles to control access and reporting.",
         },
         {
-            title: "General Administration",
-            icon: <Building2 className="h-5 w-5 text-purple-600" />,
-            items: [
-                {
-                    title: "Users",
-                    description: "Create and manage CRM users, roles, and reporting structure.",
-                    url: "user-management",
-                    icon: <UserPlus className="h-4 w-4" />,
-                    requiredPermission: canManageUsers ? 'true' : 'false'
-                },
-                {
-                    title: "Account Management",
-                    description: "Manage B2B and agent accounts.",
-                    url: "account-management",
-                    icon: <Building2 className="h-4 w-4" />,
-                    requiredPermission: canManageAccounts ? 'true' : 'false'
-                },
-                {
-                    title: "Property Management",
-                    description: "Manage hotel properties.",
-                    url: "property-management",
-                    icon: <Building2 className="h-4 w-4" />,
-                    requiredPermission: canManageProperties ? 'true' : 'false'
-                },
-                {
-                    title: "Module Builder",
-                    description: "Customize fields and layouts for modules.",
-                    url: "module-builder",
-                    icon: <Layers className="h-4 w-4" />,
-                    requiredPermission: isAdminLike ? 'true' : 'false'
-                },
-                {
-                    title: "Pipeline Management",
-                    description: "Configure sales pipelines and custom stages.",
-                    url: "pipeline-management",
-                    icon: <GitBranch className="h-4 w-4" />,
-                    requiredPermission: isAdminLike ? 'true' : 'false'
-                },
-                {
-                    title: "Scoring Rules",
-                    description: "Automate lead quality scoring based on rules.",
-                    url: "scoring-rules",
-                    icon: <Settings2 className="h-4 w-4" />,
-                    requiredPermission: isAdminLike ? 'true' : 'false'
-                }
-            ]
+          name: "Profiles",
+          description: "Control what users can do.",
+          path: "setup/profiles",
+          icon: User,
+          setupGuide: "Profiles define permissions: what screens and actions each role can access. Map profiles to roles after creating them.",
         },
         {
-            title: "Automation",
-            icon: <Workflow className="h-5 w-5 text-green-600" />,
-            items: [
-                {
-                    title: "Assignment Rules",
-                    description: "Configure automatic module-based assignments.",
-                    url: "assignment-rules",
-                    icon: <GitBranch className="h-4 w-4" />,
-                    requiredPermission: canManageLeads ? 'true' : 'false'
-                },
-                {
-                    title: "Follow-up Workflows",
-                    description: "Automated communication paths.",
-                    url: "workflow-management",
-                    icon: <Workflow className="h-4 w-4" />,
-                    requiredPermission: canManageWorkflows ? 'true' : 'false'
-                }
-            ]
+          name: "Groups",
+          description: "Manage collaborative teams.",
+          path: "setup/groups",
+          icon: Users2,
+          setupGuide: "Create groups for teams that work together. Add users to groups to enable shared visibility and collaboration.",
         },
         {
-            title: "Channels & Communication",
-            icon: <Mail className="h-5 w-5 text-amber-600" />,
-            items: [
-                {
-                    title: "Message Templates",
-                    description: "Reusable email, SMS, and WA templates.",
-                    url: "message-templates",
-                    icon: <Mail className="h-4 w-4" />,
-                    requiredPermission: canManageTemplates ? 'true' : 'false'
-                },
-                {
-                    title: "Email Provider Settings",
-                    description: "Configure SMTP/IMAP settings.",
-                    url: "email-provider-settings",
-                    icon: <Mail className="h-4 w-4" />,
-                    requiredPermission: canManageLeads ? 'true' : 'false' // Matches previous AppSidebar logic
-                }
-            ]
+          name: "Data Sharing",
+          description: "Control data visibility across roles.",
+          path: "setup/data-sharing",
+          icon: Share2,
+          setupGuide: "Configure which records (leads, contacts) each role can see: only own, team, or all. Set sharing rules per object.",
+        },
+      ].filter(() => canManageUsers),
+    },
+    {
+      title: "General Administration",
+      icon: Settings,
+      items: [
+        {
+          name: "Users",
+          description: "Create and manage CRM users.",
+          path: "setup/users",
+          icon: UserCog,
+          setupGuide: "Add users with email and assign a role. Each user gets login credentials and access based on their role's profile.",
         },
         {
-            title: "Integrations & Developer",
-            icon: <Plug className="h-5 w-5 text-teal-600" />,
-            items: [
-                {
-                    title: "Integration Settings",
-                    description: "Configure Webhooks and External APIs.",
-                    url: "integration-settings",
-                    icon: <Plug className="h-4 w-4" />,
-                    requiredPermission: isAdminLike || canManageUsers ? 'true' : 'false'
-                },
-                // Admin API console is hidden by default for now based on AppSidebar comments, 
-                // but keeping it structural.
-                // {
-                //   title: "Admin API Console",
-                //   description: "Test and debug API endpoints.",
-                //   url: "admin-console",
-                //   icon: <LayoutDashboard className="h-4 w-4" />,
-                //   requiredPermission: canManageUsers ? 'true' : 'false'
-                // }
-            ]
-        }
-    ];
+          name: "Account Mgmt",
+          description: "Manage B2B and agent accounts.",
+          path: "setup/accounts",
+          icon: Building2,
+          setupGuide: "Create B2B and agent accounts for external partners. Link accounts to properties or pipelines as needed.",
+        },
+        {
+          name: "Property Mgmt",
+          description: "Manage hotel properties.",
+          path: "setup/properties",
+          icon: Hotel,
+          setupGuide: "Add your hotel properties with details. Properties can be linked to leads, deals, and pipelines.",
+        },
+        {
+          name: "Field Builder",
+          description: "Define custom fields for leads and contacts.",
+          path: "setup/fields",
+          icon: Blocks,
+          setupGuide: "Add custom fields (text, number, dropdown, etc.) for leads, contacts, and deals. Set field types and make some mandatory at pipeline stages.",
+        },
+        {
+          name: "Pipeline Mgmt",
+          description: "Configure sales pipelines and stages.",
+          path: "setup/pipelines",
+          icon: GitBranch,
+          setupGuide: "Create stages (e.g. New, Contacted, Qualified) and order them. Mark which fields are required at each stage.",
+        },
+        {
+          name: "Scoring Rules",
+          description: "Automate lead quality scoring.",
+          path: "setup/scoring",
+          icon: Star,
+          setupGuide: "Define score thresholds (e.g. Hot/Warm/Cold) and call quality dimensions. Leads are scored and bucketed automatically.",
+        },
+      ].filter((item) => {
+        if (["setup/users", "setup/fields", "setup/pipelines", "setup/scoring"].includes(item.path))
+          return isAdminLike;
+        if (item.path === "setup/accounts") return canManageAccounts;
+        if (item.path === "setup/properties") return canManageProperties;
+        return true;
+      }),
+    },
+    {
+      title: "Automation",
+      icon: Zap,
+      items: [
+        {
+          name: "Assignment Rules",
+          description: "Configure how leads are assigned to agents.",
+          path: "setup/allocation",
+          icon: Shuffle,
+          setupGuide: "Choose assignment mode (round-robin or workload-based). Configure capacity and which leads are eligible for auto-assignment.",
+        },
+        {
+          name: "Follow-up Rules",
+          description: "Auto-schedule follow-ups by lead quality.",
+          path: "setup/followup-rules",
+          icon: Clock,
+          setupGuide: "Create buckets (e.g. Hot, Warm) and set follow-up delays per bucket. Leads get tasks auto-scheduled based on their score.",
+        },
+        {
+          name: "Workflow Builder",
+          description: "Automate lead actions with event-driven workflows.",
+          path: "setup/workflows",
+          icon: Workflow,
+          setupGuide: "Build workflows with triggers (e.g. lead created, stage changed), conditions, and actions. Test with dry run before activating.",
+        },
+      ].filter(() => canManageLeads || canManageWorkflows || isAdminLike),
+    },
+    {
+      title: "Channels & Communication",
+      icon: MessageSquare,
+      items: [
+        {
+          name: "Message Templates",
+          description: "Reusable email, SMS, and WA templates.",
+          path: "setup/templates",
+          icon: MessageSquare,
+          setupGuide: "Create templates with placeholders (e.g. {{lead.name}}) for personalization. Use in emails, SMS, and WhatsApp messages.",
+        },
+        {
+          name: "Email Provider",
+          description: "Configure SMTP/IMAP settings.",
+          path: "setup/email-provider",
+          icon: Mail,
+          setupGuide: "Enter your SMTP host, port, and credentials to send emails from the CRM. Add IMAP for inbox sync if supported.",
+        },
+        {
+          name: "Call Quality",
+          description: "Configure call quality dimensions.",
+          path: "setup/call-quality",
+          icon: Star,
+          setupGuide: "Define dimensions (e.g. Clarity, Empathy) and weights. Agents are scored on calls using these dimensions.",
+        },
+      ].filter((item) => {
+        if (item.path === "setup/templates") return canManageTemplates;
+        if (item.path === "setup/email-provider" || item.path === "setup/call-quality") return canManageLeads || isAdminLike;
+        return true;
+      }),
+    },
+    {
+      title: "Integrations & Developer",
+      icon: Plug,
+      items: [
+        {
+          name: "Integration Hub",
+          description: "Connect external services to your CRM.",
+          path: "setup/integrations",
+          icon: Plug,
+          setupGuide: "Connect providers (e.g. calendar, CRM sync). OAuth or API keys may be required. Map fields for data sync.",
+        },
+        {
+          name: "API & Webhooks",
+          description: "Configure webhooks and external APIs.",
+          path: "setup/webhooks",
+          icon: Code,
+          setupGuide: "Add webhook URLs to receive lead/contact events. Configure API keys and rate limits for external integrations.",
+        },
+        {
+          name: "Audit Log",
+          description: "Track all changes and actions in your CRM.",
+          path: "setup/audit-log",
+          icon: FileText,
+          setupGuide: "View a log of who changed what and when. Filter by user, entity, or action. Use for compliance and debugging.",
+        },
+      ].filter(() => isAdminLike || canManageUsers),
+    },
+  ];
 
-    return (
-        <div className="p-6 space-y-8 animate-in fade-in zoom-in-95 duration-200">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">Setup</h1>
-                <p className="text-muted-foreground mt-2">
-                    Manage your CRM organization settings, security, automations, and more.
-                </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {settingsCategories.map((category) => {
-                    const visibleItems = category.items.filter(item => item.requiredPermission === 'true');
-
-                    if (visibleItems.length === 0) return null;
-
-                    return (
-                        <Card key={category.title} className="h-full border-border/50 bg-card overflow-hidden hover:shadow-md transition-shadow">
-                            <div className="p-4 border-b border-border/50 bg-muted/20 flex items-center gap-2">
-                                {category.icon}
-                                <h2 className="font-semibold text-base">{category.title}</h2>
-                            </div>
-                            <CardContent className="p-0">
-                                <ul className="divide-y divide-border/50">
-                                    {visibleItems.map((item) => (
-                                        <li key={item.url}>
-                                            <button
-                                                onClick={() => onViewChange(item.url)}
-                                                className="w-full text-left p-4 hover:bg-muted/50 transition-colors flex items-start group"
-                                            >
-                                                <div className="mt-0.5 mr-3 text-muted-foreground group-hover:text-primary transition-colors">
-                                                    {item.icon}
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                                                        {item.title}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                                        {item.description}
-                                                    </p>
-                                                </div>
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </CardContent>
-                        </Card>
-                    );
+  return (
+    <div style={{ padding: 24 }}>
+      <PageHeader
+        title="Setup"
+        subtitle="Manage your CRM settings, automations, and more."
+      />
+      <div
+        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+        style={{ gap: 24 }}
+      >
+        {categories.map((cat) => {
+          if (cat.items.length === 0) return null;
+          const SectionIcon = cat.icon;
+          return (
+            <div
+              key={cat.title}
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-md)",
+                padding: 24,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 16,
+                }}
+              >
+                <SectionIcon size={18} style={{ color: "var(--primary)" }} strokeWidth={1.5} />
+                <span
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: "var(--text)",
+                  }}
+                >
+                  {cat.title}
+                </span>
+              </div>
+              <div>
+                {cat.items.map((item, idx) => {
+                  const ItemIcon = item.icon;
+                  const isLast = idx === cat.items.length - 1;
+                  return (
+                    <div
+                      key={item.path}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onViewChange(item.path)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onViewChange(item.path);
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        minHeight: 44,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        borderBottom: isLast ? "none" : "1px solid var(--border-light)",
+                        background: "transparent",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        padding: "4px 0",
+                      }}
+                      className="hover:bg-[var(--hover)] group/row"
+                    >
+                      <ItemIcon size={14} style={{ color: "var(--text-faint)" }} strokeWidth={1.5} className="shrink-0" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, color: "var(--text)", fontWeight: 500 }}>{item.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{item.description}</div>
+                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0 p-1 rounded hover:bg-[var(--border-light)] opacity-70 group-hover/row:opacity-100 transition-opacity"
+                            aria-label={`How to set up ${item.name}`}
+                          >
+                            <Info size={14} style={{ color: "var(--text-muted)" }} strokeWidth={1.5} />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="end"
+                          className="max-w-sm"
+                          style={{ border: "1px solid var(--border)" }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+                            How to set up {item.name}
+                          </div>
+                          <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                            {item.setupGuide}
+                          </p>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  );
                 })}
+              </div>
             </div>
-        </div>
-    );
+          );
+        })}
+      </div>
+    </div>
+  );
 }

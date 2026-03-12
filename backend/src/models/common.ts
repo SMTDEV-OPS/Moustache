@@ -23,6 +23,7 @@ export enum LeadSource {
   EVENT_MICE = "EVENT_MICE",
   // New SOP sources
   IVR = "IVR",
+  IVR_LIVE = "IVR_LIVE",
   WHATSAPP = "WHATSAPP",
   MANUAL = "MANUAL",
   CSV_UPLOAD = "CSV_UPLOAD",

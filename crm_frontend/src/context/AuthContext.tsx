@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { backendLogin, backendLogout, BackendLoginResult } from "../services/auth";
 import { setAuthToken, getAuthToken } from "../services/api";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 
 interface User {
     id: string;

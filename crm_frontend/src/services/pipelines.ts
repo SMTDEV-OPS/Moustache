@@ -10,6 +10,7 @@ export interface PipelineStage {
     isTerminal: boolean;
     terminalType?: "WON" | "LOST";
     pipelineId?: string;
+    mandatory_fields_json?: string[];
     createdAt?: string;
     updatedAt?: string;
 }

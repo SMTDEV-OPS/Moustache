@@ -17,6 +17,7 @@ export interface ITask extends Document {
   popupState?: {
     lastShownAt?: Date;
     dismissedAt?: Date;
+    workflowFollowupMissedEmittedAt?: Date; // When we emitted lead.followup_missed for this task
   };
 }
 
