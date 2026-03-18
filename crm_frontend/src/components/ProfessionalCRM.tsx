@@ -18,7 +18,6 @@ import { GroupsManager } from "./settings/security/GroupsManager";
 import { DataSharingManager } from "./settings/security/DataSharingManager";
 import { EmployeeGroupsManagement } from "@/components/EmployeeGroupsManagement";
 import { AccountManagement } from "@/components/AccountManagement";
-import { PropertyManagement } from "@/components/PropertyManagement";
 import { AdminApiConsole } from "@/components/AdminApiConsole";
 import { AdminLeads } from "@/components/AdminLeads";
 import AssignmentRulesManager from "@/pages/admin/AssignmentRulesManager";
@@ -353,15 +352,6 @@ export const ProfessionalCRM = ({
           );
         }
         return <AccountManagement />;
-      case 'setup/properties':
-        if (!isAdmin && !permissions?.includes("properties.manage")) {
-          return (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              You do not have permission to manage properties.
-            </div>
-          );
-        }
-        return <PropertyManagement />;
       case 'setup/fields':
         if (!isAdmin) {
           return (
@@ -464,15 +454,6 @@ export const ProfessionalCRM = ({
           );
         }
         return <AccountManagement />;
-      case 'property-management':
-        if (!isAdmin && !permissions?.includes("properties.manage")) {
-          return (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              You do not have permission to manage properties.
-            </div>
-          );
-        }
-        return <PropertyManagement />;
       case 'admin-console':
         if (!canManageUsers) {
           return (
@@ -638,11 +619,11 @@ export const ProfessionalCRM = ({
 
   const isSettingsView = [
     'security/roles', 'security/profiles', 'security/groups', 'security/data-sharing',
-    'user-management', 'account-management', 'property-management',
+    'user-management', 'account-management',
     'assignment-rules', 'workflow-management', 'message-templates',
     'email-provider-settings', 'integration-settings', 'pipeline-management', 'module-builder', 'scoring-rules',
     'setup/roles', 'setup/profiles', 'setup/groups', 'setup/data-sharing',
-    'setup/users', 'setup/accounts', 'setup/properties', 'setup/fields', 'setup/pipelines',
+    'setup/users', 'setup/accounts', 'setup/fields', 'setup/pipelines',
     'setup/scoring', 'setup/allocation', 'setup/followup-rules', 'setup/workflows',
     'setup/templates', 'setup/email-provider', 'setup/call-quality', 'setup/integrations',
     'setup/webhooks', 'setup/audit-log',

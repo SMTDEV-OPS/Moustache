@@ -128,6 +128,7 @@ import { webhookIntakeRouter } from "./routes/webhookIntake";
 import { adminIntegrationsRouter } from "./routes/adminIntegrations";
 import { dashboardRouter } from "./routes/dashboard";
 import { allocationRouter } from "./routes/allocation";
+import allocationRoutingRulesRouter from "./routes/allocationRoutingRules";
 
 app.use("/api/filters", filtersRouter);
 app.use("/api/dashboard", dashboardRouter);
@@ -135,6 +136,7 @@ app.use("/webhook/intake", webhookIntakeRouter);
 app.use("/api/admin/audit-log", adminAuditLogRouter);
 app.use("/api/admin/integrations", adminIntegrationsRouter);
 app.use("/api/admin/allocation", allocationRouter);
+app.use("/api/admin/allocation/routing-rules", allocationRoutingRulesRouter);
 app.use("/api/admin/followup-rules", adminFollowupRulesRouter);
 app.use("/api/admin/workflows", adminWorkflowsRouter);
 

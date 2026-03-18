@@ -450,8 +450,7 @@ export const EmployeeGroupsManagement = () => {
                           <Label className="text-sm font-semibold">Description</Label>
                           <p className="text-sm mt-1 text-muted-foreground">{selectedGroup.description}</p>
                         </div>
-                      )}                          <div className="mt-1">
-                            <Badge variant="outline">                      )}
+                      )}
                     </CardContent>
                   </Card>
 
@@ -573,7 +572,7 @@ export const EmployeeGroupsManagement = () => {
                     </CardContent>
                   </Card>
                 </TabsContent>
-
+                
                 {/* Tab 3: Roles */}
                 <TabsContent value="roles" className="pt-4 space-y-4">
                   <Card>
@@ -659,6 +658,7 @@ export const EmployeeGroupsManagement = () => {
                     </CardContent>
                   </Card>
                 </TabsContent>
+
               </Tabs>
             </>
           ) : (

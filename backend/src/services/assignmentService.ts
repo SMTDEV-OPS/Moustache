@@ -7,7 +7,7 @@ import { LeadModel } from "../models/lead";
 import { UserBuddyAssignmentModel } from "../models/userBuddyAssignment";
 import { logger } from "../config/logger";
 
-import { getAvailableAgents } from "./allocationService";
+import { getAvailableAgentsForLead, getConfigValue } from "./allocationService";
 
 // ... will add isOverflow to AssignmentResult ...
 export interface AssignmentResult {
@@ -168,7 +168,8 @@ export async function getUserWithLeastLeads(
 export async function autoAssignLead(
   leadType: LeadType,
   source?: LeadSource,
-  orgId?: string
+  orgId?: string,
+  lead?: any
 ): Promise<AssignmentResult> {
   // Get the assignment rule for this lead type
   const rule = await getAssignmentRule(leadType);
@@ -197,7 +198,22 @@ export async function autoAssignLead(
 
   // Apply capacity filtering if orgId is present
   if (orgId) {
-    const availableAgentIds = await getAvailableAgents(orgId, rule.employeeGroupId.toString());
+    const allocationMode = await getConfigValue(orgId, "allocation_mode", "round_robin");
+    if (allocationMode === "manual") {
+      return {
+        employeeGroupId: rule.employeeGroupId,
+        assignmentMethod: "none",
+        reason: "Auto-assignment disabled (manual only mode).",
+        isOverflow: true,
+      };
+    }
+
+    const leadCtx = lead ?? { source, leadType };
+    const availableAgentIds = await getAvailableAgentsForLead(
+      orgId,
+      leadCtx,
+      rule.employeeGroupId.toString()
+    );
     const availableSet = new Set(availableAgentIds.map(id => id.toString()));
 
     eligibleUsers = eligibleUsers.filter(u => availableSet.has(u._id.toString()));

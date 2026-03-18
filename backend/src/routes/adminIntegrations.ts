@@ -23,17 +23,20 @@ function toSafeResponse(doc: any) {
   };
 }
 
-// GET /api/admin/integrations?orgId=
+// GET /api/admin/integrations?orgId=  (orgId is optional; if omitted, returns all)
 adminIntegrationsRouter.get("/", async (req, res, next) => {
   try {
     const { orgId } = req.query;
-    if (!orgId || typeof orgId !== "string") {
-      throw badRequest("orgId required");
+    const filter: Record<string, any> = {};
+
+    if (orgId && typeof orgId === "string" && orgId.trim() !== "") {
+      if (!Types.ObjectId.isValid(orgId)) {
+        throw badRequest("orgId must be a valid ObjectId");
+      }
+      filter.orgId = new Types.ObjectId(orgId);
     }
 
-    const list = await IntegrationConfigModel.find({
-      orgId: new Types.ObjectId(orgId),
-    }).lean();
+    const list = await IntegrationConfigModel.find(filter).lean();
 
     res.json(
       list.map((l) => {
@@ -48,7 +51,7 @@ adminIntegrationsRouter.get("/", async (req, res, next) => {
 
 // POST /api/admin/integrations
 const createIntegrationSchema = z.object({
-  orgId: z.string(),
+  orgId: z.string().optional(),
   provider: z.string(),
   config_json: z.record(z.any()),
   webhook_url: z.string().optional(),
@@ -62,8 +65,8 @@ adminIntegrationsRouter.post("/", async (req, res, next) => {
       throw badRequest(parsed.error.errors[0]?.message || "Invalid payload");
     }
 
-    const { orgId, provider, config_json, webhook_url, is_active } =
-      parsed.data;
+    const { provider, config_json, webhook_url, is_active } = parsed.data;
+    const orgId = parsed.data.orgId || "69ae144fae23030b62f901f5";
 
     const encrypted = encryptConfig(config_json);
     const baseUrl = `${req.protocol}://${req.get("host")}`;

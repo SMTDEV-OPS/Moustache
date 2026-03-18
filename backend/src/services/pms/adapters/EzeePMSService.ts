@@ -8,6 +8,25 @@ import {
     BookingResponse,
 } from "../IPMSService";
 
+export interface EzeeReservationRoom {
+    roomTypeCode?: string;
+    roomTypeName?: string;
+    roomName?: string;
+    ratePlanCode?: string;
+    ratePlanName?: string;
+}
+
+export interface EzeeReservation {
+    reservationId: string;
+    guestName?: string;
+    guestPhone?: string;
+    checkIn: string; // YYYY-MM-DD
+    checkOut: string; // YYYY-MM-DD
+    status: string;
+    totalAmount?: number;
+    rooms: EzeeReservationRoom[];
+}
+
 export class EzeePMSService implements IPMSService {
     private hotelCode: string;
     private authCode: string;
@@ -241,6 +260,129 @@ export class EzeePMSService implements IPMSService {
         } catch (error) {
             console.error("Error cancelling booking in eZee:", error);
             return false;
+        }
+    }
+
+    async getReservations(
+        hotelCode: string,
+        authCode: string,
+        fromDate: string,
+        toDate: string
+    ): Promise<EzeeReservation[]> {
+        // Postman collection for eZee PMS Connectivity uses Request_Type = "Bookings"
+        // (not "FetchBooking"). The API does not appear to support date filters for this
+        // request type, so we fetch and filter client-side by check-in.
+        const payload = {
+            RES_Request: {
+                Request_Type: "Bookings",
+                Authentication: {
+                    HotelCode: hotelCode,
+                    AuthCode: authCode,
+                },
+            },
+        };
+
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/pms_connectivity.php`,
+                payload,
+                {
+                    headers: { "Content-Type": "application/json" },
+                }
+            );
+
+            const data = response.data;
+            if (data?.Errors || data?.RES_Response?.Errors) {
+                // eslint-disable-next-line no-console
+                console.error(
+                    "eZee getReservations error:",
+                    data?.Errors || data?.RES_Response?.Errors
+                );
+                return [];
+            }
+
+            const reservationsNode =
+                data?.Reservations ||
+                data?.RES_Response?.Reservations ||
+                data?.Bookings ||
+                data?.RES_Response?.Bookings;
+            const reservations =
+                reservationsNode?.Reservation ??
+                reservationsNode?.Booking ??
+                reservationsNode ??
+                [];
+
+            const out: EzeeReservation[] = [];
+
+            const fromTs = new Date(fromDate).getTime();
+            const toTs = new Date(toDate).getTime();
+
+            for (const r of Array.isArray(reservations) ? reservations : []) {
+                const bookingTran = Array.isArray(r?.BookingTran) ? r.BookingTran[0] : r?.BookingTran;
+                const reservationId = String(r?.UniqueID || bookingTran?.TransactionId || bookingTran?.SubBookingId || "").trim();
+                if (!reservationId) continue;
+
+                const firstName = bookingTran?.FirstName ? String(bookingTran.FirstName).trim() : "";
+                const lastName = bookingTran?.LastName ? String(bookingTran.LastName).trim() : "";
+                const guestName =
+                    (firstName || lastName) ? `${firstName} ${lastName}`.trim() : (bookingTran?.GuestName ? String(bookingTran.GuestName).trim() : undefined);
+                const guestPhone = bookingTran?.Mobile
+                    ? String(bookingTran.Mobile).trim()
+                    : bookingTran?.Phone
+                        ? String(bookingTran.Phone).trim()
+                        : undefined;
+
+                const checkIn = String(bookingTran?.Start || "").trim();
+                const checkOut = String(bookingTran?.End || "").trim();
+                if (!checkIn || !checkOut) continue;
+
+                const checkInTs = new Date(checkIn).getTime();
+                if (Number.isFinite(fromTs) && Number.isFinite(toTs) && Number.isFinite(checkInTs)) {
+                    if (checkInTs < fromTs || checkInTs > toTs) continue;
+                }
+
+                const totalAmountRaw =
+                    bookingTran?.TotalAmountAfterTax ??
+                    bookingTran?.TotalRate ??
+                    bookingTran?.TotalAmount ??
+                    undefined;
+                const totalAmount =
+                    totalAmountRaw !== undefined && totalAmountRaw !== null && totalAmountRaw !== ""
+                        ? Number(totalAmountRaw)
+                        : undefined;
+
+                const status = String(
+                    bookingTran?.CurrentStatus || bookingTran?.Status || r?.Status || "CONFIRMED"
+                ).trim();
+
+                const rooms: EzeeReservationRoom[] = [];
+                if (bookingTran?.RoomTypeCode || bookingTran?.RoomTypeName || bookingTran?.RoomName) {
+                    rooms.push({
+                        roomTypeCode: bookingTran?.RoomTypeCode ? String(bookingTran.RoomTypeCode) : undefined,
+                        roomTypeName: bookingTran?.RoomTypeName ? String(bookingTran.RoomTypeName) : undefined,
+                        roomName: bookingTran?.RoomName ? String(bookingTran.RoomName) : undefined,
+                        ratePlanCode: bookingTran?.RateplanCode ? String(bookingTran.RateplanCode) : undefined,
+                        ratePlanName: bookingTran?.RateplanName ? String(bookingTran.RateplanName) : undefined,
+                    });
+                }
+
+                out.push({
+                    reservationId,
+                    guestName,
+                    guestPhone,
+                    checkIn,
+                    checkOut,
+                    status,
+                    totalAmount: Number.isFinite(totalAmount as number) ? (totalAmount as number) : undefined,
+                    rooms,
+                });
+            }
+
+            return out;
+        } catch (error) {
+            // eslint-disable-next-line no-console
+            console.error("Error fetching reservations from eZee:", error);
+            return [];
         }
     }
 }

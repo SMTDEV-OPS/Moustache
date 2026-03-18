@@ -33,7 +33,7 @@ const PROVIDERS = [
   { id: "Airpay", name: "Airpay", desc: "Payment processing" },
 ];
 
-const ORG_ID = "default_org";
+// orgId is not passed — backend returns all integrations for the single org
 
 const STATUS_STYLES: Record<IntegrationStatus, { bg: string; text: string }> = {
   connected: { bg: "#d1fae5", text: "#065f46" },
@@ -57,7 +57,7 @@ export function IntegrationHub() {
     try {
       setLoading(true);
       const [list, fList] = await Promise.all([
-        listIntegrations(ORG_ID),
+        listIntegrations(),
         listAdminFields("lead").catch(() => []),
       ]);
       setIntegrations(list);
@@ -88,7 +88,6 @@ export function IntegrationHub() {
   const handleConnect = async (providerId: string) => {
     try {
       const created = await createIntegration({
-        orgId: ORG_ID,
         provider: providerId,
         config_json: {},
       });

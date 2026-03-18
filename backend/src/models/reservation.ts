@@ -18,7 +18,7 @@ export interface IReservation extends Document {
   roomsBooked?: number;
   ratePlan?: string;
   totalAmount?: number;
-  status: "CONFIRMED" | "CANCELLED" | "AMENDED";
+  status: "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED" | "AMENDED";
   cancellationReason?: string;
   amendmentHistory?: IAmendment[];
 }
@@ -46,7 +46,7 @@ const reservationSchema = new Schema<IReservation>(
     totalAmount: Number,
     status: {
       type: String,
-      enum: ["CONFIRMED", "CANCELLED", "AMENDED"],
+      enum: ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED", "AMENDED"],
       default: "CONFIRMED",
       index: true,
     },

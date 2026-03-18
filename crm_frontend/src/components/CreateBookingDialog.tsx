@@ -41,8 +41,9 @@ export function CreateBookingDialog({
     const [rates, setRates] = useState<RoomRate[]>([]);
 
     // Form State
-    const [checkInDate, setCheckInDate] = useState(lead.checkInDate ? format(new Date(lead.checkInDate), "yyyy-MM-dd") : "");
-    const [checkOutDate, setCheckOutDate] = useState(lead.checkOutDate ? format(new Date(lead.checkOutDate), "yyyy-MM-dd") : "");
+    const firstItinerary = lead.itineraries?.[0];
+    const [checkInDate, setCheckInDate] = useState(firstItinerary?.checkInDate ? format(new Date(firstItinerary.checkInDate), "yyyy-MM-dd") : "");
+    const [checkOutDate, setCheckOutDate] = useState(firstItinerary?.checkOutDate ? format(new Date(firstItinerary.checkOutDate), "yyyy-MM-dd") : "");
     const [selectedRoomType, setSelectedRoomType] = useState<string>("");
     const [selectedRatePlan, setSelectedRatePlan] = useState<string>("");
     const [adults, setAdults] = useState(lead.guests?.adults || 1);

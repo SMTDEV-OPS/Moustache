@@ -18,6 +18,7 @@ import { leadEventBus } from "../services/leadService";
 import { WorkflowV2Model } from "../models/workflowV2";
 import { PipelineModel } from "../models/pipeline";
 import { PipelineStageModel } from "../models/pipelineStage";
+import { syncEzeeReservations } from "./ezeeSync";
 
 async function runAutoClosureJob() {
   const tomorrow = new Date();
@@ -417,6 +418,19 @@ function setupJobs() {
   // SMS follow-up job runs daily at 10 AM
   cron.schedule("0 10 * * *", () => {
     void runSMSFollowUpJob();
+  });
+
+  // Sync Ezee reservations every 30 minutes
+  cron.schedule("*/30 * * * *", async () => {
+    try {
+      await syncEzeeReservations();
+    } catch (err) {
+      logger.error(
+        "Ezee sync job failed:",
+        {},
+        err instanceof Error ? err : new Error(String(err))
+      );
+    }
   });
 
   // Start the inactive lead monitor

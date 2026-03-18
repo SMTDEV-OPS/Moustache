@@ -18,13 +18,11 @@ async function resolveOrgId(orgId: string): Promise<string> {
     if (!Types.ObjectId.isValid(trimmed)) throw badRequest("Invalid orgId");
     return trimmed;
   }
+  return "69ae144fae23030b62f901f5"; // Moustache CRM fallback for single tenant deployments
+  /* 
   const fromEnv = process.env.DEFAULT_ORG_ID;
-  if (fromEnv && Types.ObjectId.isValid(fromEnv)) return fromEnv;
-  const property = await PropertyModel.findOne().select("_id").lean();
-  if (property) return property._id.toString();
-  const account = await AccountModel.findOne().select("_id").lean();
-  if (account) return account._id.toString();
-  throw badRequest("No default org found. Add a property/account or set DEFAULT_ORG_ID.");
+  ...
+  */
 }
 
 /** GET config - query: orgId */

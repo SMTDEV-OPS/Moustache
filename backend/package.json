@@ -10,6 +10,7 @@
     "dev": "ts-node src/server.ts",
     "postinstall": "npm run build",
     "seed:admin": "ts-node scripts/seedAdmin.ts",
+    "seed:ezee-properties": "ts-node scripts/seedEzeeProperties.ts",
     "seed:newhotel": "ts-node scripts/seedNewHotel.ts",
     "seed:moustache-workflows": "ts-node scripts/seedMoustacheWorkflows.ts",
     "seed:system-filters": "ts-node scripts/seedSystemFilters.ts",

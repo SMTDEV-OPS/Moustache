@@ -19,13 +19,10 @@ export default {
 		},
 		extend: {
 			colors: {
-				/* CRM design tokens */
-				bg: 'var(--bg)',
-				surface: 'var(--surface)',
-				primary: 'var(--primary)',
+				secondary: { DEFAULT: 'var(--border-light)', foreground: 'var(--text)' },
+				accent: { DEFAULT: 'var(--hover)', foreground: 'var(--text)' },
+				primary: { DEFAULT: 'var(--primary)', foreground: 'white' },
 				'primary-light': 'var(--primary-light)',
-				secondary: 'var(--secondary)',
-				accent: 'var(--accent)',
 				text: 'var(--text)',
 				'text-muted': 'var(--text-muted)',
 				'text-faint': 'var(--text-faint)',
@@ -53,13 +50,10 @@ export default {
 				foreground: 'var(--text)',
 				input: 'var(--border)',
 				ring: 'var(--primary)',
-				primary: { DEFAULT: 'var(--primary)', foreground: 'white' },
 				destructive: { DEFAULT: '#ef4444', foreground: 'white' },
-				accent: { DEFAULT: 'var(--hover)', foreground: 'var(--text)' },
 				muted: { DEFAULT: 'var(--border-light)', foreground: 'var(--text-muted)' },
 				card: { DEFAULT: 'var(--surface)', foreground: 'var(--text)' },
 				popover: { DEFAULT: 'var(--surface)', foreground: 'var(--text)' },
-				secondary: { DEFAULT: 'var(--border-light)', foreground: 'var(--text)' },
 			},
 			fontFamily: {
 				sans: ['var(--font)'],

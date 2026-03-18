@@ -23,18 +23,19 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useNavigate } from "react-router-dom";
 
 interface SettingsItem {
   name: string;
   description: string;
   path: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: any;
   setupGuide: string;
 }
 
 interface SettingsCategory {
   title: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: any;
   items: SettingsItem[];
 }
 
@@ -51,6 +52,7 @@ export function SettingsDashboard({
   permissions,
   userRole,
 }: SettingsDashboardProps) {
+  const navigate = useNavigate();
   const isAdminLike = isAdmin || userRole === "admin";
   const canManageUsers = isAdminLike || permissions.includes("users.manage");
   const canManageAccounts = isAdminLike || permissions.includes("accounts.manage");
@@ -116,7 +118,7 @@ export function SettingsDashboard({
         {
           name: "Property Mgmt",
           description: "Manage hotel properties.",
-          path: "setup/properties",
+          path: "/properties",
           icon: Hotel,
           setupGuide: "Add your hotel properties with details. Properties can be linked to leads, deals, and pipelines.",
         },
@@ -267,7 +269,7 @@ export function SettingsDashboard({
                   marginBottom: 16,
                 }}
               >
-                <SectionIcon size={18} style={{ color: "var(--primary)" }} strokeWidth={1.5} />
+                <SectionIcon size={18} style={{ color: "var(--primary)" }} />
                 <span
                   style={{
                     fontSize: 15,
@@ -287,11 +289,15 @@ export function SettingsDashboard({
                       key={item.path}
                       role="button"
                       tabIndex={0}
-                      onClick={() => onViewChange(item.path)}
+                      onClick={() => {
+                        if (item.path.startsWith("/")) navigate(item.path);
+                        else onViewChange(item.path);
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          onViewChange(item.path);
+                          if (item.path.startsWith("/")) navigate(item.path);
+                          else onViewChange(item.path);
                         }
                       }}
                       style={{
@@ -308,7 +314,7 @@ export function SettingsDashboard({
                       }}
                       className="hover:bg-[var(--hover)] group/row"
                     >
-                      <ItemIcon size={14} style={{ color: "var(--text-faint)" }} strokeWidth={1.5} className="shrink-0" />
+                      <ItemIcon size={14} className="shrink-0" />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14, color: "var(--text)", fontWeight: 500 }}>{item.name}</div>
                         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{item.description}</div>

@@ -26,7 +26,7 @@ const BASE = `${API_BASE_URL}/api/admin/allocation`;
 
 function getOrgId(): string {
   const org = (typeof window !== "undefined" && (window as any).__ORG_ID__) || "";
-  return org || "default_org";
+  return org || "69ae144fae23030b62f901f5";
 }
 
 export async function getAllocationConfig(orgId?: string): Promise<Record<string, string>> {

@@ -3,6 +3,7 @@ import { AllocationConfigModel } from "../models/allocationConfig";
 import { AgentDailyWorkloadModel } from "../models/agentDailyWorkload";
 import { UserModel } from "../models/user";
 import { EmployeeGroupModel } from "../models/employeeGroup";
+import { AllocationRoutingRuleModel } from "../models/allocationRoutingRule";
 import { leadEventBus } from "./leadService";
 
 export function getTodayDateString(): string {
@@ -98,6 +99,73 @@ export async function getAvailableAgents(
     // Sort ascending by lead count (fewest leads today gets priority in overflow smart assignments)
     availableAgents.sort((a, b) => a.count - b.count);
     return availableAgents.map(a => a.agentId);
+}
+
+async function getRoutingGroup(
+    lead: any,
+    orgId: string
+): Promise<Types.ObjectId | null> {
+    const rules = await AllocationRoutingRuleModel
+        .find({ orgId, is_active: true })
+        .sort({ priority: 1 })
+        .lean();
+
+    for (const rule of rules) {
+        const leadValue =
+            (lead?.customData && typeof lead.customData.get === "function"
+                ? lead.customData.get(rule.condition_field)
+                : lead?.customData?.[rule.condition_field]) ??
+            (lead as any)?.[rule.condition_field];
+
+        if (leadValue === undefined || leadValue === null) continue;
+
+        let matches = false;
+        switch (rule.condition_operator) {
+            case "eq":
+                matches = String(leadValue) === String(rule.condition_value);
+                break;
+            case "neq":
+                matches = String(leadValue) !== String(rule.condition_value);
+                break;
+            case "in": {
+                const inValues = Array.isArray(rule.condition_value)
+                    ? rule.condition_value
+                    : [rule.condition_value as any];
+                matches = inValues.map(String).includes(String(leadValue));
+                break;
+            }
+            case "not_in": {
+                const notInValues = Array.isArray(rule.condition_value)
+                    ? rule.condition_value
+                    : [rule.condition_value as any];
+                matches = !notInValues.map(String).includes(String(leadValue));
+                break;
+            }
+        }
+
+        if (matches) return rule.assign_to_group_id as unknown as Types.ObjectId;
+    }
+    return null;
+}
+
+export async function getAvailableAgentsForLead(
+    orgId: string,
+    lead: any,
+    teamId?: string | Types.ObjectId
+): Promise<Types.ObjectId[]> {
+    const base = await getAvailableAgents(orgId, teamId);
+    if (base.length === 0) return [];
+
+    const groupId = await getRoutingGroup(lead, orgId);
+    if (!groupId) return base;
+
+    const group = await EmployeeGroupModel.findById(groupId).lean();
+    const members = (group?.memberUserIds ?? []) as Types.ObjectId[];
+    if (members.length === 0) return base;
+
+    const memberSet = new Set(members.map((m) => m.toString()));
+    const filtered = base.filter((id) => memberSet.has(id.toString()));
+    return filtered.length > 0 ? filtered : base;
 }
 
 export async function incrementAgentWorkload(orgId: string, agentId: string): Promise<void> {

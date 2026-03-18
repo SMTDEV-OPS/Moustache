@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import ModuleBuilder from "./pages/settings/ModuleBuilder";
+import PropertiesPage from "./pages/Properties";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +26,7 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Index />} />
+                <Route path="/properties" element={<PropertiesPage />} />
                 <Route path="/settings/module-builder" element={<ModuleBuilder />} />
                 <Route path="/setup/fields" element={<FieldBuilder />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

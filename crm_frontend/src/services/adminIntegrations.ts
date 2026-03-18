@@ -21,7 +21,7 @@ export interface WebhookFieldMapping {
 }
 
 export interface CreateIntegrationPayload {
-  orgId: string;
+  orgId?: string;
   provider: string;
   config_json: Record<string, any>;
   webhook_url?: string;
@@ -36,8 +36,9 @@ export interface CreateMappingPayload {
 
 const BASE = `${API_BASE_URL}/api/admin/integrations`;
 
-export async function listIntegrations(orgId: string): Promise<IntegrationConfig[]> {
-  const response = await fetch(`${BASE}?orgId=${orgId}`, { headers: withAuthHeaders() });
+export async function listIntegrations(orgId?: string): Promise<IntegrationConfig[]> {
+  const url = orgId ? `${BASE}?orgId=${orgId}` : BASE;
+  const response = await fetch(url, { headers: withAuthHeaders() });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data?.message || "Failed to fetch integrations");
