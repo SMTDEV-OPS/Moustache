@@ -732,29 +732,29 @@ function ScoringRulesSection({
               </Button>
             </div>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#f9fafb" }}>
-                  {["PRIORITY", "CONDITION", "POINTS", "LOGIC", "ACTIVE", "ACTIONS"].map((col) => (
-                    <th
-                      key={col}
-                      style={{
-                        padding: "10px 16px",
-                        textAlign: "left",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "#6b7280",
-                        letterSpacing: "0.05em",
-                        borderBottom: "1px solid #e5e7eb",
-                      }}
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb" }}>
+                    {["PRIORITY", "CONDITION", "POINTS", "LOGIC", "ACTIVE", "ACTIONS"].map((col) => (
+                      <th
+                        key={col}
+                        style={{
+                          padding: "10px 16px",
+                          textAlign: "left",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "#6b7280",
+                          letterSpacing: "0.05em",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
                   <SortableContext items={rules.map((r) => r._id)} strategy={verticalListSortingStrategy}>
                     {rules.map((rule) => (
                       <SortableRuleRow
@@ -766,9 +766,9 @@ function ScoringRulesSection({
                       />
                     ))}
                   </SortableContext>
-                </DndContext>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </DndContext>
           )}
         </div>
 
@@ -1226,24 +1226,24 @@ export function ScoringEngine() {
           </div>
         </div>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ background: "var(--border-light)" }}>
-                {["", "ORDER", "DIMENSION NAME", "DESCRIPTION", "WEIGHT %", "ACTIVE", "ACTIONS"].map((col) => (
-                  <th key={col} style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>{col}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDimensionDragEnd}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDimensionDragEnd}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "var(--border-light)" }}>
+                  {["", "ORDER", "DIMENSION NAME", "DESCRIPTION", "WEIGHT %", "ACTIVE", "ACTIONS"].map((col) => (
+                    <th key={col} style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
                 <SortableContext items={dimensions.map((d) => d.id)} strategy={verticalListSortingStrategy}>
                   {dimensions.map((dim) => (
                     <SortableDimensionRow key={dim.id} dim={dim} onEdit={handleEditDimension} onDelete={handleDeleteDimension} />
                   ))}
                 </SortableContext>
-              </DndContext>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </DndContext>
         </div>
       </section>
 

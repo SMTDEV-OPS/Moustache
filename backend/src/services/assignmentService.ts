@@ -5,6 +5,7 @@ import { EmployeeGroupModel } from "../models/employeeGroup";
 import { UserModel } from "../models/user";
 import { LeadModel } from "../models/lead";
 import { UserBuddyAssignmentModel } from "../models/userBuddyAssignment";
+import { AssignmentRuleModel } from "../models/assignmentRule";
 import { logger } from "../config/logger";
 
 import { getAvailableAgentsForLead, getConfigValue } from "./allocationService";
@@ -163,7 +164,165 @@ export async function getUserWithLeastLeads(
 }
 
 /**
- * Auto-assign a lead based on lead type rules
+ * Try to assign a lead using the V2 Assignment Rule Engine.
+ */
+export async function tryV2Assignment(leadInput: any, orgId?: string): Promise<AssignmentResult | null> {
+  const rules = await AssignmentRuleModel.find({
+    module: "leads",
+    isActive: true,
+  })
+    .sort({ priority: 1 })
+    .lean();
+
+  if (!rules || rules.length === 0) {
+    return null;
+  }
+
+  for (const rule of rules) {
+    let matched = rule.applyToAll;
+
+    if (!rule.applyToAll && rule.conditions && rule.conditions.length > 0) {
+      const isAnd = rule.conditionLogic !== "OR";
+      let allPassed = true;
+      let anyPassed = false;
+
+      for (const cond of rule.conditions) {
+        // Find property in customData or at the root of the input using fallback
+        let leadValue: any;
+        if (leadInput.customData instanceof Map) {
+          leadValue = leadInput.customData.get(cond.field) ?? leadInput[cond.field];
+        } else {
+          leadValue = leadInput.customData?.[cond.field] ?? leadInput[cond.field];
+        }
+
+        let passed = false;
+        const valStr = String(cond.value).toLowerCase();
+        const leadValStr = String(leadValue).toLowerCase();
+
+        switch (cond.operator.toLowerCase()) {
+          case "is":
+          case "eq":
+            passed = String(leadValue) === String(cond.value);
+            break;
+          case "is_not":
+          case "neq":
+            passed = String(leadValue) !== String(cond.value);
+            break;
+          case "in":
+            passed = Array.isArray(cond.value)
+              ? cond.value.includes(String(leadValue))
+              : String(cond.value) === String(leadValue);
+            break;
+          case "not_in":
+            passed = Array.isArray(cond.value)
+              ? !cond.value.includes(String(leadValue))
+              : String(cond.value) !== String(leadValue);
+            break;
+          case "contains":
+            passed = typeof leadValue === "string" && String(leadValue).toLowerCase().includes(valStr);
+            break;
+          case "starts_with":
+            passed = typeof leadValue === "string" && String(leadValue).toLowerCase().startsWith(valStr);
+            break;
+          case "greater_than":
+            passed = Number(leadValue) > Number(cond.value);
+            break;
+          case "less_than":
+            passed = Number(leadValue) < Number(cond.value);
+            break;
+          case "is_not_empty":
+          case "exists":
+            passed = leadValue !== undefined && leadValue !== null && leadValue !== "";
+            break;
+          case "is_empty":
+            passed = leadValue === undefined || leadValue === null || leadValue === "";
+            break;
+          default:
+            passed = false;
+        }
+
+        if (passed) {
+          anyPassed = true;
+        } else {
+          allPassed = false;
+        }
+      }
+
+      matched = isAnd ? allPassed : anyPassed;
+    }
+
+    if (matched) {
+      logger.info(`[V2 Assignment] Rule matched: ${rule.name}`);
+
+      let eligibleUsers: any[] = [];
+
+      if (rule.assignTo === "user" && rule.specificUserId) {
+        const user = await UserModel.findById(rule.specificUserId).lean();
+        if (user && user.status === "ACTIVE") {
+          eligibleUsers = [user];
+        }
+      } else if (rule.employeeGroupId) {
+        eligibleUsers = await findEligibleUsers(rule.employeeGroupId);
+        if (eligibleUsers.length === 0) {
+          eligibleUsers = await findAllGroupUsers(rule.employeeGroupId);
+        }
+      }
+
+      if (eligibleUsers.length === 0) continue;
+
+      if (orgId && rule.assignTo !== "user") {
+        const availableAgentIds = await getAvailableAgentsForLead(
+          orgId,
+          leadInput, // pass context
+          rule.employeeGroupId!.toString()
+        );
+        const availableSet = new Set(availableAgentIds.map((id) => id.toString()));
+        eligibleUsers = eligibleUsers.filter((u) => availableSet.has(u._id.toString()));
+
+        if (eligibleUsers.length === 0) {
+          return {
+            employeeGroupId: rule.employeeGroupId ? new Types.ObjectId(rule.employeeGroupId.toString()) : undefined,
+            assignmentMethod: "none",
+            reason: `Capacity reached for V2 rule: ${rule.name}`,
+            isOverflow: true,
+          };
+        }
+      }
+
+      if (rule.assignTo === "user" && rule.specificUserId && eligibleUsers.length > 0) {
+        const buddyResolution = await resolveAssigneeWithBuddy(rule.specificUserId);
+        return {
+          assignedToUserId: buddyResolution.finalUserId,
+          assignmentMethod: "auto",
+          reason: `Auto-assigned by V2 rule: ${rule.name}`,
+          wasRedirectedToBuddy: buddyResolution.wasRedirected,
+          originalAssigneeId: buddyResolution.wasRedirected ? new Types.ObjectId(rule.specificUserId.toString()) : undefined,
+        };
+      }
+
+      // 'group' or 'round_robin_group' - we use least leads for both based on existing fallback logic
+      const userIds = eligibleUsers.map((u) => u._id);
+      const result = await getUserWithLeastLeads(userIds);
+
+      if (result) {
+        const buddyResolution = await resolveAssigneeWithBuddy(result.userId);
+        return {
+          assignedToUserId: buddyResolution.finalUserId,
+          employeeGroupId: rule.employeeGroupId ? new Types.ObjectId(rule.employeeGroupId.toString()) : undefined,
+          assignmentMethod: "auto",
+          reason: `Auto-assigned by V2 rule: ${rule.name}`,
+          wasRedirectedToBuddy: buddyResolution.wasRedirected,
+          originalAssigneeId: buddyResolution.wasRedirected ? result.userId : undefined,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Auto-assign a lead based on legacy lead type rules
  */
 export async function autoAssignLead(
   leadType: LeadType,

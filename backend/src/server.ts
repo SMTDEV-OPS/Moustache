@@ -42,6 +42,12 @@ async function start() {
     await mongoose.connect(config.mongoUri);
     logger.info("Connected to MongoDB", { uri: config.mongoUri });
 
+    const { ensureDefaultPipeline } = await import("./scripts/ensureDefaultPipeline");
+    await ensureDefaultPipeline();
+    
+    const { ensureDefaultProfiles } = await import("./scripts/ensureDefaultProfiles");
+    await ensureDefaultProfiles();
+
     // Seed allocation config for default org
     const defaultOrgId = process.env.DEFAULT_ORG_ID;
     let orgId: string | null = null;

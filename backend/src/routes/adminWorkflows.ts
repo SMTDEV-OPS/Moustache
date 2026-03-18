@@ -67,7 +67,15 @@ adminWorkflowsRouter.get("/", async (req, res, next) => {
   try {
     const orgId = req.query.orgId as string | undefined;
     const query: Record<string, any> = {};
-    if (orgId) query.orgId = new Types.ObjectId(orgId);
+    if (orgId) {
+      let orgObjectId;
+      try {
+        orgObjectId = new Types.ObjectId(orgId);
+      } catch {
+        return res.status(400).json({ error: 'Invalid orgId format' });
+      }
+      query.orgId = orgObjectId;
+    }
     const list = await WorkflowV2Model.find(query)
       .sort({ createdAt: -1 })
       .lean();
@@ -92,8 +100,14 @@ adminWorkflowsRouter.post("/", async (req, res, next) => {
       throw badRequest(parsed.error.errors[0]?.message || "Invalid workflow payload");
     }
     const data = parsed.data;
+    let orgObjectId;
+    try {
+      orgObjectId = new Types.ObjectId(data.orgId);
+    } catch {
+      return res.status(400).json({ error: 'Invalid orgId format' });
+    }
     const wf = await WorkflowV2Model.create({
-      orgId: new Types.ObjectId(data.orgId),
+      orgId: orgObjectId,
       name: data.name,
       description: data.description,
       trigger_event: data.trigger_event,
@@ -142,7 +156,13 @@ adminWorkflowsRouter.put("/:id", async (req, res, next) => {
 
     const before = wf.toObject();
     const data = parsed.data;
-    if (data.orgId) wf.orgId = new Types.ObjectId(data.orgId);
+    if (data.orgId) {
+      try {
+        wf.orgId = new Types.ObjectId(data.orgId);
+      } catch {
+        return res.status(400).json({ error: 'Invalid orgId format' });
+      }
+    }
     if (data.name !== undefined) wf.name = data.name;
     if (data.description !== undefined) wf.description = data.description;
     if (data.trigger_event !== undefined) wf.trigger_event = data.trigger_event as any;

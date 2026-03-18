@@ -14,7 +14,9 @@ import { listAdminFields, type AdminField } from "@/services/adminFields";
 import { PipelineService, type PipelineStage } from "@/services/pipelines";
 import { listTemplates } from "@/services/templates";
 import { listUsers } from "@/services/users";
+import { listGroups, type Group } from "@/services/groups";
 import { PageHeader, Button, Input, Select } from "@/components/shared";
+import { useAuth } from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -54,13 +56,14 @@ const ACTION_LABELS: Record<string, string> = {
   cancel_pending_tasks: "Cancel Pending Tasks",
 };
 
-const ORG_ID = "default_org";
-
 export function WorkflowBuilder() {
+  const { user } = useAuth();
+  const orgId = user?.propertyId || user?.accountId || user?.organizationId || user?._id;
   const { toast } = useToast();
   const [workflows, setWorkflows] = useState<AdminWorkflow[]>([]);
   const [fields, setFields] = useState<AdminField[]>([]);
   const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<AdminWorkflow | null>(null);
@@ -70,16 +73,19 @@ export function WorkflowBuilder() {
   const [testResult, setTestResult] = useState<any>(null);
 
   const load = useCallback(async () => {
+    if (!orgId) return;
     try {
       setLoading(true);
-      const [wfList, fList, pipeline] = await Promise.all([
-        listAdminWorkflows(ORG_ID),
+      const [wfList, fList, pipeline, groupList] = await Promise.all([
+        listAdminWorkflows(orgId as string),
         listAdminFields("lead"),
         PipelineService.getDefaultPipeline("leads").catch(() => ({ stages: [] })),
+        listGroups().catch(() => []),
       ]);
       setWorkflows(wfList);
       setFields(fList);
       setStages(pipeline.stages ?? []);
+      setGroups(groupList);
     } catch (e) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     } finally {
@@ -89,7 +95,7 @@ export function WorkflowBuilder() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, orgId]);
 
   const handleNew = () => {
     setEditingWorkflow(null);
@@ -154,7 +160,7 @@ export function WorkflowBuilder() {
     }
     try {
       const payload = {
-        orgId: ORG_ID,
+        orgId: orgId as string,
         name: form.name!,
         description: form.description,
         trigger_event: form.trigger_event!,
@@ -177,6 +183,12 @@ export function WorkflowBuilder() {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     }
   };
+
+  if (!orgId) return (
+    <div style={{ padding: 32, textAlign: "center", color: "#6b7280", fontSize: 14 }}>
+      Unable to load workflows — no organization context found.
+    </div>
+  );
 
   return (
     <div style={{ padding: 24 }}>
@@ -494,46 +506,248 @@ export function WorkflowBuilder() {
           {step === 4 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {(form.actions ?? []).map((a, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <Select
-                    value={a.action_type}
-                    onChange={(e) =>
-                      setForm((p) => {
-                        const acts = [...(p.actions ?? [])];
-                        acts[i] = { ...acts[i], action_type: e.target.value as ActionType, params_json: {} };
-                        return { ...p, actions: acts };
-                      })
-                    }
-                    style={{ width: 160 }}
-                  >
-                    {Object.entries(ACTION_LABELS).map(([val, label]) => (
-                      <option key={val} value={val}>{label}</option>
-                    ))}
-                  </Select>
-                  <Input
-                    type="number"
-                    placeholder="Delay (min)"
-                    value={String(a.delay_minutes ?? 0)}
-                    onChange={(e) =>
-                      setForm((p) => {
-                        const acts = [...(p.actions ?? [])];
-                        acts[i] = { ...acts[i], delay_minutes: parseInt(e.target.value, 10) || 0 };
-                        return { ...p, actions: acts };
-                      })
-                    }
-                    style={{ width: 80 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm((p) => ({
-                        ...p,
-                        actions: (p.actions ?? []).filter((_, j) => j !== i),
-                      }))
-                    }
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                <div key={i} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, border: "1px solid var(--border)", borderRadius: 6 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <Select
+                      value={a.action_type}
+                      onChange={(e) =>
+                        setForm((p) => {
+                          const acts = [...(p.actions ?? [])];
+                          acts[i] = { ...acts[i], action_type: e.target.value as ActionType, params_json: {} };
+                          return { ...p, actions: acts };
+                        })
+                      }
+                      style={{ width: 160 }}
+                    >
+                      {Object.entries(ACTION_LABELS).map(([val, label]) => (
+                        <option key={val} value={val}>{label}</option>
+                      ))}
+                    </Select>
+                    <Input
+                      type="number"
+                      placeholder="Delay (min)"
+                      value={String(a.delay_minutes ?? 0)}
+                      onChange={(e) =>
+                        setForm((p) => {
+                          const acts = [...(p.actions ?? [])];
+                          acts[i] = { ...acts[i], delay_minutes: parseInt(e.target.value, 10) || 0 };
+                          return { ...p, actions: acts };
+                        })
+                      }
+                      style={{ width: 80 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((p) => ({
+                          ...p,
+                          actions: (p.actions ?? []).filter((_, j) => j !== i),
+                        }))
+                      }
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+                    {a.action_type === "send_whatsapp" && (
+                      <>
+                        <Input
+                          placeholder="Template name or ID"
+                          value={a.params_json?.templateId || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, templateId: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        />
+                        <Select
+                          value={a.params_json?.recipient || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, recipient: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Recipient...</option>
+                          <option value="Lead Mobile">Lead Mobile</option>
+                          <option value="Agent Mobile">Agent Mobile</option>
+                        </Select>
+                      </>
+                    )}
+                    {a.action_type === "send_email" && (
+                      <>
+                        <Input
+                          placeholder="Template ID"
+                          value={a.params_json?.templateId || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, templateId: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        />
+                        <Select
+                          value={a.params_json?.recipient || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, recipient: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Recipient...</option>
+                          <option value="Lead Email">Lead Email</option>
+                          <option value="Agent Email">Agent Email</option>
+                          <option value="TL Email">TL Email</option>
+                        </Select>
+                      </>
+                    )}
+                    {a.action_type === "create_task" && (
+                      <>
+                        <Input
+                          placeholder="Title (required)"
+                          value={a.params_json?.title || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, title: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        />
+                        <Select
+                          value={a.params_json?.assignTo || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, assignTo: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Assign To...</option>
+                          <option value="Agent">Agent</option>
+                          <option value="TL">TL</option>
+                          <option value="Manager">Manager</option>
+                        </Select>
+                        <Input
+                          type="number"
+                          placeholder="Due in hours"
+                          min={1}
+                          value={a.params_json?.dueInHours || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, dueInHours: parseInt(e.target.value, 10) } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px", width: 120 }}
+                        />
+                        <Input
+                          placeholder="Description (optional)"
+                          value={a.params_json?.description || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, description: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        />
+                      </>
+                    )}
+                    {a.action_type === "move_stage" && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <Select
+                          value={a.params_json?.stage || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, stage: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Stage...</option>
+                          {stages.map(st => <option key={st._id} value={st.name}>{st.name}</option>)}
+                        </Select>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>Stage gate validation will apply</span>
+                      </div>
+                    )}
+                    {a.action_type === "notify_user" && (
+                      <>
+                        <Select
+                          value={a.params_json?.recipient || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, recipient: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Recipient...</option>
+                          <option value="TL">TL</option>
+                          <option value="Manager">Manager</option>
+                          <option value="Assigned Agent">Assigned Agent</option>
+                        </Select>
+                        <Select
+                          value={a.params_json?.channel || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, channel: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Channel...</option>
+                          <option value="In-App">In-App</option>
+                          <option value="Email">Email</option>
+                          <option value="WhatsApp">WhatsApp</option>
+                        </Select>
+                        <textarea
+                          placeholder="Message"
+                          rows={2}
+                          value={a.params_json?.message || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, message: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 14, padding: "6px 10px", width: "100%", resize: "vertical" }}
+                        />
+                      </>
+                    )}
+                    {a.action_type === "assign_lead" && (
+                      <>
+                        <Select
+                          value={a.params_json?.strategy || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, strategy: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Strategy...</option>
+                          <option value="Min Open Leads">Min Open Leads</option>
+                          <option value="Round Robin">Round Robin</option>
+                        </Select>
+                        <Select
+                          value={a.params_json?.team || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, team: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Team...</option>
+                          {groups.map((g: any) => <option key={g._id} value={g.name}>{g.name}</option>)}
+                        </Select>
+                      </>
+                    )}
+                    {a.action_type === "update_field" && (
+                      <>
+                        <Select
+                          value={a.params_json?.field || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, field: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Field...</option>
+                          {fields.map(f => <option key={f._id} value={f.slug}>{f.name}</option>)}
+                        </Select>
+                        <Input
+                          placeholder="Value"
+                          value={a.params_json?.value || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, value: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        />
+                      </>
+                    )}
+                    {a.action_type === "escalate" && (
+                      <>
+                        <Select
+                          value={a.params_json?.toRole || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, toRole: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Role...</option>
+                          <option value="TL">TL</option>
+                          <option value="Manager">Manager</option>
+                        </Select>
+                        <textarea
+                          placeholder="Message"
+                          rows={2}
+                          value={a.params_json?.message || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, message: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 14, padding: "6px 10px", width: "100%", resize: "vertical" }}
+                        />
+                      </>
+                    )}
+                    {a.action_type === "cancel_pending_tasks" && (
+                      <>
+                        <Select
+                          value={a.params_json?.taskType || ""}
+                          onChange={(e) => setForm((p) => { const acts = [...(p.actions ?? [])]; acts[i] = { ...acts[i], params_json: { ...acts[i].params_json, taskType: e.target.value } }; return { ...p, actions: acts }; })}
+                          style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
+                        >
+                          <option value="">Select Task Type...</option>
+                          <option value="Follow-up Tasks">Follow-up Tasks</option>
+                          <option value="All Tasks">All Tasks</option>
+                        </Select>
+                      </>
+                    )}
+                    {a.action_type === "generate_report" && (
+                      <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: 12, padding: "8px 12px", borderRadius: 6 }}>
+                        Report action is not yet fully implemented.
+                      </div>
+                    )}
+                    {!["send_whatsapp", "send_email", "create_task", "move_stage", "notify_user", "assign_lead", "update_field", "escalate", "cancel_pending_tasks", "generate_report"].includes(a.action_type) && (
+                      <div></div>
+                    )}
+                  </div>
                 </div>
               ))}
               <Button

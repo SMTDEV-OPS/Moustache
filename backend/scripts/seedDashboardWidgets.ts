@@ -5,6 +5,9 @@
  * Usage: npx ts-node scripts/seedDashboardWidgets.ts
  */
 import "dotenv/config";
+declare var process: any;
+declare var require: any;
+declare var module: any;
 import mongoose from "mongoose";
 import { config } from "../src/config/env";
 import { logger } from "../src/config/logger";
@@ -73,7 +76,7 @@ const WIDGETS = [
   },
 ];
 
-async function seedDashboardWidgets() {
+export async function seedDashboardWidgets() {
   for (const w of WIDGETS) {
     const existing = await DashboardWidgetModel.findOne({
       widget_type: w.widget_type,
@@ -100,7 +103,9 @@ async function main() {
   logger.info("Seed complete");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

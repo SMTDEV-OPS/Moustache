@@ -1,10 +1,24 @@
 import { API_BASE_URL, withAuthHeaders } from "./api";
 
+export interface IModulePermission {
+    module: string;
+    view: boolean;
+    create: boolean;
+    edit: boolean;
+    delete: boolean;
+}
+
+export interface ISetupPermission {
+    key: string;
+    enabled: boolean;
+}
+
 export interface IProfile {
     _id: string;
     name: string;
     description?: string;
-    permissions: string[];
+    modulePermissions: IModulePermission[];
+    setupPermissions: ISetupPermission[];
     isSystemProfile: boolean;
     createdAt: string;
 }

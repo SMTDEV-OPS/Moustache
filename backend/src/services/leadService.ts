@@ -108,22 +108,7 @@ async function legacyAutoAssignLead(
   leadType: LeadType,
   source: LeadSource
 ): Promise<AutoAssignResult> {
-  // Special case: weddings – try to assign to Nancy.
-  if (leadType === LeadType.WEDDING) {
-    const nancy = await UserModel.findOne({
-      name: /nancy/i,
-      status: "ACTIVE",
-    }).exec();
-    if (nancy) {
-      // Check for active buddy assignment
-      const { resolveAssigneeWithBuddy } = await import("./assignmentService");
-      const buddyResolution = await resolveAssigneeWithBuddy(nancy._id);
-
-      return {
-        assignedToUserId: buddyResolution.finalUserId, assignmentMethod: "legacy",
-      };
-    }
-  }
+  logger.warn('Legacy named-user assignment removed. Configure an AssignmentRuleV2 for this lead type.');
 
   // Legacy team-based lookup removed — use AssignmentRulesV2 engine instead
   return {
@@ -136,12 +121,11 @@ async function legacyAutoAssignLead(
  * Perform lead assignment based on mode
  */
 async function performAssignment(
-  leadType: LeadType,
-  source: LeadSource,
-  assignmentMode: AssignmentMode = "auto",
-  manualAssigneeId?: string,
+  input: CreateLeadInput,
   orgId?: string
 ): Promise<AutoAssignResult> {
+  const { leadType, source, assignmentMode = "auto", assignedToUserId: manualAssigneeId } = input;
+
   // Manual assignment
   if (assignmentMode === "manual" && manualAssigneeId) {
     logger.info("[Manual Assignment] Starting manual assignment", {
@@ -200,7 +184,31 @@ async function performAssignment(
     }
   }
 
-  // Auto assignment using rules
+  // Try V2 Assignment Engine first
+  const { tryV2Assignment } = await import("./assignmentService");
+  const v2Agent = await tryV2Assignment(input, orgId);
+  
+  if (v2Agent) {
+    if (v2Agent.assignmentMethod === "auto" && v2Agent.assignedToUserId) {
+      return {
+        assignedToUserId: v2Agent.assignedToUserId,
+        employeeGroupId: v2Agent.employeeGroupId,
+        assignmentMethod: "auto",
+        wasRedirectedToBuddy: v2Agent.wasRedirectedToBuddy,
+        originalAssigneeId: v2Agent.originalAssigneeId,
+      };
+    }
+    if (v2Agent.isOverflow) {
+      return {
+        assignedToUserId: undefined,
+        employeeGroupId: v2Agent.employeeGroupId,
+        assignmentMethod: "none",
+        isOverflow: true
+      };
+    }
+  }
+
+  // Fallback: Auto assignment using legacy rules
   const ruleResult = await autoAssignFromRules(leadType, source, orgId);
 
   if (ruleResult.assignmentMethod === "auto" && ruleResult.assignedToUserId) {
@@ -481,10 +489,7 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
 
   // Perform assignment based on mode
   const assignment = await performAssignment(
-    input.leadType,
-    input.source,
-    input.assignmentMode ?? "auto",
-    input.assignedToUserId,
+    input,
     orgIdForLead?.toString()
   );
 

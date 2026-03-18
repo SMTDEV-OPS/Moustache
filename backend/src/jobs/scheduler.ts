@@ -92,16 +92,7 @@ async function runWorkflowJob() {
   }
 }
 
-async function runPendingWorkflowActionsJob() {
-  try {
-    const count = await processPendingWorkflowActions();
-    if (count > 0) {
-      logger.info("Processed pending workflow actions", { count });
-    }
-  } catch (error) {
-    logger.error("Error processing pending workflow actions", {}, error instanceof Error ? error : new Error(String(error)));
-  }
-}
+// Replaced runPendingWorkflowActionsJob with inline cron job below
 
 async function runFollowupMissedJob() {
   try {
@@ -391,8 +382,12 @@ function setupJobs() {
   });
 
   // Pending workflow actions (event-driven) - every 2 minutes
-  cron.schedule("*/2 * * * *", () => {
-    void runPendingWorkflowActionsJob();
+  cron.schedule("*/2 * * * *", async () => {
+    try {
+      await processPendingWorkflowActions();
+    } catch (err) {
+      logger.error('Pending workflow actions job failed:', {}, err instanceof Error ? err : new Error(String(err)));
+    }
   });
 
   // Followup missed - every 5 minutes

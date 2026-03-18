@@ -15,62 +15,38 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createProfile, getProfiles as listProfiles, updateProfile, deleteProfile, IProfile as Profile } from "@/services/profiles";
-import { listUsers, User } from "@/services/users";
+import { createProfile, getProfiles as listProfiles, updateProfile, deleteProfile, IProfile as Profile, IModulePermission, ISetupPermission } from "@/services/profiles";
 
-const AVAILABLE_PERMISSIONS = [
-  // User & admin
-  "users.manage",
-  "accounts.manage",
-  "properties.manage",
-  "regions.manage",
-  "workflows.manage",
-  "availability.upload",
-  "reports.view",
-  "callcenter.access",
-  // Lead module – view scopes
-  "leads.view.own",
-  "leads.view.team",
-  "leads.view.all",
-  // Lead module – actions
-  "leads.create",
-  "leads.update",
-  "leads.assign",
-  "leads.delete",
-  "leads.send.quotation",
-  "leads.schedule.followup",
-  "leads.send.email",
-  // Lead module – full control
-  "leads.manage",
-  // Ticket module – view scopes
-  "tickets.view.own",
-  "tickets.view.team",
-  "tickets.view.all",
-  // Ticket module – actions
-  "tickets.create",
-  "tickets.update",
-  "tickets.assign",
-  "tickets.delete",
-  "tickets.resolve",
-  // Ticket module – full control
-  "tickets.manage",
-  // Buddy module
-  "buddies.assign",
-  "buddies.view.history",
-  "buddies.view.reports",
-] as const;
+// Derived from backend constants
+const ALL_MODULES = [
+  'leads','users','roles','reports','accounts','contacts',
+  'properties','tasks','tickets','guests','reservations',
+  'communications','quotations','payment-links','workflows',
+  'templates','knowledge-base','pms','regions','groups',
+  'assignment-rules','notifications','email','buddies'
+];
+
+const ALL_SETUP_KEYS = [
+  'settings.manage','users.manage','roles.manage','reports.manage',
+  'assignment-rules.manage','workflows.manage','templates.manage',
+  'knowledge-base.manage','pms.manage','notifications.manage'
+];
 
 export const ProfileBuilder = () => {
   const { toast } = useToast();
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profileDescription, setProfileDescription] = useState("");
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  
+  // State for permissions
+  const [modulePermissions, setModulePermissions] = useState<IModulePermission[]>([]);
+  const [setupPermissions, setSetupPermissions] = useState<ISetupPermission[]>([]);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -85,7 +61,8 @@ export const ProfileBuilder = () => {
 
       const normalizedProfiles = (profilesData || []).map((profile) => ({
         ...profile,
-        permissions: Array.isArray(profile.permissions) ? profile.permissions : [],
+        modulePermissions: profile.modulePermissions || [],
+        setupPermissions: profile.setupPermissions || [],
       }));
       setProfiles(normalizedProfiles);
     } catch (err) {
@@ -106,12 +83,41 @@ export const ProfileBuilder = () => {
       setEditingProfile(profile);
       setProfileName(profile.name);
       setProfileDescription(profile.description || "");
-      setSelectedPermissions(profile.permissions || []);
+      
+      const existingPerms = profile.modulePermissions || [];
+      const mergedModules = ALL_MODULES.map(module => {
+        const existing = existingPerms.find(p => p.module === module);
+        return existing || { 
+          module, view: false, create: false, 
+          edit: false, delete: false 
+        };
+      });
+      setModulePermissions(mergedModules);
+
+      const existingSetup = profile.setupPermissions || [];
+      const mergedSetup = ALL_SETUP_KEYS.map(key => {
+        const existing = existingSetup.find(p => p.key === key);
+        return existing || { key, enabled: false };
+      });
+      setSetupPermissions(mergedSetup);
     } else {
       setEditingProfile(null);
       setProfileName("");
       setProfileDescription("");
-      setSelectedPermissions([]);
+      
+      // Initialize empty permissions
+      setModulePermissions(ALL_MODULES.map(m => ({
+        module: m,
+        view: false,
+        create: false,
+        edit: false,
+        delete: false
+      })));
+      
+      setSetupPermissions(ALL_SETUP_KEYS.map(k => ({
+        key: k,
+        enabled: false
+      })));
     }
     setIsDialogOpen(true);
   };
@@ -121,7 +127,26 @@ export const ProfileBuilder = () => {
     setEditingProfile(null);
     setProfileName("");
     setProfileDescription("");
-    setSelectedPermissions([]);
+    setModulePermissions([]);
+    setSetupPermissions([]);
+  };
+
+  const handleModulePermChange = (modName: string, field: keyof Omit<IModulePermission, 'module'>, value: boolean) => {
+    setModulePermissions(prev => prev.map(m => {
+      if (m.module === modName) {
+        return { ...m, [field]: value };
+      }
+      return m;
+    }));
+  };
+
+  const handleSetupPermChange = (key: string, enabled: boolean) => {
+    setSetupPermissions(prev => prev.map(s => {
+      if (s.key === key) {
+        return { ...s, enabled };
+      }
+      return s;
+    }));
   };
 
   const handleSubmit = async () => {
@@ -137,23 +162,12 @@ export const ProfileBuilder = () => {
     try {
       setIsSubmitting(true);
 
-      if (!selectedPermissions || selectedPermissions.length === 0) {
-        toast({
-          title: "Error",
-          description: "Permissions are required",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      const permissions = selectedPermissions;
-
       if (editingProfile) {
         await updateProfile(editingProfile._id, {
           name: profileName.trim(),
           description: profileDescription.trim() || undefined,
-          permissions,
+          modulePermissions,
+          setupPermissions
         });
         toast({
           title: "Success",
@@ -163,7 +177,8 @@ export const ProfileBuilder = () => {
         await createProfile({
           name: profileName.trim(),
           description: profileDescription.trim() || undefined,
-          permissions,
+          modulePermissions,
+          setupPermissions
         });
         toast({
           title: "Success",
@@ -208,7 +223,7 @@ export const ProfileBuilder = () => {
       <div className="flex h-full flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-2 text-muted-foreground">
           <Loader2 className="h-6 w-6 animate-spin" />
-          <p>Loading roles...</p>
+          <p>Loading profiles...</p>
         </div>
       </div>
     );
@@ -219,7 +234,7 @@ export const ProfileBuilder = () => {
       <div className="flex h-full flex-1 items-center justify-center">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle className="text-destructive">Error Loading Roles</CardTitle>
+            <CardTitle className="text-destructive">Error Loading Profiles</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">{error}</p>
@@ -236,15 +251,14 @@ export const ProfileBuilder = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Role Definition</h2>
+          <h2 className="text-xl font-semibold">Profile Definition</h2>
           <p className="text-sm text-muted-foreground">
-            Create and manage global roles for the CRM. Assign backend permissions,
-            including detailed lead view and action permissions, to each role.
+            Create and manage global profiles for the CRM. Profiles define feature-level permissions like create, edit, or delete actions for specific modules.
           </p>
         </div>
         <Button onClick={() => handleOpenDialog()}>
           <Plus className="mr-2 h-4 w-4" />
-          Create Role
+          Create Profile
         </Button>
       </div>
 
@@ -265,7 +279,10 @@ export const ProfileBuilder = () => {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>{profile.name}</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                        {profile.name}
+                        {profile.isSystemProfile && <Badge variant="secondary">System</Badge>}
+                    </CardTitle>
                     {profile.description && (
                       <CardDescription>{profile.description}</CardDescription>
                     )}
@@ -278,111 +295,149 @@ export const ProfileBuilder = () => {
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(profile._id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {!profile.isSystemProfile && (
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         onClick={() => handleDelete(profile._id)}
+                       >
+                         <Trash2 className="h-4 w-4" />
+                       </Button>
+                    )}
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
-                    Permissions
-                  </Label>
-                  {profile.permissions && profile.permissions.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {profile.permissions.map((perm) => (
-                        <Badge key={perm} variant="secondary" className="text-xs">
-                          {perm}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No permissions assigned</p>
-                  )}
-                </div>
-              </CardContent>
             </Card>
           ))}
         </div>
       )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingProfile ? "Edit Profile" : "Create Profile"}</DialogTitle>
             <DialogDescription>
               {editingProfile
-                ? "Update the profile information and permissions."
-                : "Define a new profile with backend permissions."}
+                ? "Update the profile information and feature permissions."
+                : "Define a new profile with feature-level module permissions."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-            <div className="space-y-2">
-              <Label htmlFor="profile-name">Profile Name *</Label>
-              <Input
-                id="profile-name"
-                value={profileName}
-                onChange={(e) => setProfileName(e.target.value)}
-                placeholder="Admin"
-              />
+          <div className="space-y-6 overflow-y-auto flex-1 pr-2 pb-4">
+            
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="profile-name">Profile Name *</Label>
+                  <Input
+                    id="profile-name"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="e.g. Sales Representative"
+                    disabled={editingProfile?.isSystemProfile}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="profile-description">Description</Label>
+                  <Textarea
+                    id="profile-description"
+                    value={profileDescription}
+                    onChange={(e) => setProfileDescription(e.target.value)}
+                    placeholder="Describe what this profile grants access to"
+                    rows={2}
+                    disabled={editingProfile?.isSystemProfile}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold border-b pb-2">Module Permissions</h3>
+              <p className="text-sm text-muted-foreground">Select the actions allowed for each module.</p>
+              
+              <div className="border rounded-md divide-y overflow-hidden max-h-[400px] overflow-y-auto">
+                <div className="flex bg-muted/50 p-3 sticky top-0 font-medium text-sm">
+                  <div className="flex-1">Module</div>
+                  <div className="w-20 text-center">View</div>
+                  <div className="w-20 text-center">Create</div>
+                  <div className="w-20 text-center">Edit</div>
+                  <div className="w-20 text-center">Delete</div>
+                </div>
+                {modulePermissions.map((modPerm) => (
+                  <div key={modPerm.module} className="flex p-3 items-center hover:bg-muted/30">
+                    <div className="flex-1 capitalize font-medium text-[14px] text-[#111827]">
+                      {modPerm.module.replace("-", " ")}
+                    </div>
+                    <div className="w-20 flex justify-center">
+                      <Checkbox 
+                        checked={modPerm.view} 
+                        disabled={editingProfile?.isSystemProfile}
+                        onCheckedChange={(c) => handleModulePermChange(modPerm.module, 'view', !!c)} 
+                      />
+                    </div>
+                    <div className="w-20 flex justify-center">
+                      <Checkbox 
+                        checked={modPerm.create} 
+                        disabled={editingProfile?.isSystemProfile}
+                        onCheckedChange={(c) => handleModulePermChange(modPerm.module, 'create', !!c)} 
+                      />
+                    </div>
+                    <div className="w-20 flex justify-center">
+                      <Checkbox 
+                        checked={modPerm.edit} 
+                        disabled={editingProfile?.isSystemProfile}
+                        onCheckedChange={(c) => handleModulePermChange(modPerm.module, 'edit', !!c)} 
+                      />
+                    </div>
+                    <div className="w-20 flex justify-center">
+                      <Checkbox 
+                        checked={modPerm.delete} 
+                        disabled={editingProfile?.isSystemProfile}
+                        onCheckedChange={(c) => handleModulePermChange(modPerm.module, 'delete', !!c)} 
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="profile-description">Description</Label>
-              <Textarea
-                id="profile-description"
-                value={profileDescription}
-                onChange={(e) => setProfileDescription(e.target.value)}
-                placeholder="Describe what this profile can do"
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <Label>Permissions *</Label>
-              <p className="text-xs text-muted-foreground">
-                These permissions will be granted to all users assigned this profile.
-              </p>
-              <div className="space-y-2 max-h-60 overflow-y-auto border rounded-md p-3">
-                {AVAILABLE_PERMISSIONS.map((perm) => (
-                  <div key={`perm-${perm}`} className="flex items-center space-x-2">
+            <div className="space-y-4 pt-4">
+              <h3 className="text-lg font-semibold border-b pb-2">Setup & Admin Permissions</h3>
+              <p className="text-sm text-muted-foreground">Check to grant management access to system settings.</p>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 border rounded-md p-4">
+                {setupPermissions.map((setup) => (
+                  <div key={setup.key} className="flex items-center space-x-2">
                     <Checkbox
-                      id={`perm-${perm}`}
-                      checked={selectedPermissions.includes(perm)}
-                      onCheckedChange={(checked) => {
-                        setSelectedPermissions((prev) =>
-                          checked ? [...prev, perm] : prev.filter((p) => p !== perm),
-                        );
-                      }}
+                      id={`setup-${setup.key}`}
+                      checked={setup.enabled}
+                      disabled={editingProfile?.isSystemProfile}
+                      onCheckedChange={(checked) => handleSetupPermChange(setup.key, !!checked)}
                     />
                     <label
-                      htmlFor={`perm-${perm}`}
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      htmlFor={`setup-${setup.key}`}
+                      className="text-[13px] text-[#374151] font-medium leading-none cursor-pointer select-none"
                     >
-                      {perm}
+                      {setup.key}
                     </label>
                   </div>
                 ))}
               </div>
             </div>
+
           </div>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={handleCloseDialog}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : editingProfile ? "Update Profile" : "Create Profile"}
-            </Button>
+            {!editingProfile?.isSystemProfile && (
+                <Button onClick={handleSubmit} disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : editingProfile ? "Update Profile" : "Create Profile"}
+                </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
     </div>
   );
 };
-
-

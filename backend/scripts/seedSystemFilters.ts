@@ -5,6 +5,9 @@
  * Usage: npx ts-node scripts/seedSystemFilters.ts <orgId>
  */
 import "dotenv/config";
+declare var process: any;
+declare var require: any;
+declare var module: any;
 import mongoose from "mongoose";
 import { config } from "../src/config/env";
 import { logger } from "../src/config/logger";
@@ -14,7 +17,7 @@ import { PipelineStageModel } from "../src/models/pipelineStage";
 import { LeadSource, LeadStatus } from "../src/models/common";
 import { Types } from "mongoose";
 
-async function seedSystemFilters(orgId: string) {
+export async function seedSystemFilters(orgId: string) {
   const oid = new Types.ObjectId(orgId);
   const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).lean();
 
@@ -160,7 +163,9 @@ async function main() {
   logger.info("Seed complete");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

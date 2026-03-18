@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { RoleModel } from "../models/role";
+import { UserModel } from "../models/user";
 import { requireAuth, requirePermissions } from "../middleware/auth";
 import { badRequest, notFound } from "../utils/httpError";
 import { PERMISSIONS } from "../constants/permissions";
@@ -159,6 +160,115 @@ rolesRouter.delete("/:id", async (req, res, next) => {
     // Assuming UI prevention or later User reference check for now.
 
     await RoleModel.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Users in Role
+rolesRouter.get("/:id/users", async (req, res, next) => {
+  try {
+    const users = await UserModel.find({ roleId: req.params.id })
+      .select("_id name email")
+      .lean();
+    res.json(users);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const addUsersSchema = z.object({
+  userId: z.string().optional(),
+  userIds: z.array(z.string()).optional(),
+});
+
+rolesRouter.post("/:id/users", async (req, res, next) => {
+  try {
+    const parsed = addUsersSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest("Invalid payload for adding users to role");
+    }
+
+    const role = await RoleModel.findById(req.params.id);
+    if (!role) {
+      throw notFound("Role not found");
+    }
+
+    const { userId, userIds } = parsed.data;
+    const targetIds = userIds || (userId ? [userId] : []);
+    
+    if (targetIds.length > 0) {
+      await UserModel.updateMany(
+        { _id: { $in: targetIds } },
+        { $set: { roleId: req.params.id } }
+      );
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+rolesRouter.delete("/:id/users/:userId", async (req, res, next) => {
+  try {
+    await UserModel.updateOne(
+      { _id: req.params.userId, roleId: req.params.id },
+      { $unset: { roleId: 1 } }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Owners - alias to users in this codebase context
+rolesRouter.get("/:id/owners", async (req, res, next) => {
+  try {
+    const users = await UserModel.find({ roleId: req.params.id })
+      .select("_id name email")
+      .lean();
+    res.json(users);
+  } catch (err) {
+    next(err);
+  }
+});
+
+rolesRouter.post("/:id/owners", async (req, res, next) => {
+  try {
+    const parsed = addUsersSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest("Invalid payload for adding owners to role");
+    }
+
+    const role = await RoleModel.findById(req.params.id);
+    if (!role) {
+      throw notFound("Role not found");
+    }
+
+    const { userId, userIds } = parsed.data;
+    const targetIds = userIds || (userId ? [userId] : []);
+    
+    if (targetIds.length > 0) {
+      await UserModel.updateMany(
+        { _id: { $in: targetIds } },
+        { $set: { roleId: req.params.id } }
+      );
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+rolesRouter.delete("/:id/owners/:userId", async (req, res, next) => {
+  try {
+    await UserModel.updateOne(
+      { _id: req.params.userId, roleId: req.params.id },
+      { $unset: { roleId: 1 } }
+    );
     res.json({ success: true });
   } catch (err) {
     next(err);

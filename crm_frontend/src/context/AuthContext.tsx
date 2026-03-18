@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface User {
     id: string;
+    _id?: string;
     name: string;
     email: string;
     roleId?: string;
@@ -13,6 +14,9 @@ interface User {
     reportsTo?: string;
     hierarchyPath?: string;
     pfp?: string;
+    propertyId?: string;
+    accountId?: string;
+    organizationId?: string;
 }
 
 interface AuthContextType {

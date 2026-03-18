@@ -1,4 +1,7 @@
 import "dotenv/config";
+declare var process: any;
+declare var require: any;
+declare var module: any;
 import mongoose from "mongoose";
 import { config } from "../src/config/env";
 import { PropertyModel } from "../src/models/property";
@@ -60,8 +63,7 @@ const PROPERTIES = [
   { name: "Hostel Nainital", hotelCode: "59836", authCode: "2736289121247b21fa-fcf5-11f0-9" },
 ];
 
-async function main() {
-  await mongoose.connect(config.mongoUri);
+export async function seedEzeeProperties() {
 
   let upserted = 0;
   let created = 0;
@@ -98,11 +100,16 @@ async function main() {
   console.log(
     `Seeded ${PROPERTIES.length} properties, ${upserted} upserted, ${created} created`
   );
-  process.exit(0);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  mongoose.connect(config.mongoUri).then(async () => {
+    await seedEzeeProperties();
+    await mongoose.disconnect();
+    process.exit(0);
+  }).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
 

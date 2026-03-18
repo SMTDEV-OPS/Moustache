@@ -58,4 +58,7 @@ Thumbs.db
 *.temp
 .cache/
 
+# Never commit vendor API docs
+API - Ezee & Airpay - Details.pdf
+
 .gitnexus

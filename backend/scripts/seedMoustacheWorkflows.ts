@@ -5,6 +5,9 @@
  * Usage: npx ts-node scripts/seedMoustacheWorkflows.ts [orgId]
  */
 import "dotenv/config";
+declare var process: any;
+declare var require: any;
+declare var module: any;
 import mongoose from "mongoose";
 import { config } from "../src/config/env";
 import { logger } from "../src/config/logger";
@@ -24,7 +27,7 @@ async function findTemplateByName(namePattern: string | RegExp) {
   return TemplateModel.findOne({ name: pattern, medium: "WHATSAPP", isActive: true }).lean();
 }
 
-async function seedMoustacheWorkflows(orgId: string) {
+export async function seedMoustacheWorkflows(orgId: string) {
   const oid = new Types.ObjectId(orgId);
   const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).lean();
   if (!pipeline) {
@@ -200,7 +203,9 @@ async function main() {
   logger.info("Seed complete");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

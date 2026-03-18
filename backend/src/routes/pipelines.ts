@@ -16,8 +16,19 @@ pipelinesRouter.use(requireAuth);
 pipelinesRouter.get("/", async (req, res, next) => {
     try {
         const { module = "leads" } = req.query;
-        const pipelines = await PipelineModel.find({ module }).sort({ createdAt: -1 });
-        res.json(pipelines);
+        const pipelines = await PipelineModel.find({ module }).sort({ createdAt: -1 }).lean();
+        
+        const pipelinesWithStages = await Promise.all(
+            pipelines.map(async (pipeline) => {
+                const stages = await PipelineStageModel
+                    .find({ pipelineId: pipeline._id })
+                    .sort({ order: 1 })
+                    .lean();
+                return { ...pipeline, stages };
+            })
+        );
+        
+        res.json(pipelinesWithStages);
     } catch (err) {
         next(err);
     }
