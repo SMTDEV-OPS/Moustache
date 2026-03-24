@@ -113,7 +113,7 @@ export const PropertiesView = ({
           </div>
         </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+        <div className="grid gap-6">
           {items.map((item) => {
             const content = item.content as Record<string, unknown> | undefined;
             const location = content?.location as string | undefined;

@@ -3,12 +3,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ChevronsUpDown,
+  Check,
+} from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Building2,
   FileText,
@@ -45,6 +51,7 @@ export const KnowledgeBaseMain = ({
   const [selectedCategory, setSelectedCategory] =
     useState<KnowledgeBaseType | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [propertySearchOpen, setPropertySearchOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const canManage = isAdmin || permissions?.includes("knowledgebase.manage");
@@ -80,14 +87,6 @@ export const KnowledgeBaseMain = ({
   const handleBackToCategories = () => {
     setSelectedCategory(null);
     setSearchQuery("");
-  };
-
-  const handleSearch = () => {
-    if (searchQuery.trim() && selectedPropertyId) {
-      // Navigate to search results view
-      // For now, we'll show all items filtered by search
-      setSelectedCategory(null);
-    }
   };
 
   if (loading) {
@@ -133,20 +132,15 @@ export const KnowledgeBaseMain = ({
               placeholder="Search knowledge base..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleSearch();
-                }
-              }}
               className="pl-10 rounded-none h-12"
             />
           </div>
           <Button
-            onClick={handleSearch}
+            variant="outline"
+            onClick={() => setSearchQuery("")}
             className="rounded-none px-8 py-6"
-            style={{ backgroundColor: "#0F172A", color: "white" }}
           >
-            Search
+            Clear
           </Button>
         </div>
 
@@ -280,6 +274,24 @@ export const KnowledgeBaseMain = ({
             </p>
           </div>
         </div>
+        <div className="flex gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search in this category..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 rounded-none h-12"
+            />
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setSearchQuery("")}
+            className="rounded-none px-8 py-6"
+          >
+            Clear
+          </Button>
+        </div>
         {categoryViews[selectedCategory]}
       </div>
     );
@@ -302,21 +314,49 @@ export const KnowledgeBaseMain = ({
           <label className="text-sm font-medium text-foreground">
             Select Hotel
           </label>
-          <Select
-            value={selectedPropertyId}
-            onValueChange={setSelectedPropertyId}
-          >
-            <SelectTrigger className="w-full rounded-none h-12">
-              <SelectValue placeholder="Choose a hotel..." />
-            </SelectTrigger>
-            <SelectContent>
-              {properties.map((property) => (
-                <SelectItem key={property._id} value={property._id}>
-                  {property.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={propertySearchOpen} onOpenChange={setPropertySearchOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={propertySearchOpen}
+                className="w-full justify-between rounded-none h-12 font-normal"
+              >
+                {selectedPropertyId
+                  ? properties.find((property) => property._id === selectedPropertyId)?.name
+                  : "Choose a hotel..."}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 rounded-none">
+              <Command>
+                <CommandInput placeholder="Search hotel..." />
+                <CommandList>
+                  <CommandEmpty>No hotel found.</CommandEmpty>
+                  <CommandGroup>
+                    {properties.map((property) => (
+                      <CommandItem
+                        key={property._id}
+                        value={property.name}
+                        keywords={[property.code]}
+                        onSelect={() => {
+                          setSelectedPropertyId(property._id);
+                          setPropertySearchOpen(false);
+                        }}
+                      >
+                        <Check
+                          className={`mr-2 h-4 w-4 ${
+                            selectedPropertyId === property._id ? "opacity-100" : "opacity-0"
+                          }`}
+                        />
+                        {property.name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
       </Card>
     </div>
