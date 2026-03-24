@@ -15,6 +15,13 @@ export interface QuotationRoomDetail {
   numberOfGuests?: string;
 }
 
+export interface QuotationHotelDetail {
+  hotelName?: string;
+  checkInDate?: string;
+  checkOutDate?: string;
+  rooms?: QuotationRoomDetail[];
+}
+
 export interface QuotationBookingDetails {
   checkInDate?: string;
   checkOutDate?: string;
@@ -25,6 +32,7 @@ export interface QuotationBookingDetails {
   specialRequests?: string;
   bookingSource?: string;
   roomDetails?: QuotationRoomDetail[];
+  hotels?: QuotationHotelDetail[];
 }
 
 export interface Quotation {

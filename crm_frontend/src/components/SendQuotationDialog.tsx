@@ -45,7 +45,8 @@ import {
   CalendarDays,
   Users,
   AlertTriangle,
-  Settings,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -60,6 +61,19 @@ interface SendQuotationDialogProps {
   propertyName?: string;
   onQuotationSent?: () => void;
 }
+
+type QuotationRoomForm = {
+  roomCategory: string;
+  roomPreference: string;
+  numberOfGuests: string;
+};
+
+type QuotationHotelForm = {
+  hotelName: string;
+  checkInDate: string;
+  checkOutDate: string;
+  rooms: QuotationRoomForm[];
+};
 
 export const SendQuotationDialog = ({
   open,
@@ -107,6 +121,9 @@ export const SendQuotationDialog = ({
   const [recipientName, setRecipientName] = useState<string>(guestName || "");
   const [recipientEmail, setRecipientEmail] = useState<string>(guestEmail || "");
   const [recipientPhone, setRecipientPhone] = useState<string>(guestPhone || "");
+  const [bookingHotels, setBookingHotels] = useState<QuotationHotelForm[]>([
+    { hotelName: propertyName || "", checkInDate: "", checkOutDate: "", rooms: [{ roomCategory: "", roomPreference: "", numberOfGuests: "" }] },
+  ]);
 
   // Update recipient fields when props change
   useEffect(() => {
@@ -116,6 +133,23 @@ export const SendQuotationDialog = ({
     setRecipientEmail(guestEmail || leadContact.email || "");
     setRecipientPhone(guestPhone || leadContact.phone || "");
     setRooms(deriveRoomCount());
+    if (lead?.itineraries?.length) {
+      setBookingHotels(
+        lead.itineraries.map((it) => ({
+          hotelName: it.hotelName || propertyName || "",
+          checkInDate: it.checkInDate ? String(it.checkInDate).slice(0, 10) : "",
+          checkOutDate: it.checkOutDate ? String(it.checkOutDate).slice(0, 10) : "",
+          rooms:
+            it.rooms && it.rooms.length > 0
+              ? it.rooms.map((r) => ({
+                  roomCategory: r.roomCategory || "",
+                  roomPreference: r.roomPreference || "",
+                  numberOfGuests: r.numberOfGuests || "",
+                }))
+              : [{ roomCategory: "", roomPreference: "", numberOfGuests: "" }],
+        }))
+      );
+    }
 
     if (!specialPackages?.trim()) {
       const suggested: string[] = [];
@@ -215,21 +249,44 @@ export const SendQuotationDialog = ({
       return;
     }
 
+    if (
+      bookingHotels.some(
+        (h) => !h.hotelName.trim() || !h.checkInDate || !h.checkOutDate
+      )
+    ) {
+      toast({
+        title: "Booking Details Required",
+        description: "Please fill hotel name, check-in, and check-out for each hotel section",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsSending(true);
       const bookingDetails: QuotationBookingDetails = {
-        checkInDate,
-        checkOutDate,
+        checkInDate: bookingHotels[0]?.checkInDate || checkInDate,
+        checkOutDate: bookingHotels[0]?.checkOutDate || checkOutDate,
         nights: calculateNights(),
         adults: lead?.guests?.adults || 0,
         children: lead?.guests?.children || 0,
         occasion: lead?.occasion,
         specialRequests: lead?.specialRequests,
         bookingSource: lead?.bookingSource,
-        roomDetails: roomDetails.map((room) => ({
+        roomDetails: bookingHotels[0]?.rooms?.map((room) => ({
           roomCategory: room.roomCategory,
           roomPreference: room.roomPreference,
           numberOfGuests: room.numberOfGuests,
+        })),
+        hotels: bookingHotels.map((hotel) => ({
+          hotelName: hotel.hotelName,
+          checkInDate: hotel.checkInDate,
+          checkOutDate: hotel.checkOutDate,
+          rooms: hotel.rooms.map((room) => ({
+            roomCategory: room.roomCategory,
+            roomPreference: room.roomPreference,
+            numberOfGuests: room.numberOfGuests,
+          })),
         })),
       };
 
@@ -528,27 +585,186 @@ export const SendQuotationDialog = ({
 
             {/* Booking Details */}
             <div className="space-y-4">
-              <h4 className="font-medium text-sm">Booking Details (Auto-fetched)</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-sm">Hotel Details</h4>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setBookingHotels((prev) => [
+                      ...prev,
+                      {
+                        hotelName: propertyName || "",
+                        checkInDate: "",
+                        checkOutDate: "",
+                        rooms: [{ roomCategory: "", roomPreference: "", numberOfGuests: "" }],
+                      },
+                    ])
+                  }
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Add Hotel
+                </Button>
+              </div>
+
+              {bookingHotels.map((hotel, hotelIdx) => (
+                <div key={hotelIdx} className="border rounded-md p-3 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm font-medium">Hotel #{hotelIdx + 1}</Label>
+                    {bookingHotels.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setBookingHotels((prev) => prev.filter((_, i) => i !== hotelIdx))
+                        }
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label>Hotel Name *</Label>
+                      <Input
+                        value={hotel.hotelName}
+                        onChange={(e) =>
+                          setBookingHotels((prev) =>
+                            prev.map((h, i) =>
+                              i === hotelIdx ? { ...h, hotelName: e.target.value } : h
+                            )
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Check-in *</Label>
+                      <Input
+                        type="date"
+                        value={hotel.checkInDate}
+                        onChange={(e) =>
+                          setBookingHotels((prev) =>
+                            prev.map((h, i) =>
+                              i === hotelIdx ? { ...h, checkInDate: e.target.value } : h
+                            )
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Check-out *</Label>
+                      <Input
+                        type="date"
+                        value={hotel.checkOutDate}
+                        onChange={(e) =>
+                          setBookingHotels((prev) =>
+                            prev.map((h, i) =>
+                              i === hotelIdx ? { ...h, checkOutDate: e.target.value } : h
+                            )
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Rooms</Label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setBookingHotels((prev) =>
+                            prev.map((h, i) =>
+                              i === hotelIdx
+                                ? {
+                                    ...h,
+                                    rooms: [
+                                      ...h.rooms,
+                                      { roomCategory: "", roomPreference: "", numberOfGuests: "" },
+                                    ],
+                                  }
+                                : h
+                            )
+                          )
+                        }
+                      >
+                        <Plus className="h-4 w-4 mr-1" /> Add Room
+                      </Button>
+                    </div>
+
+                    {hotel.rooms.map((room, roomIdx) => (
+                      <div key={roomIdx} className="grid grid-cols-1 md:grid-cols-3 gap-3 border rounded p-2">
+                        <div className="space-y-1">
+                          <Label>Room Category</Label>
+                          <Input
+                            value={room.roomCategory}
+                            onChange={(e) =>
+                              setBookingHotels((prev) =>
+                                prev.map((h, i) =>
+                                  i === hotelIdx
+                                    ? {
+                                        ...h,
+                                        rooms: h.rooms.map((r, ri) =>
+                                          ri === roomIdx ? { ...r, roomCategory: e.target.value } : r
+                                        ),
+                                      }
+                                    : h
+                                )
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Room Preference</Label>
+                          <Input
+                            value={room.roomPreference}
+                            onChange={(e) =>
+                              setBookingHotels((prev) =>
+                                prev.map((h, i) =>
+                                  i === hotelIdx
+                                    ? {
+                                        ...h,
+                                        rooms: h.rooms.map((r, ri) =>
+                                          ri === roomIdx ? { ...r, roomPreference: e.target.value } : r
+                                        ),
+                                      }
+                                    : h
+                                )
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>No. of Guests</Label>
+                          <Input
+                            value={room.numberOfGuests}
+                            onChange={(e) =>
+                              setBookingHotels((prev) =>
+                                prev.map((h, i) =>
+                                  i === hotelIdx
+                                    ? {
+                                        ...h,
+                                        rooms: h.rooms.map((r, ri) =>
+                                          ri === roomIdx ? { ...r, numberOfGuests: e.target.value } : r
+                                        ),
+                                      }
+                                    : h
+                                )
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Check-in</Label>
-                  <Input value={checkInDate ? new Date(checkInDate).toLocaleDateString() : ""} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Check-out</Label>
-                  <Input value={checkOutDate ? new Date(checkOutDate).toLocaleDateString() : ""} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Nights</Label>
-                  <Input value={String(calculateNights())} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Guests</Label>
-                  <Input
-                    value={`${lead?.guests?.adults || 0} Adults${lead?.guests?.children ? `, ${lead?.guests?.children} Children` : ""}`}
-                    readOnly
-                  />
-                </div>
                 <div className="space-y-2">
                   <Label>Occasion</Label>
                   <Input value={lead?.occasion || ""} readOnly />
@@ -561,22 +777,6 @@ export const SendQuotationDialog = ({
               <div className="space-y-2">
                 <Label>Special Requests</Label>
                 <Textarea value={lead?.specialRequests || ""} rows={2} readOnly />
-              </div>
-              <div className="space-y-2">
-                <Label>Room Details</Label>
-                <Textarea
-                  value={
-                    roomDetails.length > 0
-                      ? roomDetails
-                          .map((room, index) =>
-                            `Room ${index + 1}: ${room.roomCategory || "N/A"} | ${room.roomPreference || "N/A"} | Guests: ${room.numberOfGuests || "N/A"}`
-                          )
-                          .join("\n")
-                      : "No room-level details available"
-                  }
-                  rows={4}
-                  readOnly
-                />
               </div>
             </div>
 

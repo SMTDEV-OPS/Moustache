@@ -50,6 +50,24 @@ const quotationSchema = z.object({
           })
         )
         .optional(),
+      hotels: z
+        .array(
+          z.object({
+            hotelName: z.string().optional(),
+            checkInDate: z.string().optional(),
+            checkOutDate: z.string().optional(),
+            rooms: z
+              .array(
+                z.object({
+                  roomCategory: z.string().optional(),
+                  roomPreference: z.string().optional(),
+                  numberOfGuests: z.string().optional(),
+                })
+              )
+              .optional(),
+          })
+        )
+        .optional(),
     })
     .optional(),
 });
@@ -106,11 +124,26 @@ const generateQuotationEmailHtml = (
 
   const propertyName = property?.name || "Our Property";
   const leadContact = lead?.contactDetails || {};
+  const quoteHotels = Array.isArray(quote?.bookingDetails?.hotels)
+    ? quote.bookingDetails.hotels
+    : [];
   const itineraryRooms = Array.isArray(itinerary?.rooms)
     ? itinerary.rooms
+    : quoteHotels[0]?.rooms && Array.isArray(quoteHotels[0].rooms)
+    ? quoteHotels[0].rooms
     : Array.isArray(quote?.bookingDetails?.roomDetails)
     ? quote.bookingDetails.roomDetails
     : [];
+  const hotelSummary =
+    quoteHotels.length > 0
+      ? quoteHotels
+          .map((hotel: any, idx: number) => {
+            const inDate = hotel?.checkInDate ? new Date(hotel.checkInDate).toLocaleDateString("en-IN") : "N/A";
+            const outDate = hotel?.checkOutDate ? new Date(hotel.checkOutDate).toLocaleDateString("en-IN") : "N/A";
+            return `<li>Hotel ${idx + 1}: ${hotel?.hotelName || "N/A"} | ${inDate} - ${outDate}</li>`;
+          })
+          .join("")
+      : "<li>No hotel-level details available</li>";
   const roomSummary =
     itineraryRooms.length > 0
       ? itineraryRooms
@@ -284,6 +317,7 @@ const generateQuotationEmailHtml = (
       <div class="inclusions">
         <h3>🛏️ Booking Details</h3>
         <ul>
+          ${hotelSummary}
           ${roomSummary}
         </ul>
       </div>
