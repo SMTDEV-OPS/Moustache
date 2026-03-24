@@ -11,6 +11,7 @@ import { badRequest, notFound } from "../utils/httpError";
 import { logger } from "../config/logger";
 import { LeadStatus } from "../models/common";
 import { handleQuotationResponse } from "../services/clientResponseService";
+import { LeadItineraryModel } from "../models/leadItinerary";
 
 export const quotationsRouter = Router();
 
@@ -30,6 +31,27 @@ const quotationSchema = z.object({
       phone: z.string().optional(),
     })
     .optional(),
+  bookingDetails: z
+    .object({
+      checkInDate: z.string().optional(),
+      checkOutDate: z.string().optional(),
+      nights: z.number().optional(),
+      adults: z.number().optional(),
+      children: z.number().optional(),
+      occasion: z.string().optional(),
+      specialRequests: z.string().optional(),
+      bookingSource: z.string().optional(),
+      roomDetails: z
+        .array(
+          z.object({
+            roomCategory: z.string().optional(),
+            roomPreference: z.string().optional(),
+            numberOfGuests: z.string().optional(),
+          })
+        )
+        .optional(),
+    })
+    .optional(),
 });
 
 // Helper function to format currency
@@ -46,26 +68,67 @@ const generateQuotationEmailHtml = (
   quote: any,
   lead: any,
   property: any,
-  versionNumber: number
+  versionNumber: number,
+  itinerary: any
 ) => {
   const rooms = quote.rooms || 1;
   const rate = quote.rate || 0;
   const taxes = quote.taxes || 0;
   const total = (rate * rooms) + taxes;
 
-  const checkInDate = lead.checkInDate 
+  const checkInDate = itinerary?.checkInDate
+    ? new Date(itinerary.checkInDate).toLocaleDateString("en-IN", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric"
+      })
+    : quote?.bookingDetails?.checkInDate
+    ? new Date(quote.bookingDetails.checkInDate).toLocaleDateString("en-IN", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric"
+      })
+    : lead.checkInDate
     ? new Date(lead.checkInDate).toLocaleDateString("en-IN", { 
         weekday: "long", year: "numeric", month: "long", day: "numeric" 
       })
     : "To be confirmed";
   
-  const checkOutDate = lead.checkOutDate
+  const checkOutDate = itinerary?.checkOutDate
+    ? new Date(itinerary.checkOutDate).toLocaleDateString("en-IN", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric"
+      })
+    : quote?.bookingDetails?.checkOutDate
+    ? new Date(quote.bookingDetails.checkOutDate).toLocaleDateString("en-IN", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric"
+      })
+    : lead.checkOutDate
     ? new Date(lead.checkOutDate).toLocaleDateString("en-IN", {
         weekday: "long", year: "numeric", month: "long", day: "numeric"
       })
     : "To be confirmed";
 
   const propertyName = property?.name || "Our Property";
+  const leadContact = lead?.contactDetails || {};
+  const itineraryRooms = Array.isArray(itinerary?.rooms)
+    ? itinerary.rooms
+    : Array.isArray(quote?.bookingDetails?.roomDetails)
+    ? quote.bookingDetails.roomDetails
+    : [];
+  const roomSummary =
+    itineraryRooms.length > 0
+      ? itineraryRooms
+          .map((room: any, idx: number) => {
+            const parts = [
+              `Room ${idx + 1}`,
+              room?.roomCategory ? `Category: ${room.roomCategory}` : "",
+              room?.roomPreference ? `Preference: ${room.roomPreference}` : "",
+              room?.numberOfGuests ? `Guests: ${room.numberOfGuests}` : "",
+            ].filter(Boolean);
+            return `<li>${parts.join(" | ")}</li>`;
+          })
+          .join("")
+      : "<li>Standard room details to be confirmed</li>";
+
+  const adults = quote?.bookingDetails?.adults ?? lead?.guests?.adults ?? 0;
+  const children = quote?.bookingDetails?.children ?? lead?.guests?.children ?? 0;
+  const totalGuests = `${adults} Adults${children ? `, ${children} Children` : ""}`;
 
   return `
 <!DOCTYPE html>
@@ -132,10 +195,65 @@ const generateQuotationEmailHtml = (
           <span class="detail-label">Check-out Date</span>
           <span class="detail-value">${checkOutDate}</span>
         </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Guest Name</span>
+          <span class="detail-value">${leadContact?.name || quote.sentTo?.name || "To be confirmed"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Guest Email</span>
+          <span class="detail-value">${leadContact?.email || quote.sentTo?.email || "To be confirmed"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Guest Phone</span>
+          <span class="detail-value">${leadContact?.phone || quote.sentTo?.phone || "To be confirmed"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Guests</span>
+          <span class="detail-value">${totalGuests}</span>
+        </div>
         
         <div class="detail-row">
           <span class="detail-label">Number of Rooms</span>
           <span class="detail-value">${rooms}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Lead Source</span>
+          <span class="detail-value">${lead?.source || "N/A"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Lead Type</span>
+          <span class="detail-value">${lead?.leadType || "N/A"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Booking Window</span>
+          <span class="detail-value">${lead?.bookingWindow || "N/A"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Customer Type</span>
+          <span class="detail-value">${lead?.customerType || "N/A"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Estimated Budget</span>
+          <span class="detail-value">${lead?.budget ? formatCurrency(Number(lead.budget)) : "N/A"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Occasion</span>
+          <span class="detail-value">${quote?.bookingDetails?.occasion || lead?.occasion || "N/A"}</span>
+        </div>
+
+        <div class="detail-row">
+          <span class="detail-label">Booking Source</span>
+          <span class="detail-value">${quote?.bookingDetails?.bookingSource || lead?.bookingSource || "N/A"}</span>
         </div>
         
         <div class="detail-row">
@@ -162,6 +280,13 @@ const generateQuotationEmailHtml = (
         </ul>
       </div>
       ` : ''}
+
+      <div class="inclusions">
+        <h3>🛏️ Booking Details</h3>
+        <ul>
+          ${roomSummary}
+        </ul>
+      </div>
       
       ${quote.specialPackages ? `
       <div class="special-packages">
@@ -169,6 +294,17 @@ const generateQuotationEmailHtml = (
         <p>${quote.specialPackages.replace(/\n/g, '<br>')}</p>
       </div>
       ` : ''}
+
+      ${(lead?.specialRequests || lead?.occasion || lead?.isCorporateBooking) ? `
+      <div class="special-packages">
+        <h3>📌 Lead Notes</h3>
+        <p>
+          ${(quote?.bookingDetails?.occasion || lead?.occasion) ? `<strong>Occasion:</strong> ${quote?.bookingDetails?.occasion || lead?.occasion}<br>` : ""}
+          ${(quote?.bookingDetails?.specialRequests || lead?.specialRequests) ? `<strong>Special Requests:</strong> ${quote?.bookingDetails?.specialRequests || lead?.specialRequests}<br>` : ""}
+          ${lead?.isCorporateBooking ? `<strong>Corporate Booking:</strong> Yes${lead?.companyName ? ` (${lead.companyName})` : ""}` : ""}
+        </p>
+      </div>
+      ` : ""}
       
       <p>This quotation is valid for 7 days. To confirm your booking or if you have any questions, please don't hesitate to contact us.</p>
       
@@ -211,6 +347,9 @@ quotationsRouter.post(
       if (lead.propertyId) {
         property = await PropertyModel.findById(lead.propertyId).lean();
       }
+      const itinerary = await LeadItineraryModel.findOne({ leadId: lead._id })
+        .sort({ createdAt: 1 })
+        .lean();
 
       const last = await QuotationModel.findOne({
         leadId: lead._id,
@@ -238,7 +377,8 @@ quotationsRouter.post(
               { ...parsed.data, sentTo: parsed.data.sentTo },
               lead,
               property,
-              versionNumber
+              versionNumber,
+              itinerary
             );
 
             await sendEmail(primaryAccount._id.toString(), {
@@ -248,7 +388,7 @@ quotationsRouter.post(
               }],
               subject: `Quotation for ${propertyName} - Ref: ${lead.leadNumber}`,
               bodyHtml: emailHtml,
-              bodyText: `Dear ${parsed.data.sentTo.name || "Guest"},\n\nPlease find attached your quotation for ${propertyName}.\n\nQuotation Reference: QT-${lead.leadNumber}-V${versionNumber}\nRooms: ${parsed.data.rooms || 1}\nRate: ₹${parsed.data.rate || 0}\nTaxes: ₹${parsed.data.taxes || 0}\n\nThank you for choosing us!\n\nWarm regards,\nThe ${propertyName} Team`,
+              bodyText: `Dear ${parsed.data.sentTo.name || lead.contactDetails?.name || "Guest"},\n\nPlease find your quotation for ${propertyName}.\n\nQuotation Reference: QT-${lead.leadNumber}-V${versionNumber}\nLead Source: ${lead.source || "N/A"}\nLead Type: ${lead.leadType || "N/A"}\nBooking Window: ${lead.bookingWindow || "N/A"}\nCustomer Type: ${lead.customerType || "N/A"}\nRooms: ${parsed.data.rooms || 1}\nRate: ₹${parsed.data.rate || 0}\nTaxes: ₹${parsed.data.taxes || 0}\nGuest Email: ${lead.contactDetails?.email || parsed.data.sentTo.email || "N/A"}\nGuest Phone: ${lead.contactDetails?.phone || parsed.data.sentTo.phone || "N/A"}\n\nThank you for choosing us!\n\nWarm regards,\nThe ${propertyName} Team`,
             });
 
             logger.info("Quotation email sent successfully", {

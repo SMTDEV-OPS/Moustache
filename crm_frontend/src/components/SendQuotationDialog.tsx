@@ -24,10 +24,11 @@ import {
   createQuotation,
   listQuotations,
   Quotation,
+  QuotationBookingDetails,
   SendVia,
   CreateQuotationPayload,
 } from "@/services/quotations";
-import { Lead, LeadDetail } from "@/services/leads";
+import { Lead, LeadDetail, getLeadContactInfo } from "@/services/leads";
 import { listEmailAccounts, EmailAccount } from "@/services/email";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -71,6 +72,19 @@ export const SendQuotationDialog = ({
   propertyName,
   onQuotationSent,
 }: SendQuotationDialogProps) => {
+  const primaryItinerary = lead?.itineraries?.[0];
+  const checkInDate = primaryItinerary?.checkInDate;
+  const checkOutDate = primaryItinerary?.checkOutDate;
+  const roomDetails = primaryItinerary?.rooms || [];
+  const deriveRoomCount = () => {
+    if (roomDetails.length > 0) return String(roomDetails.length);
+    const firstRoomGuests = roomDetails[0]?.numberOfGuests;
+    if (firstRoomGuests && !Number.isNaN(Number(firstRoomGuests))) {
+      return String(Math.max(1, Number(firstRoomGuests)));
+    }
+    return "1";
+  };
+
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"create" | "history">("create");
   const [isSending, setIsSending] = useState(false);
@@ -96,10 +110,24 @@ export const SendQuotationDialog = ({
 
   // Update recipient fields when props change
   useEffect(() => {
-    if (guestName) setRecipientName(guestName);
-    if (guestEmail) setRecipientEmail(guestEmail);
-    if (guestPhone) setRecipientPhone(guestPhone);
-    if (lead?.roomsRequested) setRooms(lead.roomsRequested.toString());
+    const leadContact = lead ? getLeadContactInfo(lead) : { name: "", email: "", phone: "" };
+
+    setRecipientName(guestName || leadContact.name || "");
+    setRecipientEmail(guestEmail || leadContact.email || "");
+    setRecipientPhone(guestPhone || leadContact.phone || "");
+    setRooms(deriveRoomCount());
+
+    if (!specialPackages?.trim()) {
+      const suggested: string[] = [];
+      if (lead?.specialRequests) suggested.push(`Special requests: ${lead.specialRequests}`);
+      if (lead?.occasion) suggested.push(`Occasion: ${lead.occasion}`);
+      if (lead?.isCorporateBooking) {
+        suggested.push(
+          `Corporate booking${lead.companyName ? ` (${lead.companyName})` : ""}`
+        );
+      }
+      setSpecialPackages(suggested.join("\n"));
+    }
   }, [guestName, guestEmail, guestPhone, lead]);
 
   // Load quotation history and email accounts when dialog opens
@@ -147,9 +175,9 @@ export const SendQuotationDialog = ({
   };
 
   const calculateNights = () => {
-    if (!lead?.checkInDate || !lead?.checkOutDate) return 1;
-    const checkIn = new Date(lead.checkInDate);
-    const checkOut = new Date(lead.checkOutDate);
+    if (!checkInDate || !checkOutDate) return 1;
+    const checkIn = new Date(checkInDate);
+    const checkOut = new Date(checkOutDate);
     const diff = Math.ceil(
       (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
     );
@@ -189,6 +217,21 @@ export const SendQuotationDialog = ({
 
     try {
       setIsSending(true);
+      const bookingDetails: QuotationBookingDetails = {
+        checkInDate,
+        checkOutDate,
+        nights: calculateNights(),
+        adults: lead?.guests?.adults || 0,
+        children: lead?.guests?.children || 0,
+        occasion: lead?.occasion,
+        specialRequests: lead?.specialRequests,
+        bookingSource: lead?.bookingSource,
+        roomDetails: roomDetails.map((room) => ({
+          roomCategory: room.roomCategory,
+          roomPreference: room.roomPreference,
+          numberOfGuests: room.numberOfGuests,
+        })),
+      };
 
       const payload: CreateQuotationPayload = {
         rooms: parseInt(rooms) || 1,
@@ -202,6 +245,7 @@ export const SendQuotationDialog = ({
           email: recipientEmail,
           phone: recipientPhone,
         },
+        bookingDetails,
       };
 
       await createQuotation(lead.id, payload);
@@ -271,7 +315,7 @@ export const SendQuotationDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -296,7 +340,7 @@ export const SendQuotationDialog = ({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="create" className="space-y-4 mt-4">
+          <TabsContent value="create" className="space-y-4 mt-4 max-h-[60vh] overflow-y-auto pr-2">
             {/* Lead Summary */}
             {lead && (
               <div className="bg-muted/50 rounded-lg p-4 space-y-2">
@@ -308,12 +352,12 @@ export const SendQuotationDialog = ({
                       <span>{propertyName}</span>
                     </div>
                   )}
-                  {lead.checkInDate && lead.checkOutDate && (
+                  {checkInDate && checkOutDate && (
                     <div className="flex items-center gap-2">
                       <CalendarDays className="h-4 w-4 text-muted-foreground" />
                       <span>
-                        {new Date(lead.checkInDate).toLocaleDateString()} -{" "}
-                        {new Date(lead.checkOutDate).toLocaleDateString()}
+                        {new Date(checkInDate).toLocaleDateString()} -{" "}
+                        {new Date(checkOutDate).toLocaleDateString()}
                         <span className="text-muted-foreground ml-1">
                           ({calculateNights()} nights)
                         </span>
@@ -327,6 +371,12 @@ export const SendQuotationDialog = ({
                         {lead.guests.adults || 0} Adults
                         {lead.guests.children ? `, ${lead.guests.children} Children` : ""}
                       </span>
+                    </div>
+                  )}
+                  {lead.budget && (
+                    <div className="flex items-center gap-2">
+                      <IndianRupee className="h-4 w-4 text-muted-foreground" />
+                      <span>Budget: {new Intl.NumberFormat("en-IN").format(lead.budget)}</span>
                     </div>
                   )}
                 </div>
@@ -471,6 +521,62 @@ export const SendQuotationDialog = ({
                   <IndianRupee className="h-5 w-5" />
                   {calculateTotal().toLocaleString("en-IN")}
                 </span>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Booking Details */}
+            <div className="space-y-4">
+              <h4 className="font-medium text-sm">Booking Details (Auto-fetched)</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Check-in</Label>
+                  <Input value={checkInDate ? new Date(checkInDate).toLocaleDateString() : ""} readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label>Check-out</Label>
+                  <Input value={checkOutDate ? new Date(checkOutDate).toLocaleDateString() : ""} readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nights</Label>
+                  <Input value={String(calculateNights())} readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label>Guests</Label>
+                  <Input
+                    value={`${lead?.guests?.adults || 0} Adults${lead?.guests?.children ? `, ${lead?.guests?.children} Children` : ""}`}
+                    readOnly
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Occasion</Label>
+                  <Input value={lead?.occasion || ""} readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label>Booking Source</Label>
+                  <Input value={lead?.bookingSource || ""} readOnly />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Special Requests</Label>
+                <Textarea value={lead?.specialRequests || ""} rows={2} readOnly />
+              </div>
+              <div className="space-y-2">
+                <Label>Room Details</Label>
+                <Textarea
+                  value={
+                    roomDetails.length > 0
+                      ? roomDetails
+                          .map((room, index) =>
+                            `Room ${index + 1}: ${room.roomCategory || "N/A"} | ${room.roomPreference || "N/A"} | Guests: ${room.numberOfGuests || "N/A"}`
+                          )
+                          .join("\n")
+                      : "No room-level details available"
+                  }
+                  rows={4}
+                  readOnly
+                />
               </div>
             </div>
 

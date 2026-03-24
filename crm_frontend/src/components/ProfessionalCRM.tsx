@@ -152,6 +152,12 @@ export const ProfessionalCRM = ({
   const canViewBuddyHistory = !!isAdmin || permissions?.includes("buddies.view.history");
   const canViewBuddyReports = !!isAdmin || permissions?.includes("buddies.view.reports");
   const canAccessBuddy = canAssignBuddy || canViewBuddyHistory || canViewBuddyReports;
+  const openSharedAddLeadForm = () => {
+    setActiveView("leads");
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("crm:open-add-lead"));
+    }, 0);
+  };
 
   const renderContent = () => {
     switch (activeView) {
@@ -181,6 +187,7 @@ export const ProfessionalCRM = ({
             incomingCall={incomingCall}
             onCallEnd={() => setIncomingCall(false)}
             agentName={userName}
+            onOpenLeadForm={openSharedAddLeadForm}
           />
         );
       case 'leads':

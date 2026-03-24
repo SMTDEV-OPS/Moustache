@@ -16,6 +16,21 @@ export interface IQuotation extends Document {
     email?: string;
     phone?: string;
   };
+  bookingDetails?: {
+    checkInDate?: Date;
+    checkOutDate?: Date;
+    nights?: number;
+    adults?: number;
+    children?: number;
+    occasion?: string;
+    specialRequests?: string;
+    bookingSource?: string;
+    roomDetails?: Array<{
+      roomCategory?: string;
+      roomPreference?: string;
+      numberOfGuests?: string;
+    }>;
+  };
   sentAt?: Date;
   status: "SENT" | "REVISED" | "ACCEPTED" | "REJECTED";
 }
@@ -35,6 +50,23 @@ const quotationSchema = new Schema<IQuotation>(
       name: String,
       email: String,
       phone: String,
+    },
+    bookingDetails: {
+      checkInDate: Date,
+      checkOutDate: Date,
+      nights: Number,
+      adults: Number,
+      children: Number,
+      occasion: String,
+      specialRequests: String,
+      bookingSource: String,
+      roomDetails: [
+        {
+          roomCategory: String,
+          roomPreference: String,
+          numberOfGuests: String,
+        },
+      ],
     },
     sentAt: Date,
     status: {

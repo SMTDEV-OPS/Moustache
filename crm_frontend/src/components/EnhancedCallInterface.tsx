@@ -42,9 +42,16 @@ interface EnhancedCallInterfaceProps {
   incomingCall: boolean;
   onCallEnd: () => void;
   agentName: string;
+  onOpenLeadForm?: () => void;
 }
 
-export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentName }: EnhancedCallInterfaceProps) => {
+export const EnhancedCallInterface = ({
+  guest,
+  incomingCall,
+  onCallEnd,
+  agentName,
+  onOpenLeadForm,
+}: EnhancedCallInterfaceProps) => {
   const [callActive, setCallActive] = useState(incomingCall);
   const [callDuration, setCallDuration] = useState(0);
   const [notes, setNotes] = useState("");
@@ -151,7 +158,12 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
     }
 
     if (selectedDisposition === "New Query") {
-      setShowLeadFormDialog(true);
+      if (onOpenLeadForm) {
+        setShowDispositionDialog(false);
+        onOpenLeadForm();
+      } else {
+        setShowLeadFormDialog(true);
+      }
       return;
     }
 

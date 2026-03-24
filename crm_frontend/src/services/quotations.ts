@@ -9,6 +9,24 @@ export interface QuotationRecipient {
   phone?: string;
 }
 
+export interface QuotationRoomDetail {
+  roomCategory?: string;
+  roomPreference?: string;
+  numberOfGuests?: string;
+}
+
+export interface QuotationBookingDetails {
+  checkInDate?: string;
+  checkOutDate?: string;
+  nights?: number;
+  adults?: number;
+  children?: number;
+  occasion?: string;
+  specialRequests?: string;
+  bookingSource?: string;
+  roomDetails?: QuotationRoomDetail[];
+}
+
 export interface Quotation {
   id: string;
   leadId: string;
@@ -21,6 +39,7 @@ export interface Quotation {
   specialPackages?: string;
   sentVia?: SendVia;
   sentTo?: QuotationRecipient;
+  bookingDetails?: QuotationBookingDetails;
   sentAt?: string;
   status: QuotationStatus;
   createdAt?: string;
@@ -35,6 +54,7 @@ export interface CreateQuotationPayload {
   specialPackages?: string;
   sentVia?: SendVia;
   sentTo?: QuotationRecipient;
+  bookingDetails?: QuotationBookingDetails;
 }
 
 /**

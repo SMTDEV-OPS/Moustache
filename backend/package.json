@@ -17,6 +17,8 @@
     "seed:dashboard-widgets": "ts-node scripts/seedDashboardWidgets.ts",
     "seed:accounts:fixtures": "ts-node scripts/seedAccountFixtures.ts",
     "seed:kb:fixtures": "ts-node scripts/seedKnowledgeBaseFixtures.ts",
+    "seed:leads:dummy": "ts-node scripts/seedDummyLeads.ts",
+    "seed:property-kb:excel": "ts-node scripts/seedPropertyKnowledgeFromExcels.ts",
     "seed:everything": "ts-node scripts/seedEverything.ts",
     "seed:complete": "ts-node scripts/seedComplete.ts",
     "db:reset": "ts-node scripts/resetDatabase.ts",

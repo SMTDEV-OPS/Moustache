@@ -202,6 +202,14 @@ const ProfessionalLeadManagement = ({
   }, [isAddLeadOpen]);
 
   useEffect(() => {
+    const handleOpenAddLead = () => {
+      setIsAddLeadOpen(true);
+    };
+    window.addEventListener("crm:open-add-lead", handleOpenAddLead);
+    return () => window.removeEventListener("crm:open-add-lead", handleOpenAddLead);
+  }, []);
+
+  useEffect(() => {
     const fetchPmsHotels = async () => {
       try {
         const properties = await listProperties();
