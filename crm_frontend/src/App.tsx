@@ -16,7 +16,7 @@ import { FieldBuilder } from "@/pages/setup/FieldBuilder";
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <ThemeProvider attribute="class" defaultTheme="light" storageKey="moustache-theme" enableSystem={false}>
+    <ThemeProvider attribute="class" defaultTheme="light" storageKey="postcard-theme" enableSystem={false}>
       <ToastProvider>
         <AuthProvider>
           <TooltipProvider>

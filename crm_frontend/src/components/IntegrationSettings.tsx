@@ -15,7 +15,7 @@ export function IntegrationSettings() {
     const [copied, setCopied] = useState<string | null>(null);
 
     // Derive URLs for display
-    const origin = window.location.origin; // e.g. https://crm.moustache.com 
+    const origin = window.location.origin; // e.g. https://crm.postcard.com 
     // Map this to your actual backend domain in production, for now we will assume the API_BASE_URL is relative or has the domain.
     const backendBase = (API_BASE_URL.startsWith('http') ? API_BASE_URL : origin + '/api');
 

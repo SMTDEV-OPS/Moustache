@@ -46,10 +46,10 @@ const LeadManagement = () => {
   ];
 
   const propertyRoomCategories = {
-    "Moustache Goa": ["Deluxe Ocean View", "Premium Sea Facing", "Luxury Villa", "Standard Room"],
-    "Moustache Kerala": ["Backwater Suite", "Garden View", "Pool Villa", "Heritage Room"],
-    "Moustache Rajasthan": ["Royal Suite", "Palace View", "Courtyard Room", "Desert Villa"],
-    "Moustache Mumbai": ["City View", "Executive Suite", "Business Room", "Premium Floor"]
+    "Postcard Goa": ["Deluxe Ocean View", "Premium Sea Facing", "Luxury Villa", "Standard Room"],
+    "Postcard Kerala": ["Backwater Suite", "Garden View", "Pool Villa", "Heritage Room"],
+    "Postcard Rajasthan": ["Royal Suite", "Palace View", "Courtyard Room", "Desert Villa"],
+    "Postcard Mumbai": ["City View", "Executive Suite", "Business Room", "Premium Floor"]
   };
 
   const [leads, setLeads] = useState<any[]>([
@@ -65,7 +65,7 @@ const LeadManagement = () => {
       source: "Website",
       status: "Query",
       value: "$3,200",
-      hotelName: "Moustache Goa",
+      hotelName: "Postcard Goa",
       checkInDate: "2025-01-20",
       checkOutDate: "2025-01-23",
       roomCategory: "Deluxe Ocean View",
@@ -106,7 +106,7 @@ const LeadManagement = () => {
       source: "Email Campaign",
       status: "Proposal",
       value: "$1,800",
-      hotelName: "Moustache Kerala",
+      hotelName: "Postcard Kerala",
       checkInDate: "2025-01-18",
       checkOutDate: "2025-01-21",
       roomCategory: "Backwater Suite",
@@ -145,7 +145,7 @@ const LeadManagement = () => {
       source: "Event",
       status: "Tentative",
       value: "$950",
-      hotelName: "Moustache Rajasthan",
+      hotelName: "Postcard Rajasthan",
       checkInDate: "2025-01-16",
       checkOutDate: "2025-01-18",
       roomCategory: "Palace View",
@@ -185,7 +185,7 @@ const LeadManagement = () => {
       source: "Social Media",
       status: "Query",
       value: "$2,400",
-      hotelName: "Moustache Kerala",
+      hotelName: "Postcard Kerala",
       checkInDate: "2025-01-25",
       checkOutDate: "2025-01-28",
       roomCategory: "Pool Villa",
@@ -224,7 +224,7 @@ const LeadManagement = () => {
       source: "Corporate Referral",
       status: "Proposal",
       value: "$5,200",
-      hotelName: "Moustache Rajasthan",
+      hotelName: "Postcard Rajasthan",
       checkInDate: "2025-02-15",
       checkOutDate: "2025-02-18",
       roomCategory: "Royal Suite",
@@ -263,7 +263,7 @@ const LeadManagement = () => {
       source: "Website Chat",
       status: "Tentative",
       value: "$1,200",
-      hotelName: "Moustache Mumbai",
+      hotelName: "Postcard Mumbai",
       checkInDate: "2025-03-10",
       checkOutDate: "2025-03-12",
       roomCategory: "City View",
@@ -603,10 +603,10 @@ const LeadManagement = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Hotels</SelectItem>
-                        <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
-                        <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
-                        <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
-                        <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
+                        <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
+                        <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
+                        <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
+                        <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -813,10 +813,10 @@ const LeadManagement = () => {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
-                                  <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
-                                  <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
-                                  <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
+                                  <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
+                                  <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
+                                  <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
+                                  <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />

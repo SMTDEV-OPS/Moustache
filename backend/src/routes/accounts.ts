@@ -1,9 +1,18 @@
 import { Router } from "express";
 import { z } from "zod";
+import * as XLSX from "xlsx";
 import { AccountModel } from "../models/account";
-import { requireAuth, requirePermissions } from "../middleware/auth";
+import { ApprovalRequestModel } from "../models/approvalRequest";
+import { ContactActivityModel } from "../models/contactActivity";
+import { LeadModel } from "../models/lead";
+import { LeadActivityModel } from "../models/leadActivity";
+import { CommunicationModel } from "../models/communication";
+import { AccountNoteModel } from "../models/accountNote";
+import { ActivityLogModel } from "../models/activityLog";
+import { requireAuth, requirePermissions, requireAnyPermission, hasPermission } from "../middleware/auth";
 import { PERMISSIONS } from "../constants/permissions";
-import { badRequest, notFound } from "../utils/httpError";
+import { badRequest, notFound, forbidden } from "../utils/httpError";
+import { uploadProperty as upload } from "../middleware/upload";
 
 export const accountsRouter = Router();
 
@@ -12,8 +21,25 @@ accountsRouter.use(requireAuth);
 const accountSchema = z.object({
   // Step 1 & 2: Basic & Org Type
   name: z.string().min(1),
-  organizationType: z.enum(["CORPORATE", "TRAVEL_AGENT", "EVENT_PLANNER", "PCO", "AIRLINE", "GOVERNMENT", "EMBASSY_CONSULATE", "PSU", "CUSTOM"]),
+  organizationType: z.enum([
+    "CORPORATE",
+    "TRAVEL_AGENT",
+    "EVENT_PLANNER",
+    "WEDDING_PLANNER",
+    "PCO",
+    "AIRLINE",
+    "GOVERNMENT",
+    "EMBASSY_CONSULATE",
+    "PSU",
+    "CUSTOM",
+    "EVENT_ORGANISER",
+    "PROFESSIONAL_CONFERENCE_ORGANISER",
+    "GOVERNMENT_BODIES",
+    "EMBASSIES_AND_CONSULATES",
+    "PUBLIC_SECTOR_UNIT",
+  ]),
   customOrganizationType: z.string().optional(),
+  customOrganizationTypes: z.array(z.string()).optional(),
 
   // Step 3: Conglomerate
   conglomerateId: z.string().optional().nullable(),
@@ -21,13 +47,14 @@ const accountSchema = z.object({
 
   // Step 4 & 5: Hierarchy & HQ
   accountLevel: z.enum(["MASTER", "PARENT", "BRANCH", "SUBSIDIARY"]),
-  isHeadquarter: z.boolean(),
-  headquarterName: z.string().optional(),
+  profileStatus: z.union([z.enum(["ACTIVE", "NA"]), z.boolean()]).optional(),
+  isHeadquarter: z.boolean().optional(),
   parentAccountId: z.string().optional().nullable(),
+  hqAccountId: z.string().optional().nullable(),
 
   // Step 7: Account Type
   accountType: z.enum(["ACQUISITION", "DEVELOPMENT", "RETENTION"]).optional(),
-  accountTypeOverride: z.enum(["ACQUISITION", "DEVELOPMENT", "RETENTION"]).optional(),
+  accountTypeOverride: z.boolean().optional(),
 
   // Step 8 & 13: Address & Identification
   addressLine1: z.string().optional(),
@@ -41,6 +68,10 @@ const accountSchema = z.object({
   gstin: z.string().regex(/^[0-9A-Z]{15}$|^[0-9]{13}$/).optional().or(z.literal("")), // Validates 13 digit or standard GSTIN
   panNumber: z.string().optional(),
   pmsProfileId: z.string().optional(),
+  adr: z.number().optional().nullable(),
+
+  // Account ↔ Property mapping (multi-property)
+  propertyIds: z.array(z.string()).optional(),
 
   // Step 9: Sales Assignment
   primaryAccountManager: z.object({
@@ -55,16 +86,19 @@ const accountSchema = z.object({
   })).optional(),
 
   // Step 10 & 11: Industry
-  industryCategory: z.string().optional(),
+  industry: z.string().optional(),
   industrySubCategory: z.string().optional(),
-  industrySize: z.enum(["SMALL", "MEDIUM", "LARGE"]).optional(),
+  industryStatus: z.enum(["SMALL", "MEDIUM", "LARGE"]).optional(),
 
   // Step 12: Contracting
   contractingTypes: z.array(z.object({
     type: z.enum(["LOCAL_CONTRACTING", "LOCAL_RFP", "GLOBAL_RFP", "ANNUAL_CONTRACT"]),
+    year: z.number().optional(),
+    fromYear: z.number().optional(),
+    toYear: z.number().optional(),
     fromMonth: z.number().min(1).max(12),
     toMonth: z.number().min(1).max(12),
-  })).optional(),
+  }).refine((d) => d.toYear == null || d.fromYear == null || d.toYear >= d.fromYear, { message: "To year must be >= from year" })).optional(),
 
   // Contact & Legacy
   email: z.string().email().optional().or(z.literal("")),
@@ -78,10 +112,96 @@ const accountSchema = z.object({
   billingInstruction: z.string().optional(),
   remarks: z.string().optional(),
   notes: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  status: z.enum(["LEAD", "PROSPECT", "ACTIVE", "INACTIVE", "BLACKLISTED", "NA"]).optional(),
+
+  followUpDate: z.coerce.date().optional().nullable(),
+  followUpNote: z.string().optional(),
 });
 
+// POST /accounts/import — bulk import from Excel
+accountsRouter.post(
+  "/import",
+  requireAuth,
+  requirePermissions([PERMISSIONS.ACCOUNTS.CREATE]),
+  upload.single("file"),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+
+      let imported = 0;
+      let skipped = 0;
+      const errors: { row: number; reason: string }[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        try {
+          const name = row["Company Name"]?.toString().trim();
+          if (!name) {
+            errors.push({ row: i + 2, reason: "Company Name is required" });
+            skipped++;
+            continue;
+          }
+
+          const existing = await AccountModel.findOne({
+            name: { $regex: new RegExp(`^${name}$`, "i") },
+          });
+          if (existing) {
+            errors.push({ row: i + 2, reason: `Account "${name}" already exists` });
+            skipped++;
+            continue;
+          }
+
+          await AccountModel.create({
+            name,
+            isHeadquarter: row["Is it a Headquarter?"]?.toString().toLowerCase() === "yes",
+            accountType: row["Account Type"] || undefined,
+            addressLine1: row["Add Line 1"] || "",
+            addressLine2: row["Add Line 2"] || "",
+            zip: row["ZIP"]?.toString() || "",
+            city: row["City "]?.toString().trim() || row["City"]?.toString().trim() || "",
+            subCity: row["Sub-City"] || "",
+            state: row["State"] || "",
+            country: row["Country"] || "India",
+            zone: row["Zone"] || "",
+            boardLine: row["Board Line"] || "",
+            email: row["Email"] || "",
+            industry: row["Industry"] || "",
+            gstin: row["GSTIN"]?.toString() || "",
+            panNumber: row["PAN Number"]?.toString() || "",
+            contractingType: row["Contracting Type"] || undefined,
+            profileStatus: "ACTIVE",
+            status: "ACTIVE",
+            // Required model fields with safe defaults for import flow
+            organizationType: "CUSTOM",
+            type: "OTHER",
+            accountLevel: "MASTER",
+          });
+          imported++;
+        } catch (err: any) {
+          errors.push({ row: i + 2, reason: err.message || "Unknown error" });
+          skipped++;
+        }
+      }
+
+      res.json({ imported, skipped, errors });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // Advanced Global Search
-accountsRouter.get("/search", async (req, res, next) => {
+accountsRouter.get(
+  "/search",
+  requireAnyPermission(["accounts.read", "accounts.access"]),
+  async (req, res, next) => {
   try {
     const { q } = req.query;
     if (!q) return res.json([]);
@@ -102,9 +222,28 @@ accountsRouter.get("/search", async (req, res, next) => {
   }
 });
 
-accountsRouter.get("/", requirePermissions([PERMISSIONS.ACCOUNTS.READ]), async (req, res, next) => {
+accountsRouter.get("/check-hq", async (req, res, next) => {
   try {
-    const { type, organizationTypes, city, accountType, accountLevel } = req.query;
+    const { name } = req.query;
+    if (!name || typeof name !== "string") {
+      return res.json({ hasHq: false });
+    }
+    const existingHQ = await AccountModel.findOne({
+      name: { $regex: new RegExp(`^${name}$`, "i") },
+      isHeadquarter: true
+    }).lean();
+    res.json({ hasHq: !!existingHQ });
+  } catch (err) {
+    next(err);
+  }
+});
+
+accountsRouter.get(
+  "/",
+  requireAnyPermission(["accounts.read", "accounts.access"]),
+  async (req, res, next) => {
+  try {
+    const { type, organizationTypes, city, accountType, accountLevel, myAccounts, tags, status, includeNa } = req.query;
     const filter: Record<string, unknown> = {};
 
     // Support multi-select organization types
@@ -117,6 +256,23 @@ accountsRouter.get("/", requirePermissions([PERMISSIONS.ACCOUNTS.READ]), async (
     if (city) filter.city = city;
     if (accountType) filter.accountType = accountType;
     if (accountLevel) filter.accountLevel = accountLevel;
+    if (status && typeof status === "string") {
+      filter.status = status;
+    } else if (String(includeNa) !== "true") {
+      // By default exclude NA accounts from the list
+      filter.status = { $ne: "NA" };
+    }
+    if (tags) {
+      const tagArr = Array.isArray(tags) ? tags : [tags];
+      filter.tags = { $in: tagArr };
+    }
+
+    if (myAccounts === "true" && req.user) {
+      filter.$or = [
+        { "primaryAccountManager.userId": req.user.id },
+        { "secondaryAccountManagers.userId": req.user.id }
+      ];
+    }
 
     const accounts = await AccountModel.find(filter).sort({ name: 1 }).lean();
     res.json(accounts);
@@ -127,9 +283,12 @@ accountsRouter.get("/", requirePermissions([PERMISSIONS.ACCOUNTS.READ]), async (
 
 accountsRouter.post(
   "/",
-  requirePermissions([PERMISSIONS.ACCOUNTS.MANAGE]),
+  requirePermissions([PERMISSIONS.ACCOUNTS.CREATE]),
   async (req, res, next) => {
     try {
+      if (!req.user?.isAdmin) {
+        return next(forbidden("Only admins can create accounts"));
+      }
       const parsed = accountSchema.safeParse(req.body);
       if (!parsed.success) {
         console.error("Validation error:", parsed.error);
@@ -137,6 +296,9 @@ accountsRouter.post(
       }
 
       const data = parsed.data;
+
+      const normalizedProfileStatus =
+        data.profileStatus === "NA" || data.profileStatus === false ? "NA" : "ACTIVE";
 
       // Hierarchy validation
       if (data.parentAccountId) {
@@ -149,20 +311,61 @@ accountsRouter.post(
       // HQ Uniqueness Check (simplification: only one HQ per account name root)
       if (data.isHeadquarter) {
         const existingHQ = await AccountModel.findOne({
-          name: data.name,
-          isHeadquarter: true
+          name: { $regex: new RegExp(`^${data.name}$`, "i") },
+          isHeadquarter: true,
         });
         if (existingHQ) {
           throw badRequest(`A Headquarter already exists for ${data.name}.`);
         }
       }
 
-      const account = await AccountModel.create({
+      // Duplicate Check
+      const existingNameMatch = await AccountModel.findOne({
+        name: { $regex: new RegExp(`^${data.name}$`, 'i') }
+      });
+
+      if (existingNameMatch) {
+        await ApprovalRequestModel.create({
+          entityType: "ACCOUNT",
+          entityName: data.name,
+          payload: data,
+          status: "PENDING",
+          submittedBy: req.user?.id,
+        });
+        return res.status(409).json({
+          message: `An account with the name "${data.name}" already exists. Your request has been submitted for Admin approval.`,
+          pendingApproval: true
+        });
+      }
+
+      // Normalize manager userIds: empty string cannot be cast to ObjectId; omit when blank
+      const createPayload: Record<string, unknown> = {
         ...data,
         parentAccountId: data.parentAccountId || null,
-        // Map legacy type if needed
-        type: data.organizationType as any
-      });
+        hqAccountId: data.hqAccountId || null,
+        type: data.organizationType as any,
+        profileStatus: normalizedProfileStatus,
+        isHeadquarter: data.isHeadquarter ?? false,
+        industryCategory: data.industry,
+        industrySize: data.industryStatus,
+      };
+      if (data.primaryAccountManager) {
+        const pam = data.primaryAccountManager;
+        createPayload.primaryAccountManager = {
+          name: pam.name,
+          city: pam.city,
+          ...(pam.userId?.trim() && { userId: pam.userId.trim() }),
+        };
+      }
+      if (data.secondaryAccountManagers?.length) {
+        createPayload.secondaryAccountManagers = data.secondaryAccountManagers.map((m) => ({
+          name: m.name,
+          city: m.city,
+          ...(m.userId?.trim() && { userId: m.userId.trim() }),
+        }));
+      }
+
+      const account = await AccountModel.create(createPayload);
       res.status(201).json(account);
     } catch (err) {
       next(err);
@@ -173,15 +376,29 @@ accountsRouter.post(
 
 accountsRouter.patch(
   "/:id",
-  requirePermissions([PERMISSIONS.ACCOUNTS.MANAGE]),
+  requireAuth,
   async (req, res, next) => {
     try {
+      const canUpdate = hasPermission(req.user, "accounts.update");
+      if (!canUpdate) {
+        return next(forbidden("Insufficient permissions to update account"));
+      }
+
       const parsed = accountSchema.partial().safeParse(req.body);
       if (!parsed.success) {
         throw badRequest("Invalid account update payload");
       }
 
       const data = parsed.data;
+
+      // Full update allowed, but ownership fields are restricted unless the user can assign managers.
+      const canAssignManagers = hasPermission(req.user, "accounts.assign_managers");
+      const updateData: Record<string, unknown> = { ...data };
+
+      if (!canAssignManagers) {
+        delete (updateData as any).primaryAccountManager;
+        delete (updateData as any).secondaryAccountManagers;
+      }
 
       // Validate parentAccountId if provided
       if (data.parentAccountId !== undefined) {
@@ -195,7 +412,6 @@ accountsRouter.patch(
             throw badRequest("Parent account does not exist");
           }
 
-          // Check for circular reference
           const checkCircularReference = async (accountId: string, targetParentId: string): Promise<boolean> => {
             const account = await AccountModel.findById(accountId);
             if (!account || !account.parentAccountId) {
@@ -214,9 +430,23 @@ accountsRouter.patch(
         }
       }
 
-      const updateData: Record<string, unknown> = { ...data };
       if (data.parentAccountId === null || data.parentAccountId === "") {
         updateData.parentAccountId = null;
+      }
+
+      if (data.profileStatus !== undefined) {
+        updateData.profileStatus =
+          data.profileStatus === "NA" || data.profileStatus === false ? "NA" : "ACTIVE";
+      }
+
+      if (data.isHeadquarter !== undefined) {
+        updateData.isHeadquarter = data.isHeadquarter;
+      }
+      if (data.industry !== undefined) {
+        updateData.industryCategory = data.industry;
+      }
+      if (data.industryStatus !== undefined) {
+        updateData.industrySize = data.industryStatus;
       }
 
       const account = await AccountModel.findByIdAndUpdate(
@@ -238,6 +468,10 @@ accountsRouter.patch(
 // NOTE: This route must come before /:id to avoid route conflicts
 accountsRouter.get("/roots", async (req, res, next) => {
   try {
+    if (!hasPermission(req.user, "accounts.view_hierarchy")) {
+      throw forbidden("Insufficient permissions to view account hierarchy");
+    }
+
     const rootAccounts = await AccountModel.find({
       parentAccountId: null
     }).lean();
@@ -247,8 +481,120 @@ accountsRouter.get("/roots", async (req, res, next) => {
   }
 });
 
+// Get unified timeline for account (contact activities, lead activities, communications, notes)
+accountsRouter.get("/:id/timeline", async (req, res, next) => {
+  try {
+    if (!hasPermission(req.user, "accounts.manage_activities")) {
+      throw forbidden("Insufficient permissions to view account timeline");
+    }
+
+    const accountId = req.params.id;
+    const account = await AccountModel.findById(accountId).lean();
+    if (!account) {
+      throw notFound("Account not found");
+    }
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 200);
+
+    // 1. Contact activities
+    const contactActivities = await ContactActivityModel.find({ accountId })
+      .sort({ performedAt: -1 })
+      .limit(limit)
+      .populate("contactId", "name")
+      .populate("performedByUserId", "name email")
+      .lean();
+
+    // 2. Leads for this account
+    const accountLeadIds = await LeadModel.find({ accountId }).select("_id").lean();
+    const leadIds = accountLeadIds.map((l) => l._id);
+
+    // 3. Lead activities for those leads
+    let leadActivities: any[] = [];
+    if (leadIds.length > 0) {
+      leadActivities = await LeadActivityModel.find({ leadId: { $in: leadIds } })
+        .sort({ performedAt: -1 })
+        .limit(limit)
+        .populate("performedByUserId", "name email")
+        .lean();
+    }
+
+    // 4. Communications for those leads
+    let communications: any[] = [];
+    if (leadIds.length > 0) {
+      communications = await CommunicationModel.find({ leadId: { $in: leadIds } })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate("performedByUserId", "name email")
+        .lean();
+    }
+
+    // 5. Account notes
+    const notes = await AccountNoteModel.find({ accountId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate("createdByUserId", "name email")
+      .lean();
+
+    type TimelineItem = {
+      id: string;
+      source: "contact_activity" | "lead_activity" | "communication" | "note";
+      date: Date;
+      summary?: string;
+      detail?: any;
+    };
+
+    const items: TimelineItem[] = [];
+
+    for (const a of contactActivities) {
+      items.push({
+        id: (a as any)._id.toString(),
+        source: "contact_activity",
+        date: (a as any).performedAt,
+        summary: `${(a as any).activityType?.replace(/_/g, " ")}${(a as any).contactId?.name ? ` · ${(a as any).contactId.name}` : ""}`,
+        detail: a,
+      });
+    }
+    for (const a of leadActivities) {
+      items.push({
+        id: (a as any)._id.toString(),
+        source: "lead_activity",
+        date: (a as any).performedAt,
+        summary: (a as any).type?.replace(/_/g, " ") || "Activity",
+        detail: a,
+      });
+    }
+    for (const c of communications) {
+      items.push({
+        id: (c as any)._id.toString(),
+        source: "communication",
+        date: (c as any).createdAt,
+        summary: `${(c as any).channel} · ${(c as any).direction}`,
+        detail: c,
+      });
+    }
+    for (const n of notes) {
+      items.push({
+        id: (n as any)._id.toString(),
+        source: "note",
+        date: (n as any).createdAt,
+        summary: (n as any).content?.substring(0, 80) || "Note",
+        detail: n,
+      });
+    }
+
+    items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const sliced = items.slice(0, limit);
+    res.json(sliced);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Get a single account by ID
-accountsRouter.get("/:id", async (req, res, next) => {
+accountsRouter.get(
+  "/:id",
+  requireAnyPermission(["accounts.read", "accounts.access"]),
+  async (req, res, next) => {
   try {
     const account = await AccountModel.findById(req.params.id).lean();
     if (!account) {
@@ -263,6 +609,10 @@ accountsRouter.get("/:id", async (req, res, next) => {
 // Get direct children of a specific account
 accountsRouter.get("/:id/children", async (req, res, next) => {
   try {
+    if (!hasPermission(req.user, "accounts.view_hierarchy")) {
+      throw forbidden("Insufficient permissions to view account hierarchy");
+    }
+
     const account = await AccountModel.findById(req.params.id).lean();
     if (!account) {
       throw notFound("Account not found");
@@ -280,6 +630,10 @@ accountsRouter.get("/:id/children", async (req, res, next) => {
 // Get all descendants (children, grandchildren, etc.) of a specific account
 accountsRouter.get("/:id/descendants", async (req, res, next) => {
   try {
+    if (!hasPermission(req.user, "accounts.view_hierarchy")) {
+      throw forbidden("Insufficient permissions to view account hierarchy");
+    }
+
     const account = await AccountModel.findById(req.params.id).lean();
     if (!account) {
       throw notFound("Account not found");
@@ -310,6 +664,10 @@ accountsRouter.get("/:id/descendants", async (req, res, next) => {
 // Get full hierarchy tree structure (nested children)
 accountsRouter.get("/:id/hierarchy", async (req, res, next) => {
   try {
+    if (!hasPermission(req.user, "accounts.view_hierarchy")) {
+      throw forbidden("Insufficient permissions to view account hierarchy");
+    }
+
     const buildTree = async (accountId: string): Promise<any> => {
       const account = await AccountModel.findById(accountId).lean();
       if (!account) {
@@ -343,6 +701,10 @@ accountsRouter.get("/:id/hierarchy", async (req, res, next) => {
 // Get parent chain (all ancestors) of a specific account
 accountsRouter.get("/:id/parents", async (req, res, next) => {
   try {
+    if (!hasPermission(req.user, "accounts.view_hierarchy")) {
+      throw forbidden("Insufficient permissions to view account hierarchy");
+    }
+
     const account = await AccountModel.findById(req.params.id).lean();
     if (!account) {
       throw notFound("Account not found");
@@ -372,9 +734,16 @@ accountsRouter.get("/:id/parents", async (req, res, next) => {
 
 accountsRouter.delete(
   "/:id",
-  requirePermissions([PERMISSIONS.ACCOUNTS.MANAGE]),
+  requirePermissions([PERMISSIONS.ACCOUNTS.DELETE]),
   async (req, res, next) => {
     try {
+      // Only SYSTEM_ADMIN can hard delete; others must use NA status
+      if (!req.user?.isSystemAdmin) {
+        return next(forbidden(
+          "Only System Administrators can delete accounts. Use NA status instead."
+        ));
+      }
+
       // Check if account has children
       const childrenCount = await AccountModel.countDocuments({
         parentAccountId: req.params.id
@@ -386,10 +755,27 @@ accountsRouter.delete(
         );
       }
 
-      const account = await AccountModel.findByIdAndDelete(req.params.id).lean();
+      const account = await AccountModel.findById(req.params.id).lean();
       if (!account) {
         throw notFound("Account not found");
       }
+
+      const accountName = (account as any).name;
+      await AccountModel.findByIdAndDelete(req.params.id);
+
+      // Audit log: who deleted, when, accountName
+      await ActivityLogModel.create({
+        type: "ACCOUNT",
+        entityId: req.params.id,
+        userId: req.user.id,
+        action: "DELETE",
+        metadata: {
+          accountName,
+          deletedBy: req.user.id,
+          deletedAt: new Date().toISOString(),
+        },
+      });
+
       res.json({ message: "Account deleted successfully" });
     } catch (err) {
       next(err);

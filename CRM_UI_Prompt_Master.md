@@ -1,9 +1,9 @@
-# Moustache CRM — Frontend Rebuild Master Context
+# Postcard CRM — Frontend Rebuild Master Context
 
 ## MANDATORY READING BEFORE ANY CODE
-Read and strictly follow: /Users/adarsh/MyRepo/Moustache/.agents/skills/uncodixfy/Uncodixfy.md
+Read and strictly follow: /Users/adarsh/MyRepo/Postcard/.agents/skills/uncodixfy/Uncodixfy.md
 
-and use /Users/adarsh/MyRepo/Moustache/.agents/skills/uncodixfy/SKILL.md
+and use /Users/adarsh/MyRepo/Postcard/.agents/skills/uncodixfy/SKILL.md
 
 This defines what NOT to do. Every violation will require a redo.
 

@@ -34,6 +34,18 @@ export interface AccountPotential {
         actualEvents?: number;
         actualRevenue?: number;
     };
+    fbPotential?: {
+        events: number;
+        revenue: number;
+        actualEvents?: number;
+        actualRevenue?: number;
+    };
+    spaPotential?: {
+        events: number;
+        revenue: number;
+        actualEvents?: number;
+        actualRevenue?: number;
+    };
     competitors: Array<{
         brandId?: string;
         brandName: string;
@@ -49,8 +61,8 @@ export const getAccountPotentials = async (accountId: string): Promise<AccountPo
         headers: withAuthHeaders(),
     });
     if (!response.ok) return [];
-    const raw = await response.json() as any[];
-    return raw.map(p => ({ id: p._id || p.id, ...p }));
+    const raw = await response.json() as Array<Partial<AccountPotential> & { _id?: string }>;
+    return raw.map(p => ({ id: p._id || p.id, ...p })) as AccountPotential[];
 };
 
 export const saveAccountPotential = async (accountId: string, potential: Omit<AccountPotential, "id">): Promise<AccountPotential> => {
@@ -64,7 +76,28 @@ export const saveAccountPotential = async (accountId: string, potential: Omit<Ac
     return { id: raw._id || raw.id, ...raw };
 };
 
-export const getPotentialSummary = async (accountId: string, year?: number): Promise<any> => {
+export interface MarketSearchResult {
+    accountId: string;
+    accountName: string;
+    city?: string;
+}
+
+export const getMarketSearch = async (
+    location: LocationType,
+    segment: SegmentType,
+    city?: string
+): Promise<MarketSearchResult[]> => {
+    const params = new URLSearchParams({ location, segment });
+    if (city) params.set("city", city);
+    const response = await fetch(
+        `${API_BASE_URL}/account-potentials/market-search?${params}`,
+        { headers: withAuthHeaders() }
+    );
+    if (!response.ok) throw new Error("Market search failed");
+    return response.json();
+};
+
+export const getPotentialSummary = async (accountId: string, year?: number): Promise<unknown> => {
     const url = `${API_BASE_URL}/account-potentials/account/${accountId}/summary${year ? `?year=${year}` : ""}`;
     const response = await fetch(url, { headers: withAuthHeaders() });
     if (!response.ok) throw new Error("Failed to fetch summary");

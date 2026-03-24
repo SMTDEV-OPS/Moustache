@@ -100,11 +100,11 @@ const SalesHeadDashboard = ({ userName }: SalesHeadDashboardProps) => {
   ];
 
   const propertyData = [
-    { property: 'Moustache Goa', sales: 45, revenue: 90000000, target: 50, achievement: 90 },
-    { property: 'Moustache Coonoor', sales: 38, revenue: 76000000, target: 42, achievement: 90.5 },
-    { property: 'Moustache Shimla', sales: 42, revenue: 84000000, target: 45, achievement: 93.3 },
-    { property: 'Moustache Munnar', sales: 35, revenue: 70000000, target: 40, achievement: 87.5 },
-    { property: 'Moustache Udaipur', sales: 28, revenue: 56000000, target: 32, achievement: 87.5 }
+    { property: 'Postcard Goa', sales: 45, revenue: 90000000, target: 50, achievement: 90 },
+    { property: 'Postcard Coonoor', sales: 38, revenue: 76000000, target: 42, achievement: 90.5 },
+    { property: 'Postcard Shimla', sales: 42, revenue: 84000000, target: 45, achievement: 93.3 },
+    { property: 'Postcard Munnar', sales: 35, revenue: 70000000, target: 40, achievement: 87.5 },
+    { property: 'Postcard Udaipur', sales: 28, revenue: 56000000, target: 32, achievement: 87.5 }
   ];
 
   const monthlyTrendData = [

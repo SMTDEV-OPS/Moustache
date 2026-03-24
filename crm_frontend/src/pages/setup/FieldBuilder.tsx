@@ -286,7 +286,7 @@ export function FieldBuilder() {
   const loadFields = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await listAdminFields(entity);
+      const data = await listAdminFields(entity, { includeInactive: true });
       setFields(data);
     } catch (e) {
       toast({ title: "Failed to fetch fields", description: (e as Error).message, variant: "destructive" });

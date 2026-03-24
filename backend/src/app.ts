@@ -37,6 +37,12 @@ import { ticketsRouter } from "./routes/tickets";
 import { conglomeratesRouter } from "./routes/conglomerates";
 import { contactsRouter } from "./routes/contacts";
 import { accountPotentialsRouter } from "./routes/accountPotentials";
+import { accountNotesRouter } from "./routes/accountNotes";
+import { accountDocumentsRouter } from "./routes/accountDocuments";
+import { dealsRouter } from "./routes/deals";
+import { contractsRouter } from "./routes/contracts";
+import { contractApprovalRulesRouter } from "./routes/contractApprovalRules";
+import { contactActivitiesRouter } from "./routes/contactActivities";
 import { hotelBrandsRouter } from "./routes/hotelBrands";
 import { pmsRouter } from "./routes/pms";
 import profilesRouter from "./routes/profiles";
@@ -62,7 +68,7 @@ app.use(requestLogger);
 
 app.get("/", (_req, res) => {
   res.json({
-    message: "MoustacheCRM API",
+    message: `${process.env.VITE_HOTEL_BRAND || "Moustache"} CRM API`,
     version: "1.0.0",
     status: "running",
     endpoints: {
@@ -110,6 +116,12 @@ app.use("/tickets", ticketsRouter);
 app.use("/conglomerates", conglomeratesRouter);
 app.use("/contacts", contactsRouter);
 app.use("/account-potentials", accountPotentialsRouter);
+app.use("/account-notes", accountNotesRouter);
+app.use("/account-documents", accountDocumentsRouter);
+app.use("/deals", dealsRouter);
+app.use("/contracts", contractsRouter);
+app.use("/contract-approval-rules", contractApprovalRulesRouter);
+app.use("/contact-activities", contactActivitiesRouter);
 app.use("/hotel-brands", hotelBrandsRouter);
 app.use("/pms", pmsRouter);
 app.use("/profiles", profilesRouter);

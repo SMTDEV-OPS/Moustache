@@ -49,7 +49,7 @@ const SalesRevenueDashboard = () => {
 
   const revenueBreakdown = [
     {
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       revenue: "₹18,75,000",
       leads: 9,
       avgValue: "₹2,08,333",
@@ -57,7 +57,7 @@ const SalesRevenueDashboard = () => {
       color: "bg-blue-500"
     },
     {
-      property: "Moustache Kerala",
+      property: "Postcard Kerala",
       revenue: "₹12,50,000",
       leads: 6,
       avgValue: "₹2,08,333",
@@ -65,7 +65,7 @@ const SalesRevenueDashboard = () => {
       color: "bg-green-500"
     },
     {
-      property: "Moustache Rajasthan",
+      property: "Postcard Rajasthan",
       revenue: "₹9,45,000",
       leads: 5,
       avgValue: "₹1,89,000",
@@ -73,7 +73,7 @@ const SalesRevenueDashboard = () => {
       color: "bg-purple-500"
     },
     {
-      property: "Moustache Mumbai",
+      property: "Postcard Mumbai",
       revenue: "₹4,50,000",
       leads: 3,
       avgValue: "₹1,50,000",
@@ -94,7 +94,7 @@ const SalesRevenueDashboard = () => {
     {
       id: "L001",
       guest: "Arjun Kumar",
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       value: "₹3,20,000",
       status: "Converted",
       date: "2024-12-10",
@@ -104,7 +104,7 @@ const SalesRevenueDashboard = () => {
     {
       id: "L006",
       guest: "Ravi Patel Family",
-      property: "Moustache Kerala",
+      property: "Postcard Kerala",
       value: "₹2,85,000",
       status: "Converted",
       date: "2024-12-08",
@@ -114,7 +114,7 @@ const SalesRevenueDashboard = () => {
     {
       id: "L012",
       guest: "Sneha Reddy",
-      property: "Moustache Rajasthan",
+      property: "Postcard Rajasthan",
       value: "₹2,45,000",
       status: "Proposal",
       date: "2024-12-14",
@@ -124,7 +124,7 @@ const SalesRevenueDashboard = () => {
     {
       id: "L018",
       guest: "Corporate Event - Tech Solutions",
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       value: "₹4,50,000",
       status: "In Progress",
       date: "2024-12-12",
@@ -450,7 +450,7 @@ const SalesRevenueDashboard = () => {
                       name: "Priya Sharma",
                       phone: "+91 98765 43210",
                       email: "priya.sharma@gmail.com",
-                      property: "Moustache Goa",
+                      property: "Postcard Goa",
                       checkIn: "2025-02-15",
                       checkOut: "2025-02-20",
                       budget: "₹50,000",
@@ -469,7 +469,7 @@ const SalesRevenueDashboard = () => {
                       name: "Rajesh Kumar",
                       phone: "+91 87654 32109",
                       email: "rajesh.kumar@yahoo.com",
-                      property: "Moustache Kerala",
+                      property: "Postcard Kerala",
                       checkIn: "2025-02-20",
                       checkOut: "2025-02-25",
                       budget: "₹60,000",
@@ -488,7 +488,7 @@ const SalesRevenueDashboard = () => {
                       name: "Anjali Patel",
                       phone: "+91 76543 21098",
                       email: "anjali.patel@hotmail.com",
-                      property: "Moustache Rajasthan",
+                      property: "Postcard Rajasthan",
                       checkIn: "2025-02-18",
                       checkOut: "2025-02-22",
                       budget: "₹45,000",

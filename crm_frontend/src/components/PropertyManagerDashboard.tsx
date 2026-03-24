@@ -19,10 +19,10 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
   // Get property from user role
   const getPropertyFromRole = (role: string) => {
     switch (role) {
-      case 'propertymanager1': return 'Moustache Goa';
-      case 'propertymanager2': return 'Moustache Udaipur';
-      case 'propertymanager3': return 'Moustache Munnar';
-      default: return 'Moustache Goa';
+      case 'propertymanager1': return 'Postcard Goa';
+      case 'propertymanager2': return 'Postcard Udaipur';
+      case 'propertymanager3': return 'Postcard Munnar';
+      default: return 'Postcard Goa';
     }
   };
 
@@ -38,7 +38,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
       priority: "High",
       status: "Open",
       category: "Reservation",
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       assignedTo: "Property Manager - Goa",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-15 10:30 AM",
@@ -61,7 +61,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
       priority: "Medium",
       status: "In Progress",
       category: "Billing",
-      property: "Moustache Rajasthan",
+      property: "Postcard Rajasthan",
       assignedTo: "Property Manager - Rajasthan",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-14 2:15 PM",
@@ -91,7 +91,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
       priority: "High",
       status: "Open",
       category: "Maintenance",
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       assignedTo: "Property Manager - Goa",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-15 3:45 PM",
@@ -114,7 +114,7 @@ const PropertyManagerDashboard = ({ userRole, userName }: PropertyManagerDashboa
       priority: "Medium",
       status: "Open",
       category: "Service",
-      property: "Moustache Kerala",
+      property: "Postcard Kerala",
       assignedTo: "Property Manager - Kerala",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-15 1:20 PM",

@@ -57,6 +57,7 @@ Thumbs.db
 *.tmp
 *.temp
 .cache/
+backend/.mongo-dump-tmp/
 
 # Never commit vendor API docs
 API - Ezee & Airpay - Details.pdf

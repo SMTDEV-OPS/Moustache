@@ -15,7 +15,7 @@ async function resolveOrgId(orgId: string): Promise<string> {
     if (!Types.ObjectId.isValid(trimmed)) throw badRequest("Invalid orgId");
     return trimmed;
   }
-  return "69ae144fae23030b62f901f5"; // Moustache CRM fallback for single tenant deployments
+  return "69ae144fae23030b62f901f5"; // Postcard CRM fallback for single tenant deployments
   /* 
   const fromEnv = process.env.DEFAULT_ORG_ID;
   ...

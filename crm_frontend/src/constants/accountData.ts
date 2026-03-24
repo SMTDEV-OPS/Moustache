@@ -1,25 +1,140 @@
-export const ORGANIZATION_TYPES = [
+export const ORGANISATION_TYPES = [
     { value: "CORPORATE", label: "Corporate" },
     { value: "TRAVEL_AGENT", label: "Travel Agent" },
-    { value: "EVENT_PLANNER", label: "Event Organiser" },
-    { value: "PCO", label: "Professional Conference Organiser" },
+    { value: "EVENT_ORGANISER", label: "Event Organiser" },
+    { value: "PROFESSIONAL_CONFERENCE_ORGANISER", label: "Professional Conference Organiser (PCO)" },
     { value: "AIRLINE", label: "Airline" },
-    { value: "GOVERNMENT", label: "Government Bodies" },
-    { value: "EMBASSY_CONSULATE", label: "Embassies and Consulates" },
-    { value: "PSU", label: "Public Sector Unit" },
-    { value: "CUSTOM", label: "Other" },
+    { value: "GOVERNMENT_BODIES", label: "Government Bodies" },
+    { value: "EMBASSIES_AND_CONSULATES", label: "Embassies and Consulates" },
+    { value: "PUBLIC_SECTOR_UNIT", label: "Public Sector Unit" },
 ];
+export const ORGANIZATION_TYPES = ORGANISATION_TYPES;
 
 export const ACCOUNT_LEVELS = [
-    { value: "MASTER", label: "Master Account or Conglomerate" },
+    { value: "MASTER", label: "Master Account / Conglomerate" },
     { value: "PARENT", label: "Parent Account" },
     { value: "BRANCH", label: "Branch Account" },
-    { value: "SUBSIDIARY", label: "Subsidiary account" },
+    { value: "SUBSIDIARY", label: "Subsidiary Account" },
+];
+
+export const INDUSTRY_LIST = [
+    {
+        category: "Consumer & Retail",
+        subCategories: [
+            "FMCG",
+            "Retail (Organised & E-commerce)",
+            "Apparel & Fashion",
+            "Jewellery & Luxury Goods",
+            "Consumer Durables",
+            "Footwear & Accessories"
+        ]
+    },
+    {
+        category: "Technology & Digital",
+        subCategories: [
+            "IT Services",
+            "ITeS / BPO / KPO",
+            "Software & SaaS",
+            "E-commerce & Marketplaces",
+            "FinTech",
+            "EdTech",
+            "HealthTech"
+        ]
+    },
+    {
+        category: "Manufacturing & Industrial",
+        subCategories: [
+            "Automobiles & Auto Components",
+            "Engineering & Capital Goods",
+            "Electrical & Electronics",
+            "Textiles & Garments",
+            "Chemicals & Petrochemicals",
+            "Metals & Mining",
+            "Cement & Building Materials"
+        ]
+    },
+    {
+        category: "Healthcare & Life Sciences",
+        subCategories: [
+            "Pharmaceuticals",
+            "Hospitals & Healthcare Services",
+            "Diagnostics",
+            "Medical Devices",
+            "Biotechnology"
+        ]
+    },
+    {
+        category: "Financial Services",
+        subCategories: [
+            "Banking",
+            "NBFCs",
+            "Insurance",
+            "Mutual Funds & Asset Management",
+            "FinTech"
+        ]
+    },
+    {
+        category: "Hospitality, Travel & Leisure",
+        subCategories: [
+            "Hotels & Resorts",
+            "Restaurants & QSR",
+            "Travel & Tourism",
+            "Airlines",
+            "Event Management"
+        ]
+    },
+    {
+        category: "Real Estate & Infrastructure",
+        subCategories: [
+            "Real Estate & Construction",
+            "Infrastructure & EPC",
+            "Power & Utilities",
+            "Renewable Energy",
+            "Smart Cities"
+        ]
+    },
+    {
+        category: "Media & Communication",
+        subCategories: [
+            "Advertising & Marketing",
+            "Digital Media",
+            "Print & Publishing",
+            "Television & Broadcasting",
+            "Entertainment & OTT"
+        ]
+    },
+    {
+        category: "Logistics & Trade",
+        subCategories: [
+            "Logistics & Warehousing",
+            "Shipping",
+            "Courier & Express Services",
+            "Ports & ICDs"
+        ]
+    },
+    {
+        category: "Education & Training",
+        subCategories: [
+            "Schools & Universities",
+            "Coaching & Test Prep",
+            "Corporate Training"
+        ]
+    },
+    {
+        category: "Others / Niche",
+        subCategories: [
+            "Defence & Aerospace",
+            "Security Services",
+            "Waste Management",
+            "Facility Management",
+            "NGOs & Social Enterprises"
+        ]
+    }
 ];
 
 export const INDUSTRY_CATEGORIES: Record<string, string[]> = {
     "Consumer & Retail": [
-        "FMCG (Fast Moving Consumer Goods)",
+        "FMCG",
         "Retail (Organised & E-commerce)",
         "Apparel & Fashion",
         "Jewellery & Luxury Goods",
@@ -28,7 +143,7 @@ export const INDUSTRY_CATEGORIES: Record<string, string[]> = {
     ],
     "Technology & Digital": [
         "IT Services",
-        "IT Enabled Services (ITeS / BPO / KPO)",
+        "ITeS / BPO / KPO",
         "Software & SaaS",
         "E-commerce & Marketplaces",
         "FinTech",
@@ -79,14 +194,6 @@ export const INDUSTRY_CATEGORIES: Record<string, string[]> = {
         "Television & Broadcasting",
         "Entertainment & OTT"
     ],
-    "Agri & Allied": [
-        "Agriculture",
-        "Food Processing",
-        "Dairy",
-        "Fisheries",
-        "Poultry",
-        "Agri-Tech"
-    ],
     "Logistics & Trade": [
         "Logistics & Warehousing",
         "Shipping",
@@ -129,6 +236,35 @@ export const MAJOR_INDIAN_CITIES = [
     "Jammu", "Sangli-Miraj & Kupwad", "Belgaum", "Mangalore", "Ambattur", "Tirunelveli", "Malegaon",
     "Gaya", "Jalgaon", "Udaipur", "Maheshtala"
 ].sort();
+
+/** State -> cities mapping for filtering city dropdown when state is selected */
+export const CITIES_BY_STATE: Record<string, string[]> = {
+    "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Thane", "Pimpri-Chinchwad", "Navi Mumbai", "Nashik", "Aurangabad", "Solapur", "Mira-Bhayandar", "Bhiwandi", "Nanded", "Kolhapur", "Jalgaon", "Ulhasnagar", "Sangli-Miraj & Kupwad", "Malegaon", "Maheshtala", "Vasai-Virar", "Kalyan-Dombivli"],
+    "Delhi": ["Delhi"],
+    "Karnataka": ["Bengaluru", "Hubballi-Dharwad", "Mysuru", "Belgaum", "Mangalore", "Gulbarga"],
+    "Telangana": ["Hyderabad", "Warangal"],
+    "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar"],
+    "Tamil Nadu": ["Chennai", "Madurai", "Coimbatore", "Tiruchirappalli", "Salem", "Tirunelveli", "Ambattur"],
+    "West Bengal": ["Kolkata", "Howrah", "Durgapur", "Asansol", "Siliguri"],
+    "Uttar Pradesh": ["Lucknow", "Kanpur", "Agra", "Allahabad", "Varanasi", "Ghaziabad", "Meerut", "Bareilly", "Moradabad", "Aligarh", "Firozabad", "Jhansi", "Loni"],
+    "Rajasthan": ["Jaipur", "Jodhpur", "Kota", "Udaipur", "Bikaner", "Ajmer"],
+    "Madhya Pradesh": ["Indore", "Bhopal", "Gwalior", "Jabalpur", "Ujjain"],
+    "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur", "Nellore"],
+    "Bihar": ["Patna", "Gaya"],
+    "Punjab": ["Ludhiana", "Amritsar", "Jalandhar"],
+    "Haryana": ["Faridabad", "Gurgaon"],
+    "Jharkhand": ["Dhanbad", "Jamshedpur", "Ranchi"],
+    "Odisha": ["Bhubaneswar", "Cuttack", "Rourkela"],
+    "Chhattisgarh": ["Raipur", "Bhilai"],
+    "Assam": ["Guwahati"],
+    "Kerala": ["Thiruvananthapuram", "Kochi"],
+    "Uttarakhand": ["Dehradun"],
+    "Jammu and Kashmir": ["Srinagar", "Jammu"],
+    "Chandigarh": ["Chandigarh"],
+    "Goa": [],
+    "Himachal Pradesh": [],
+    "Puducherry": [],
+};
 
 export const POTENTIAL_LOCATIONS = [
     { value: "CBD", label: "Commercial Business District" },

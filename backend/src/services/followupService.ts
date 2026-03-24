@@ -103,7 +103,7 @@ export class FollowupService {
     }
 
     /**
-     * Seed Moustache default schedules. Idempotent.
+     * Seed Postcard default schedules. Idempotent.
      */
     static async seedDefaultFollowupRules(orgId?: string) {
         const defaults = [

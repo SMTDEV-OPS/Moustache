@@ -5,7 +5,7 @@ export interface IAccountPotential extends Document {
 
     // City & Location
     city: string;
-    location: "CBD" | "MICRO_MARKET" | "INDUSTRIAL_BELT" | "NORTH_GEO" | "SOUTH_GEO" | "CUSTOM";
+    location: "CBD" | "MICRO_MARKET" | "INDUSTRIAL_BELT" | "NORTH_GEO" | "SOUTH_GEO" | "COMMERCIAL_BUSINESS_DISTRICT" | "CUSTOM";
     customLocation?: string;
 
     // Segment
@@ -43,15 +43,34 @@ export interface IAccountPotential extends Document {
         actualRevenue?: number;
     };
 
+    // F&B Potential (segment-specific: LUXURY, UPPER_UPSCALE)
+    fbPotential?: {
+        events: number;
+        revenue: number;
+        actualEvents?: number;
+        actualRevenue?: number;
+    };
+
+    // Spa/Wellness Potential (segment-specific: LUXURY, UPPER_UPSCALE)
+    spaPotential?: {
+        events: number;
+        revenue: number;
+        actualEvents?: number;
+        actualRevenue?: number;
+    };
+
     // Competition Analysis
     competitors: Array<{
         brandId?: Types.ObjectId; // Reference to hotel brands
         brandName: string;
-        rates?: string; // "INR 5000 with breakfast"
-        marketShare?: number; // Percentage
+        rate?: number;
+        inclusion?: string;
+        roomNightSharePercent?: number; // Percentage
+        remarks?: string;
     }>;
 
     remarks?: string;
+    autoCalculatedRN?: number | null;
 
     year: number; // Fiscal year for this potential data
     createdAt: Date;
@@ -75,7 +94,7 @@ const accountPotentialSchema = new Schema<IAccountPotential>(
         },
         location: {
             type: String,
-            enum: ["CBD", "MICRO_MARKET", "INDUSTRIAL_BELT", "NORTH_GEO", "SOUTH_GEO", "CUSTOM"],
+            enum: ["CBD", "MICRO_MARKET", "INDUSTRIAL_BELT", "NORTH_GEO", "SOUTH_GEO", "COMMERCIAL_BUSINESS_DISTRICT", "CUSTOM"],
             required: true,
         },
         customLocation: String,
@@ -119,6 +138,22 @@ const accountPotentialSchema = new Schema<IAccountPotential>(
             actualRevenue: Number,
         },
 
+        // F&B Potential
+        fbPotential: {
+            events: { type: Number, default: 0 },
+            revenue: { type: Number, default: 0 },
+            actualEvents: Number,
+            actualRevenue: Number,
+        },
+
+        // Spa/Wellness Potential
+        spaPotential: {
+            events: { type: Number, default: 0 },
+            revenue: { type: Number, default: 0 },
+            actualEvents: Number,
+            actualRevenue: Number,
+        },
+
         // Competition Analysis
         competitors: [
             {
@@ -127,12 +162,15 @@ const accountPotentialSchema = new Schema<IAccountPotential>(
                     ref: "HotelBrand", // Will create this model later
                 },
                 brandName: { type: String, required: true },
-                rates: String,
-                marketShare: Number,
+                rate: Number,
+                inclusion: String,
+                roomNightSharePercent: Number,
+                remarks: String,
             },
         ],
 
         remarks: String,
+        autoCalculatedRN: { type: Number, default: null },
 
         year: {
             type: Number,
@@ -144,9 +182,10 @@ const accountPotentialSchema = new Schema<IAccountPotential>(
     { timestamps: true }
 );
 
-// Indexes for search and filtering
-accountPotentialSchema.index({ accountId: 1, city: 1, year: 1 }, { unique: true });
+// Indexes for search and filtering - unique per (accountId, city, year, location, segment)
+accountPotentialSchema.index({ accountId: 1, city: 1, year: 1, location: 1, segment: 1 }, { unique: true });
 accountPotentialSchema.index({ accountId: 1, year: 1 });
+accountPotentialSchema.index({ accountId: 1, city: 1, year: 1 });
 accountPotentialSchema.index({ city: 1, segment: 1 });
 
 export const AccountPotentialModel = model<IAccountPotential>("AccountPotential", accountPotentialSchema);

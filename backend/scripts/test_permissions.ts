@@ -9,7 +9,7 @@ dotenv.config();
 
 async function runTests() {
     console.log("Starting DB Connection...");
-    await mongoose.connect(process.env.MONGO_URI || "mongodb://localhost:27017/moustache_crm");
+    await mongoose.connect(process.env.MONGO_URI || "mongodb://localhost:27017/postcard_crm");
     console.log("Connected to DB.");
 
     try {

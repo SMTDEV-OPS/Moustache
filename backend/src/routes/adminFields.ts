@@ -81,9 +81,15 @@ const validateFieldPayload = async (req: Request, res: Response, next: NextFunct
 router.get("/", async (req: Request, res: Response) => {
     try {
         const entity_type = (req.query.entity as string) || "lead";
+        const includeInactive = req.query.include_inactive === "true";
 
         const fields = await CustomFieldModel.find({ entity_type })
             .sort({ display_order: 1, order: 1 });
+
+        if (includeInactive) {
+            res.json(fields);
+            return;
+        }
 
         // Some records may use legacy `isActive` while others use the newer `is_active`.
         // Treat a field as active only when BOTH flags are not explicitly false.
@@ -177,6 +183,14 @@ router.put("/:id", validateFieldPayload, async (req: Request, res: Response) => 
         // Prevent changing slug during update to avoid data loss on Leads
         delete req.body.slug;
         delete req.body.entity_type; // Prevent moving entities
+
+        // Keep legacy and new active flags in sync.
+        if (typeof req.body.isActive === "boolean" && typeof req.body.is_active !== "boolean") {
+            req.body.is_active = req.body.isActive;
+        }
+        if (typeof req.body.is_active === "boolean" && typeof req.body.isActive !== "boolean") {
+            req.body.isActive = req.body.is_active;
+        }
 
         const existingField = await CustomFieldModel.findById(id).lean();
         const updatedField = await CustomFieldModel.findByIdAndUpdate(

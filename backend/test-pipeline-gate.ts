@@ -13,7 +13,7 @@ import { validateStageMove } from "./src/services/leadService";
 
 async function runTests() {
     try {
-        await mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/moustache");
+        await mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/postcard");
         console.log("Connected to DB");
 
         // Set up test data

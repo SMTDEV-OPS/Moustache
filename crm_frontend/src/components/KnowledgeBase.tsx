@@ -28,7 +28,7 @@ const KnowledgeBase = () => {
   const properties = [
     {
       id: 1,
-      name: "The Moustache Goa",
+      name: "The Postcard Goa",
       location: "Betalbatim, Goa",
       type: "Beach Resort",
       rooms: 84,
@@ -37,8 +37,8 @@ const KnowledgeBase = () => {
       amenities: ["Private Beach", "Spa", "Pool", "Restaurant", "Bar", "WiFi", "Parking"],
       contact: {
         phone: "+91 832 287 1234",
-        email: "goa@themoustachehotel.com",
-        website: "www.themoustachehotel.com"
+        email: "goa@thepostcardhotel.com",
+        website: "www.thepostcardhotel.com"
       },
       rates: {
         deluxe: "₹12,000 - ₹18,000",
@@ -48,7 +48,7 @@ const KnowledgeBase = () => {
     },
     {
       id: 2,
-      name: "The Moustache Cuelim",
+      name: "The Postcard Cuelim",
       location: "Cuelim, Goa",
       type: "Heritage Property",
       rooms: 20,
@@ -57,8 +57,8 @@ const KnowledgeBase = () => {
       amenities: ["Heritage Architecture", "Garden", "Pool", "Restaurant", "Library", "WiFi"],
       contact: {
         phone: "+91 832 287 5678",
-        email: "cuelim@themoustachehotel.com",
-        website: "www.themoustachehotel.com"
+        email: "cuelim@thepostcardhotel.com",
+        website: "www.thepostcardhotel.com"
       },
       rates: {
         heritage: "₹15,000 - ₹22,000",
@@ -120,7 +120,7 @@ const KnowledgeBase = () => {
 
   const factSheets = [
     {
-      property: "The Moustache Goa",
+      property: "The Postcard Goa",
       details: {
         "Total Rooms": "84",
         "Check-in": "3:00 PM",
@@ -135,7 +135,7 @@ const KnowledgeBase = () => {
       }
     },
     {
-      property: "The Moustache Cuelim",
+      property: "The Postcard Cuelim",
       details: {
         "Total Rooms": "20",
         "Check-in": "2:00 PM",
@@ -157,7 +157,7 @@ const KnowledgeBase = () => {
         <Building2 className="h-8 w-8 text-blue-600" />
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Knowledge Base</h1>
-          <p className="text-gray-600">Comprehensive information about Moustache Hotels properties, templates, and resources</p>
+          <p className="text-gray-600">Comprehensive information about Postcard Hotels properties, templates, and resources</p>
         </div>
       </div>
 

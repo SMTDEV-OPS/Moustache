@@ -105,7 +105,7 @@ const CallInterface = ({ guest: initialGuest, incomingCall, onCallEnd }: CallInt
 
   const handleWhatsApp = () => {
     const phoneNumber = guest.phone.replace(/[^\d]/g, '');
-    const message = `Hello ${guest.name}, this is from Moustache Hotels. How can we assist you today?`;
+    const message = `Hello ${guest.name}, this is from Postcard Hotels. How can we assist you today?`;
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
 

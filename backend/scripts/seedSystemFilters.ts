@@ -1,5 +1,5 @@
 /**
- * Seed system filters for Moustache CRM.
+ * Seed system filters for Postcard CRM.
  * Idempotent: uses orgId + name to avoid duplicates.
  *
  * Usage: npx ts-node scripts/seedSystemFilters.ts <orgId>

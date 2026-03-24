@@ -22,7 +22,7 @@ function getEnv(name: string, fallback?: string): string {
 
 export const config: AppConfig = {
   port: Number(getEnv("PORT", "4000")),
-  mongoUri: getEnv("MONGO_URI", "mongodb://localhost:27017/Moustachecrm"),
+  mongoUri: getEnv("MONGO_URI", "mongodb://localhost:27017/moustachecrm"),
   jwtSecret: getEnv("JWT_SECRET", "change-me-in-production"),
   nodeEnv: getEnv("NODE_ENV", "development"),
   aws: {

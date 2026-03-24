@@ -10,7 +10,7 @@ export interface IContact extends Document {
 
     // Key Personnel Flag
     isKeyPersonnel: boolean;
-    keyPersonnelRole?: "ADMIN_HEAD" | "FINANCE_HEAD" | "SALES_HEAD" | "MARKETING_HEAD" | "COUNTRY_CITY_HEAD" | "ASSISTANT" | "HR_HEAD" | "TRAINING_HEAD";
+    keyPersonnelRole?: "ADMIN_HEAD" | "FINANCE_HEAD" | "SALES_HEAD" | "MARKETING_HEAD" | "COUNTRY_CITY_HEAD" | "ASSISTANT" | "HR_HEAD" | "TRAINING_HEAD" | "CITY_HEAD" | "CITY_HEAD_ASSISTANT";
 
     // Addresses
     officeAddress?: {
@@ -32,10 +32,16 @@ export interface IContact extends Document {
     dateOfBirth?: Date;
     weddingAnniversary?: Date;
 
+    // Additional Details
+    personnelDetails?: string;
+
     // Loyalty
     isLoyaltyMember: boolean;
     loyaltyProgramName?: string;
     loyaltyNumber?: string;
+
+    /** Preferred communication channel(s) */
+    preferenceOfCommunication?: string;
 
     // Contact Details
     boardNumber?: string;
@@ -46,6 +52,15 @@ export interface IContact extends Document {
 
     // Relationship
     clientStatus: "PROMOTER" | "NEUTRAL" | "DETRACTOR";
+
+    /** Tags (any user can add/remove) */
+    tags?: string[];
+
+    /** User who created this contact (PAM/SAM); used for creator-only visibility */
+    createdByUserId?: Types.ObjectId;
+
+    /** Status: ACTIVE (default) or NA (hidden from active lists) */
+    status?: "ACTIVE" | "NA";
 
     createdAt: Date;
     updatedAt: Date;
@@ -77,7 +92,7 @@ const contactSchema = new Schema<IContact>(
         },
         keyPersonnelRole: {
             type: String,
-            enum: ["ADMIN_HEAD", "FINANCE_HEAD", "SALES_HEAD", "MARKETING_HEAD", "COUNTRY_CITY_HEAD", "ASSISTANT", "HR_HEAD", "TRAINING_HEAD"],
+            enum: ["ADMIN_HEAD", "FINANCE_HEAD", "SALES_HEAD", "MARKETING_HEAD", "COUNTRY_CITY_HEAD", "ASSISTANT", "HR_HEAD", "TRAINING_HEAD", "CITY_HEAD", "CITY_HEAD_ASSISTANT"],
         },
 
         // Addresses
@@ -100,6 +115,9 @@ const contactSchema = new Schema<IContact>(
         dateOfBirth: Date,
         weddingAnniversary: Date,
 
+        // Additional Details
+        personnelDetails: String,
+
         // Loyalty
         isLoyaltyMember: {
             type: Boolean,
@@ -107,6 +125,8 @@ const contactSchema = new Schema<IContact>(
         },
         loyaltyProgramName: String,
         loyaltyNumber: String,
+
+        preferenceOfCommunication: String,
 
         // Contact Details
         boardNumber: String,
@@ -127,11 +147,27 @@ const contactSchema = new Schema<IContact>(
             default: "NEUTRAL",
             index: true,
         },
+
+        tags: [String],
+
+        createdByUserId: {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+            index: true,
+        },
+
+        status: {
+            type: String,
+            enum: ["ACTIVE", "NA"],
+            default: "ACTIVE",
+            index: true,
+        },
     },
     { timestamps: true }
 );
 
 // Indexes for search and filtering
+contactSchema.index({ accountId: 1, createdByUserId: 1 });
 contactSchema.index({ accountId: 1, isKeyPersonnel: 1 });
 contactSchema.index({ accountId: 1, keyPersonnelRole: 1 });
 contactSchema.index({ name: 'text', email: 'text' });

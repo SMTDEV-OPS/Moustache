@@ -564,6 +564,12 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     }
   };
 
+  // Refresh custom fields on dialog open so Field Builder changes reflect immediately.
+  useEffect(() => {
+    if (!isCreateDialogOpen) return;
+    void loadCustomFields();
+  }, [isCreateDialogOpen]);
+
   // Note: Accounts are loaded once on mount, not on source change
   // This prevents infinite loops and render issues
 
@@ -2090,10 +2096,10 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="NONE">None</SelectItem>
-                        <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
-                        <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
-                        <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
-                        <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
+                        <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
+                        <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
+                        <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
+                        <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

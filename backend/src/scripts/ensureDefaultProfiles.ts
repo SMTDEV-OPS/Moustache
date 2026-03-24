@@ -19,6 +19,11 @@ const ALL_SETUP_KEYS = [
   PERMISSIONS.CONGLOMERATES.MANAGE,
   PERMISSIONS.ACCOUNT_POTENTIALS.MANAGE,
   PERMISSIONS.HOTEL_BRANDS.MANAGE,
+  PERMISSIONS.ACCOUNTS.ASSIGN_MANAGERS,
+  PERMISSIONS.ACCOUNTS.VIEW_HIERARCHY,
+  PERMISSIONS.ACCOUNTS.MANAGE_ACTIVITIES,
+  PERMISSIONS.ACCOUNTS.MANAGE_NOTES,
+  PERMISSIONS.ACCOUNTS.MANAGE_DOCUMENTS,
 ];
 
 const ALL_MODULES = [
@@ -29,13 +34,17 @@ const ALL_MODULES = [
   "assignment-rules", "notifications", "email", "buddies",
 ];
 
-export async function ensureDefaultProfiles() {
-  const count = await ProfileModel.countDocuments();
-  if (count > 0) {
-    console.log("[Profiles] Already seeded — skipping");
-    return;
-  }
-
+/** Full module + setup permissions for the Admin profile (used by seedAdmin + ensureDefaultProfiles). */
+export function getFullAdminProfileData(): {
+  modulePermissions: Array<{
+    module: string;
+    view: boolean;
+    create: boolean;
+    edit: boolean;
+    delete: boolean;
+  }>;
+  setupPermissions: Array<{ key: string; enabled: boolean }>;
+} {
   const allAccess = ALL_MODULES.map((m) => ({
     module: m,
     view: true,
@@ -43,6 +52,18 @@ export async function ensureDefaultProfiles() {
     edit: true,
     delete: true,
   }));
+  const fullSetupKeys = ALL_SETUP_KEYS.map((k) => ({ key: k, enabled: true }));
+  return { modulePermissions: allAccess, setupPermissions: fullSetupKeys };
+}
+
+export async function ensureDefaultProfiles() {
+  const count = await ProfileModel.countDocuments();
+  if (count > 0) {
+    console.log("[Profiles] Already seeded — skipping");
+    return;
+  }
+
+  const { modulePermissions: allAccess, setupPermissions: fullSetupKeys } = getFullAdminProfileData();
 
   const readOnly = ALL_MODULES.map((m) => ({
     module: m,
@@ -76,7 +97,6 @@ export async function ensureDefaultProfiles() {
     delete: ["leads", "tasks", "communications"].includes(m),
   }));
 
-  const fullSetupKeys = ALL_SETUP_KEYS.map((k) => ({ key: k, enabled: true }));
   const noSetupKeys = ALL_SETUP_KEYS.map((k) => ({ key: k, enabled: false }));
   const managerSetupKeys = ALL_SETUP_KEYS.map((k) => ({
     key: k,

@@ -5,7 +5,7 @@ import { ModuleDefaultAccessModel } from "../src/models/moduleDefaultAccess";
 
 dotenv.config();
 
-const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/Moustachecrm";
+const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/Postcardcrm";
 
 // Standard modules to seed
 const MODULES = [

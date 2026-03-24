@@ -7,7 +7,7 @@ import { HotelBrandModel } from "../src/models/hotelBrand";
 
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/moustachecrm";
+const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/postcardcrm";
 
 async function seed() {
     try {

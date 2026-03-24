@@ -1,7 +1,7 @@
 # CRM Database Structure and Module Documentation
 
 ## Overview
-This document provides a comprehensive overview of the Moustache Hotels CRM system database structure and module-wise details, identifying all data fields used across different modules.
+This document provides a comprehensive overview of the Postcard Hotels CRM system database structure and module-wise details, identifying all data fields used across different modules.
 
 ---
 

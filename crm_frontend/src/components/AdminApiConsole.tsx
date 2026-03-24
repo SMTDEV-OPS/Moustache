@@ -203,7 +203,7 @@ export const AdminApiConsole = () => {
   const [propertyCreateJson, setPropertyCreateJson] = useState(
     JSON.stringify(
       {
-        name: "Moustache Demo",
+        name: "Postcard Demo",
         code: "PCD",
         location: {
           city: "Goa",
@@ -407,7 +407,7 @@ export const AdminApiConsole = () => {
         <div>
           <h1 className="text-2xl font-bold">Admin API Console</h1>
           <p className="text-sm text-muted-foreground">
-            Full access to MoustacheCRM backend features using your admin
+            Full access to CRM backend features using your admin
             session.
           </p>
         </div>

@@ -10,7 +10,7 @@ You **MUST** set the following environment variable in your Netlify dashboard:
 2. Navigate to **Site settings** → **Environment variables**
 3. Add a new variable:
    - **Key**: `VITE_API_BASE_URL`
-   - **Value**: `https://moustachecrm.onrender.com`
+   - **Value**: `https://postcardcrm.onrender.com`
    - **Scopes**: Select "All scopes" (or specific scopes as needed)
 
 ### Build Settings
@@ -40,7 +40,7 @@ The `netlify.toml` file is already configured with:
 - Check if the build completed successfully
 
 **If API calls fail:**
-- Verify backend is running at `https://moustachecrm.onrender.com`
+- Verify backend is running at `https://postcardcrm.onrender.com`
 - Check CORS settings in backend (should allow your Netlify domain)
 - Check browser console for CORS errors
 

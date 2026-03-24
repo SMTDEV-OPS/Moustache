@@ -4,7 +4,7 @@ import { ScoringRuleModel } from "../src/models/scoringRule";
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/moustache";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/postcard";
 
 const defaultRules = [
     {

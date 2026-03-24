@@ -288,14 +288,14 @@ export function AppSidebar({
         <div className="flex items-center gap-3 px-1">
           <div className="flex items-center justify-center h-8 w-8 rounded-md bg-primary/10">
             <img
-              src="/lovable-uploads/moustache-logo.png"
+              src="/lovable-uploads/postcard-logo.png"
               alt="Logo"
               className="h-6 w-auto"
             />
           </div>
           {state === "expanded" && (
             <div className="flex flex-col">
-              <span className="font-bold text-base tracking-tight">Moustache CRM</span>
+              <span className="font-bold text-base tracking-tight">{import.meta.env.VITE_HOTEL_BRAND || "Moustache CRM"}</span>
               <span className="text-[10px] text-muted-foreground">AGENCY DEMO</span>
             </div>
           )}

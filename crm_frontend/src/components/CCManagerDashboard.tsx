@@ -42,9 +42,9 @@ const agentData = [
 ];
 
 const propertyCallData = [
-  { property: "Moustache Goa", calls: 423, tickets: 67, avgTAT: "2.4 hrs", fcr: 82 },
-  { property: "Moustache Udaipur", calls: 389, tickets: 52, avgTAT: "1.8 hrs", fcr: 79 },
-  { property: "Moustache Munnar", calls: 377, tickets: 41, avgTAT: "3.1 hrs", fcr: 75 }
+  { property: "Postcard Goa", calls: 423, tickets: 67, avgTAT: "2.4 hrs", fcr: 82 },
+  { property: "Postcard Udaipur", calls: 389, tickets: 52, avgTAT: "1.8 hrs", fcr: 79 },
+  { property: "Postcard Munnar", calls: 377, tickets: 41, avgTAT: "3.1 hrs", fcr: 75 }
 ];
 
 const ticketAnalysis = [

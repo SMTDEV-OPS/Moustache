@@ -315,7 +315,7 @@ function UserDrawer({ open, onClose, editingUser, users, roles, onSaved }: Drawe
                                 <Input
                                     id="um-email"
                                     type="email"
-                                    placeholder="priya@moustache.in"
+                                    placeholder="priya@postcard.in"
                                     value={form.email}
                                     onChange={(e) => set("email", e.target.value)}
                                     disabled={!!editingUser}

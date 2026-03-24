@@ -162,7 +162,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
 
   const handleWhatsApp = () => {
     const phoneNumber = guest.phone.replace(/[^\d]/g, '');
-    const message = `Hello ${guest.name}, this is Harleen from Moustache Hotels. How can we assist you today?`;
+    const message = `Hello ${guest.name}, this is Harleen from Postcard Hotels. How can we assist you today?`;
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
 
@@ -255,7 +255,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       totalStays: 5,
       lastStay: "2024-04-22",
       phone: "+91 98765 43210",
-      property: "Moustache Goa"
+      property: "Postcard Goa"
     },
     {
       id: "G003",
@@ -264,7 +264,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       totalStays: 2,
       lastStay: "2024-03-15",
       phone: "+91 87654 32109",
-      property: "Moustache Kerala"
+      property: "Postcard Kerala"
     },
     {
       id: "G004",
@@ -273,7 +273,7 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
       totalStays: 12,
       lastStay: "2024-06-01",
       phone: "+91 76543 21098",
-      property: "Moustache Rajasthan"
+      property: "Postcard Rajasthan"
     }
   ];
 
@@ -403,10 +403,10 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
-                                    <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
-                                    <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
-                                    <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
+                                    <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
+                                    <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
+                                    <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
+                                    <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -580,10 +580,10 @@ const GuestProfile = ({ guest: initialGuest }: GuestProfileProps) => {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
-                                  <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
-                                  <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
-                                  <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
+                                  <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
+                                  <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
+                                  <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
+                                  <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />

@@ -14,6 +14,8 @@ export interface AuthUser {
   email: string;
   roleId?: string;
   isAdmin?: boolean;
+  /** Hard-delete / elevated ops (aligned with PostcardCRM; defaults to isAdmin when using profile-based auth). */
+  isSystemAdmin?: boolean;
   permissions?: string[];
   descendants?: string[]; // IDs of subordinates
 }
@@ -108,6 +110,7 @@ export async function requireAuth(
       email: user.email,
       roleId: user.roleId?.toString(),
       isAdmin,
+      isSystemAdmin: isAdmin,
       permissions,
       descendants,
     };

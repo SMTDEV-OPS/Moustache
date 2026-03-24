@@ -48,7 +48,7 @@ const leads = [
         firstName: "Amit", lastName: "Sharma",
         phone: "+91 9876543210", email: "amit.sharma@example.com",
         source: "WHATSAPP", status: "NEW", value: 15000,
-        hotelName: "Moustache Goa", checkInDate: new Date(Date.now() + 86400000 * 5), checkOutDate: new Date(Date.now() + 86400000 * 8),
+        hotelName: "Postcard Goa", checkInDate: new Date(Date.now() + 86400000 * 5), checkOutDate: new Date(Date.now() + 86400000 * 8),
         roomCategory: "Standard Room", numberOfRooms: 1,
         budget: 15000,
         customData: {
@@ -65,7 +65,7 @@ const leads = [
         firstName: "Priya", lastName: "Mehta",
         phone: "+91 9876543211", email: "priya.mehta@example.com",
         source: "BRAND_WEBSITE", status: "IN_PROGRESS", value: 25000,
-        hotelName: "Moustache Kerala", checkInDate: new Date(Date.now() + 86400000 * 15), checkOutDate: new Date(Date.now() + 86400000 * 20),
+        hotelName: "Postcard Kerala", checkInDate: new Date(Date.now() + 86400000 * 15), checkOutDate: new Date(Date.now() + 86400000 * 20),
         roomCategory: "Backwater Suite", numberOfRooms: 2,
         budget: 25000,
         customData: {
@@ -82,7 +82,7 @@ const leads = [
         firstName: "Rahul", lastName: "Verma",
         phone: "+91 9876543212", email: "rahul.verma@example.com",
         source: "IVR_LIVE", status: "TENTATIVE", value: 45000,
-        hotelName: "Moustache Rajasthan", checkInDate: new Date(Date.now() + 86400000 * 30), checkOutDate: new Date(Date.now() + 86400000 * 33),
+        hotelName: "Postcard Rajasthan", checkInDate: new Date(Date.now() + 86400000 * 30), checkOutDate: new Date(Date.now() + 86400000 * 33),
         roomCategory: "Palace View", numberOfRooms: 1,
         budget: 45000,
         customData: {
@@ -99,7 +99,7 @@ const leads = [
         firstName: "Sneha", lastName: "Patel",
         phone: "+91 9876543213", email: "sneha.patel@example.com",
         source: "SOCIAL", status: "NEW", value: 8000,
-        hotelName: "Moustache Mumbai", checkInDate: new Date(Date.now() + 86400000 * 2), checkOutDate: new Date(Date.now() + 86400000 * 4),
+        hotelName: "Postcard Mumbai", checkInDate: new Date(Date.now() + 86400000 * 2), checkOutDate: new Date(Date.now() + 86400000 * 4),
         roomCategory: "City View", numberOfRooms: 1,
         budget: 8000,
         customData: {

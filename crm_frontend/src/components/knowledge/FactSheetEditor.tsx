@@ -201,7 +201,7 @@ export const FactSheetEditor = ({
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., The Moustache Goa - Fact Sheet"
+                placeholder="e.g., The Postcard Goa - Fact Sheet"
                 className="rounded-none h-12"
               />
             </div>

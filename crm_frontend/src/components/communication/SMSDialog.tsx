@@ -24,17 +24,17 @@ export const SMSDialog = ({ open, onOpenChange, guestPhone = "", guestName = "" 
     {
       id: "welcome",
       name: "Welcome SMS",
-      content: `Welcome to The Moustache Hotels, ${guestName || '[Name]'}! Your booking is confirmed. Check-in: 3PM. Need help? Call +91-XXX-XXXX. We're excited to host you!`
+      content: `Welcome to The Postcard Hotels, ${guestName || '[Name]'}! Your booking is confirmed. Check-in: 3PM. Need help? Call +91-XXX-XXXX. We're excited to host you!`
     },
     {
       id: "check-in-reminder",
       name: "Check-in Reminder",
-      content: `Hi ${guestName || '[Name]'}! Your check-in is tomorrow at The Moustache Hotels. Time: 3:00 PM. Looking forward to welcoming you!`
+      content: `Hi ${guestName || '[Name]'}! Your check-in is tomorrow at The Postcard Hotels. Time: 3:00 PM. Looking forward to welcoming you!`
     },
     {
       id: "room-ready",
       name: "Room Ready",
-      content: `Good news ${guestName || '[Name]'}! Your room is ready for early check-in. Please visit the front desk with your ID. Welcome to The Moustache Hotels!`
+      content: `Good news ${guestName || '[Name]'}! Your room is ready for early check-in. Please visit the front desk with your ID. Welcome to The Postcard Hotels!`
     },
     {
       id: "checkout-reminder",
@@ -44,12 +44,12 @@ export const SMSDialog = ({ open, onOpenChange, guestPhone = "", guestName = "" 
     {
       id: "feedback-request",
       name: "Feedback Request",
-      content: `Thank you for staying with The Moustache Hotels, ${guestName || '[Name]'}! Please rate your experience: [link]. Your feedback helps us improve.`
+      content: `Thank you for staying with The Postcard Hotels, ${guestName || '[Name]'}! Please rate your experience: [link]. Your feedback helps us improve.`
     },
     {
       id: "promotion",
       name: "Special Offer",
-      content: `Exclusive for ${guestName || '[Name]'}: 20% off your next stay! Use code STAY20. Book within 30 days. T&C apply. The Moustache Hotels`
+      content: `Exclusive for ${guestName || '[Name]'}: 20% off your next stay! Use code STAY20. Book within 30 days. T&C apply. The Postcard Hotels`
     }
   ];
 

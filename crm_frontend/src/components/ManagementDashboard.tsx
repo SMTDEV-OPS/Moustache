@@ -586,9 +586,9 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ userName }) =
                       <SelectValue placeholder="Select Property" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="moustache-goa">Moustache Goa</SelectItem>
-                      <SelectItem value="moustache-kerala">Moustache Kerala</SelectItem>
-                      <SelectItem value="moustache-rajasthan">Moustache Rajasthan</SelectItem>
+                      <SelectItem value="postcard-goa">Postcard Goa</SelectItem>
+                      <SelectItem value="postcard-kerala">Postcard Kerala</SelectItem>
+                      <SelectItem value="postcard-rajasthan">Postcard Rajasthan</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

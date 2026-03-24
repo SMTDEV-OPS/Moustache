@@ -27,7 +27,7 @@ const TicketingSystem = () => {
       priority: "High",
       status: "Open",
       category: "Reservation",
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       assignedTo: "Property Manager - Goa",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-15 10:30 AM",
@@ -50,7 +50,7 @@ const TicketingSystem = () => {
       priority: "Medium",
       status: "In Progress",
       category: "Billing",
-      property: "Moustache Rajasthan",
+      property: "Postcard Rajasthan",
       assignedTo: "Property Manager - Rajasthan",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-14 2:15 PM",
@@ -80,7 +80,7 @@ const TicketingSystem = () => {
       priority: "High",
       status: "Resolved",
       category: "Service",
-      property: "Moustache Kerala",
+      property: "Postcard Kerala",
       assignedTo: "Property Manager - Kerala",
       createdBy: "Harleen Mehta - Call Center",
       created: "2024-12-13 11:45 AM",
@@ -123,10 +123,10 @@ const TicketingSystem = () => {
   });
 
   const properties = [
-    "Moustache Goa",
-    "Moustache Kerala",
-    "Moustache Rajasthan",
-    "Moustache Mumbai"
+    "Postcard Goa",
+    "Postcard Kerala",
+    "Postcard Rajasthan",
+    "Postcard Mumbai"
   ];
 
   const categories = [

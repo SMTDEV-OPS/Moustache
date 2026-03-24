@@ -1,7 +1,7 @@
 {
-  "name": "moustachecrm-backend",
+  "name": "postcardcrm-backend",
   "version": "1.0.0",
-  "description": "MoustacheCRM backend (Express + TypeScript + MongoDB/Mongoose)",
+  "description": "PostcardCRM backend (Express + TypeScript + MongoDB/Mongoose)",
   "private": true,
   "main": "dist/server.js",
   "scripts": {
@@ -12,11 +12,13 @@
     "seed:admin": "ts-node scripts/seedAdmin.ts",
     "seed:ezee-properties": "ts-node scripts/seedEzeeProperties.ts",
     "seed:newhotel": "ts-node scripts/seedNewHotel.ts",
-    "seed:moustache-workflows": "ts-node scripts/seedMoustacheWorkflows.ts",
+    "seed:postcard-workflows": "ts-node scripts/seedPostcardWorkflows.ts",
     "seed:system-filters": "ts-node scripts/seedSystemFilters.ts",
     "seed:dashboard-widgets": "ts-node scripts/seedDashboardWidgets.ts",
     "seed:everything": "ts-node scripts/seedEverything.ts",
     "seed:complete": "ts-node scripts/seedComplete.ts",
+    "db:reset": "ts-node scripts/resetDatabase.ts",
+    "db:clone:moustache-to-postcard": "bash scripts/cloneMoustacheToPostcard.sh",
     "list:users": "ts-node scripts/listUsers.ts",
     "test:v2-allocation": "ts-node scripts/testV2Allocation.ts",
     "reset:password": "ts-node scripts/resetPassword.ts",
@@ -32,7 +34,7 @@
     "express",
     "typescript"
   ],
-  "author": "MoustacheCRM",
+  "author": "PostcardCRM",
   "license": "MIT",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.986.0",
@@ -62,6 +64,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^7.0.11",
     "socket.io": "^4.7.5",
+    "xlsx": "^0.18.5",
     "xml2js": "^0.6.2",
     "zod": "^3.23.8"
   },

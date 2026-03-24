@@ -48,7 +48,7 @@ const DetailedDashboard = () => {
 
   const propertyPerformance = [
     {
-      name: "Moustache Goa",
+      name: "Postcard Goa",
       leads: 156,
       revenue: 8520000,
       conversion: 32,
@@ -59,7 +59,7 @@ const DetailedDashboard = () => {
       forecast: 524
     },
     {
-      name: "Moustache Kerala",
+      name: "Postcard Kerala",
       leads: 134,
       revenue: 6780000,
       conversion: 28,
@@ -70,7 +70,7 @@ const DetailedDashboard = () => {
       forecast: 445
     },
     {
-      name: "Moustache Rajasthan",
+      name: "Postcard Rajasthan",
       leads: 142,
       revenue: 7350000,
       conversion: 35,
@@ -81,7 +81,7 @@ const DetailedDashboard = () => {
       forecast: 468
     },
     {
-      name: "Moustache Munnar",
+      name: "Postcard Munnar",
       leads: 98,
       revenue: 4890000,
       conversion: 24,
@@ -146,7 +146,7 @@ const DetailedDashboard = () => {
   // SLA Performance Data for Property Managers
   const slaPerformance = [
     {
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       manager: "Rajesh Kumari",
       totalTickets: 45,
       withinSLA: 42,
@@ -156,7 +156,7 @@ const DetailedDashboard = () => {
       status: "Excellent"
     },
     {
-      property: "Moustache Kerala",
+      property: "Postcard Kerala",
       manager: "Priya Nair",
       totalTickets: 38,
       withinSLA: 35,
@@ -166,7 +166,7 @@ const DetailedDashboard = () => {
       status: "Excellent"
     },
     {
-      property: "Moustache Rajasthan",
+      property: "Postcard Rajasthan",
       manager: "Vikram Singh",
       totalTickets: 52,
       withinSLA: 46,
@@ -176,7 +176,7 @@ const DetailedDashboard = () => {
       status: "Good"
     },
     {
-      property: "Moustache Munnar",
+      property: "Postcard Munnar",
       manager: "Meera Gupta",
       totalTickets: 29,
       withinSLA: 24,
@@ -191,7 +191,7 @@ const DetailedDashboard = () => {
 
   // Peak dates and pricing data for popup
   const propertyPeakData = {
-    "Moustache Goa": {
+    "Postcard Goa": {
       peakDates: [
         { date: "2024-05-15", checkIns: 45, avgPrice: 18500 },
         { date: "2024-05-22", checkIns: 52, avgPrice: 19200 },
@@ -199,7 +199,7 @@ const DetailedDashboard = () => {
       ],
       totalAvgPrice: 18833
     },
-    "Moustache Kerala": {
+    "Postcard Kerala": {
       peakDates: [
         { date: "2024-05-12", checkIns: 38, avgPrice: 17800 },
         { date: "2024-05-19", checkIns: 41, avgPrice: 18200 },
@@ -207,7 +207,7 @@ const DetailedDashboard = () => {
       ],
       totalAvgPrice: 17833
     },
-    "Moustache Rajasthan": {
+    "Postcard Rajasthan": {
       peakDates: [
         { date: "2024-05-10", checkIns: 42, avgPrice: 18100 },
         { date: "2024-05-17", checkIns: 46, avgPrice: 18500 },
@@ -215,7 +215,7 @@ const DetailedDashboard = () => {
       ],
       totalAvgPrice: 18167
     },
-    "Moustache Munnar": {
+    "Postcard Munnar": {
       peakDates: [
         { date: "2024-05-14", checkIns: 28, avgPrice: 17200 },
         { date: "2024-05-21", checkIns: 32, avgPrice: 17600 },

@@ -25,7 +25,7 @@ const Reports = ({ userName }: ReportsProps) => {
   // Mock data for property reports
   const propertyData = [
     {
-      name: "Moustache Goa",
+      name: "Postcard Goa",
       totalRevenue: "₹18,50,000",
       occupancy: "92%",
       avgRoomRate: "₹12,500",
@@ -35,7 +35,7 @@ const Reports = ({ userName }: ReportsProps) => {
       repeatGuests: "34%"
     },
     {
-      name: "Moustache Udaipur",
+      name: "Postcard Udaipur",
       totalRevenue: "₹22,30,000",
       occupancy: "88%",
       avgRoomRate: "₹15,200",
@@ -45,7 +45,7 @@ const Reports = ({ userName }: ReportsProps) => {
       repeatGuests: "42%"
     },
     {
-      name: "Moustache Munnar",
+      name: "Postcard Munnar",
       totalRevenue: "₹16,80,000",
       occupancy: "85%",
       avgRoomRate: "₹11,800",
@@ -55,7 +55,7 @@ const Reports = ({ userName }: ReportsProps) => {
       repeatGuests: "28%"
     },
     {
-      name: "Moustache Kerala",
+      name: "Postcard Kerala",
       totalRevenue: "₹19,90,000",
       occupancy: "90%",
       avgRoomRate: "₹13,800",

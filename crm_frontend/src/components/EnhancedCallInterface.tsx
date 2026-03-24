@@ -94,10 +94,10 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
   ];
 
   const propertyOptions = [
-    "Moustache Goa",
-    "Moustache Udaipur",
-    "Moustache Munnar",
-    "Moustache Coonoor"
+    "Postcard Goa",
+    "Postcard Udaipur",
+    "Postcard Munnar",
+    "Postcard Coonoor"
   ];
 
   const roomTypeOptions = [

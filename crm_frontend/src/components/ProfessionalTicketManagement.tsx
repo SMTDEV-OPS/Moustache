@@ -40,7 +40,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
       createdBy: "Front Desk",
       guestName: "Rajesh Kumar",
       roomNumber: "204",
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       createdDate: "2024-01-18",
       updatedDate: "2024-01-18",
       dueDate: "2024-01-19",
@@ -62,7 +62,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
       createdBy: "Guest Services",
       guestName: "Priya Sharma",
       roomNumber: "315",
-      property: "Moustache Udaipur",
+      property: "Postcard Udaipur",
       createdDate: "2024-01-17",
       updatedDate: "2024-01-18",
       dueDate: "2024-01-20",
@@ -85,7 +85,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
       createdBy: "Concierge",
       guestName: "Amit Patel",
       roomNumber: "128",
-      property: "Moustache Munnar",
+      property: "Postcard Munnar",
       createdDate: "2024-01-15",
       updatedDate: "2024-01-16",
       dueDate: "2024-01-16",
@@ -108,7 +108,7 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
       createdBy: "Night Manager",
       guestName: "Sunita Reddy",
       roomNumber: "302",
-      property: "Moustache Goa",
+      property: "Postcard Goa",
       createdDate: "2024-01-18",
       updatedDate: "2024-01-18",
       dueDate: "2024-01-18",
@@ -218,10 +218,10 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
 
   // Property agents mapping
   const propertyAgents = {
-    "Moustache Goa": ["Harleen Mehta", "Rahul Singh", "Priya Kumar"],
-    "Moustache Kerala": ["Amit Sharma", "Neha Patel", "Ravi Kumar"],
-    "Moustache Rajasthan": ["Sanju Verma", "Meera Singh", "Vikram Rao"],
-    "Moustache Mumbai": ["Anjali Shah", "Karan Malhotra", "Deepa Joshi"],
+    "Postcard Goa": ["Harleen Mehta", "Rahul Singh", "Priya Kumar"],
+    "Postcard Kerala": ["Amit Sharma", "Neha Patel", "Ravi Kumar"],
+    "Postcard Rajasthan": ["Sanju Verma", "Meera Singh", "Vikram Rao"],
+    "Postcard Mumbai": ["Anjali Shah", "Karan Malhotra", "Deepa Joshi"],
   };
 
   const getTicketStats = () => {
@@ -304,10 +304,10 @@ export const ProfessionalTicketManagement = ({ userRole, agentName }: Profession
                     <SelectValue placeholder="Select property" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
-                    <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
-                    <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
-                    <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
+                    <SelectItem value="Postcard Goa">Postcard Goa</SelectItem>
+                    <SelectItem value="Postcard Kerala">Postcard Kerala</SelectItem>
+                    <SelectItem value="Postcard Rajasthan">Postcard Rajasthan</SelectItem>
+                    <SelectItem value="Postcard Mumbai">Postcard Mumbai</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

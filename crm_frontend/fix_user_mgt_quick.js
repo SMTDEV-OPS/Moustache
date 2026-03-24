@@ -1,5 +1,5 @@
 const fs = require('fs');
-let text = fs.readFileSync('/Users/adarsh/MyRepo/Moustache/crm_frontend/src/pages/admin/UserManagement.tsx', `utf8`);
+let text = fs.readFileSync('/Users/adarsh/MyRepo/Postcard/crm_frontend/src/pages/admin/UserManagement.tsx', `utf8`);
 
 text = text.replace(/{ name: "", email: "", phone: "", password: "", roleId: "", reportsTo: "none" }/g, '{ name: "", email: "", phone: "", password: "", roleId: "", reportsTo: "none" } // No Team Type');
 
@@ -10,5 +10,5 @@ text = text.replace(/teamType:\s*editingUser\.teamType\,?\s*/g, '');
 text = text.replace(/,\s*teamType: string;/g, '');
 text = text.replace(/teamType\??:\s*string;?/g, '');
 
-fs.writeFileSync('/Users/adarsh/MyRepo/Moustache/crm_frontend/src/pages/admin/UserManagement.tsx', text);
+fs.writeFileSync('/Users/adarsh/MyRepo/Postcard/crm_frontend/src/pages/admin/UserManagement.tsx', text);
 

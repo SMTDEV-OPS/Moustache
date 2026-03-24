@@ -1,14 +1,31 @@
-import { API_BASE_URL, withAuthHeaders } from "./api";
+import { API_BASE_URL, withAuthHeaders, getAuthToken } from "./api";
 
 export type AccountType = "TRAVEL_AGENT" | "CORPORATE" | "EVENT_PLANNER" | "AIRLINES" | "GOVERNMENT" | "OTHER";
-export type OrganizationType = "CORPORATE" | "TRAVEL_AGENT" | "EVENT_PLANNER" | "PCO" | "AIRLINE" | "GOVERNMENT" | "EMBASSY_CONSULATE" | "PSU" | "CUSTOM";
+export type OrganizationType =
+  | "CORPORATE"
+  | "TRAVEL_AGENT"
+  | "EVENT_PLANNER"
+  | "WEDDING_PLANNER"
+  | "PCO"
+  | "AIRLINE"
+  | "GOVERNMENT"
+  | "EMBASSY_CONSULATE"
+  | "PSU"
+  | "CUSTOM"
+  | "EVENT_ORGANISER"
+  | "PROFESSIONAL_CONFERENCE_ORGANISER"
+  | "GOVERNMENT_BODIES"
+  | "EMBASSIES_AND_CONSULATES"
+  | "PUBLIC_SECTOR_UNIT";
 export type AccountLevel = "MASTER" | "PARENT" | "BRANCH" | "SUBSIDIARY";
 export type IndustrySize = "SMALL" | "MEDIUM" | "LARGE";
 export type ContractingType = "LOCAL_CONTRACTING" | "LOCAL_RFP" | "GLOBAL_RFP" | "ANNUAL_CONTRACT";
 export type AccountClassification = "ACQUISITION" | "DEVELOPMENT" | "RETENTION";
+export type AccountStatus = "LEAD" | "PROSPECT" | "ACTIVE" | "INACTIVE" | "BLACKLISTED" | "NA";
 
 export interface Account {
   id: string;
+  _id?: string; // MongoDB-style id when returned by API
   // Basic Information
   name: string;
   organizationType: OrganizationType;
@@ -20,9 +37,9 @@ export interface Account {
 
   // Hierarchy
   accountLevel: AccountLevel;
-  isHeadquarter: boolean;
+  profileStatus?: "ACTIVE" | "NA";
+  isHeadquarter?: boolean;
   canChangeHeadquarter?: boolean;
-  headquarterName?: string;
   type: AccountType; // Legacy
   parentAccountId?: string | null;
 
@@ -46,18 +63,15 @@ export interface Account {
   website?: string;
 
   // Business Information
-  industry?: string;
   marketSegment?: string;
   gstin?: string;
   panNumber?: string;
   accountClassification?: string; // Legacy
 
   // Industry Classification
-  industryCategory?: string;
+  industry?: string;
   industrySubCategory?: string;
-  industrySize?: IndustrySize;
-
-  industryStatus?: string; // Legacy
+  industryStatus?: IndustrySize;
   officeStatus?: string;
   travelAgentImplant?: string;
   salesTeam?: string;
@@ -67,13 +81,17 @@ export interface Account {
   // Contracting
   contractingTypes?: Array<{
     type: ContractingType;
+    year?: number;
+    fromYear?: number;
+    toYear?: number;
     fromMonth: number;
     toMonth: number;
   }>;
 
   // Account Type Classification
   accountType?: AccountClassification;
-  accountTypeOverride?: AccountClassification;
+  accountTypeOverride?: boolean;
+  hqAccountId?: string | null;
 
   // Sales & Credit Information
   businessPotentialCity?: string;
@@ -112,7 +130,11 @@ export interface Account {
   distance?: number;
   roomNight?: number;
   rate?: number;
+  adr?: number | null;
   remarks?: string;
+
+  // Account ↔ Property mapping (multi-property)
+  propertyIds?: string[];
 
   // Additional fields
   marketArea?: string;
@@ -126,6 +148,15 @@ export interface Account {
   };
   notes?: string;
 
+  tags?: string[];
+  status?: AccountStatus;
+
+  /** Fields last set by system/PMS sync */
+  systemSyncedFields?: string[];
+
+  followUpDate?: string | null;
+  followUpNote?: string;
+
   createdAt?: string;
   updatedAt?: string;
   // Hierarchy-related fields (populated from API)
@@ -138,6 +169,10 @@ export interface AccountListQuery {
   city?: string;
   accountType?: AccountClassification;
   accountLevel?: AccountLevel;
+  myAccounts?: boolean;
+  tags?: string[];
+  status?: AccountStatus;
+  includeNa?: boolean;
 }
 
 export const searchAccounts = async (query: string): Promise<Account[]> => {
@@ -165,7 +200,9 @@ export const listAccounts = async (
   const params = new URLSearchParams();
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
-      if (value) params.append(key, value);
+      if (value !== undefined && value !== null && value !== false) {
+        params.append(key, String(value));
+      }
     });
   }
 
@@ -433,6 +470,30 @@ export const getAccountHierarchy = async (accountId: string): Promise<Account> =
   } as Account;
 };
 
+export interface TimelineItem {
+  id: string;
+  source: "contact_activity" | "lead_activity" | "communication" | "note";
+  date: string;
+  summary?: string;
+  detail?: any;
+}
+
+export const getAccountTimeline = async (
+  accountId: string,
+  limit?: number
+): Promise<TimelineItem[]> => {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", String(limit));
+  const url = `${API_BASE_URL}/accounts/${accountId}/timeline${params.toString() ? `?${params}` : ""}`;
+  const response = await fetch(url, { headers: withAuthHeaders() });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const msg = data?.error?.message ?? data?.message ?? "Failed to fetch timeline";
+    throw new Error(msg);
+  }
+  return response.json();
+};
+
 export const getAccountParents = async (accountId: string): Promise<Account[]> => {
   const response = await fetch(`${API_BASE_URL}/accounts/${accountId}/parents`, {
     headers: withAuthHeaders(),
@@ -461,5 +522,27 @@ export const getAccountParents = async (accountId: string): Promise<Account[]> =
       ...rest,
     } as Account;
   });
+};
+
+export const importAccounts = async (file: File): Promise<{
+  imported: number;
+  skipped: number;
+  errors: { row: number; reason: string }[];
+}> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/accounts/import`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getAuthToken()}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.message || "Import failed");
+  }
+
+  return response.json();
 };
 

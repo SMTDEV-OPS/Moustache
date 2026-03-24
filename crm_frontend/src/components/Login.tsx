@@ -37,13 +37,22 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      <div className="w-full max-w-md animate-in fade-in zoom-in duration-500">
-        <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-slate-900/90 ring-1 ring-slate-200 dark:ring-slate-800">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[#fefcf7]">
+      <div className="w-full max-w-5xl animate-in fade-in zoom-in duration-500">
+        <div className="grid overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl md:grid-cols-2">
+          <div className="relative hidden md:block">
+            <img
+              src="/lovable-uploads/login-side.png"
+              alt="Scenic property view"
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/10" />
+          </div>
+          <Card className="border-0 rounded-none shadow-none bg-white">
           <CardHeader className="space-y-1 pb-6 text-center">
             <div className="flex justify-center mb-4">
               <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <Lock className="h-6 w-6 text-primary" />
+                <i className="fa-solid fa-shield-halved text-primary text-lg" aria-hidden="true" />
               </div>
             </div>
             <CardTitle className="text-2xl font-bold tracking-tight">Welcome Back</CardTitle>
@@ -123,12 +132,13 @@ const Login = () => {
             <p className="text-center text-xs text-muted-foreground">
               By clicking "Sign In", you agree to our <a href="#" className="underline hover:text-primary">Terms of Service</a> and <a href="#" className="underline hover:text-primary">Privacy Policy</a>.
             </p>
-            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/50 pt-2">
-              <Lock className="h-3 w-3" />
-              <span>Secured by Moustache CRM</span>
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/70 pt-2">
+              <i className="fa-solid fa-bolt" aria-hidden="true" />
+              <span>Powered by SM Technologies.</span>
             </div>
           </CardFooter>
-        </Card>
+          </Card>
+        </div>
       </div>
     </div>
   );

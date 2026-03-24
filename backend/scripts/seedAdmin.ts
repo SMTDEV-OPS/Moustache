@@ -6,8 +6,7 @@ import { logger } from "../src/config/logger";
 import { RoleModel } from "../src/models/role";
 import { ProfileModel } from "../src/models/profile";
 import { UserModel } from "../src/models/user";
-import { TeamType } from "../src/models/common";
-import { ALL_PERMISSIONS } from "../src/constants/permissions";
+import { getFullAdminProfileData } from "../src/scripts/ensureDefaultProfiles";
 
 async function seed() {
   await mongoose.connect(config.mongoUri);
@@ -15,8 +14,10 @@ async function seed() {
 
   const adminProfileName = "Admin";
   const adminRoleName = "Admin Role";
-  const adminEmail = "admin@moustachecrm.local";
+  const adminEmail = "admin@postcardcrm.local";
   const adminPassword = "Admin@123";
+
+  const { modulePermissions, setupPermissions } = getFullAdminProfileData();
 
   // 1. Seed the Admin Profile (Feature Permissions)
   let profile = await ProfileModel.findOne({ name: adminProfileName });
@@ -24,15 +25,17 @@ async function seed() {
     profile = await ProfileModel.create({
       name: adminProfileName,
       description: "System administrator profile with full permissions",
-      permissions: ALL_PERMISSIONS,
+      modulePermissions,
+      setupPermissions,
       isSystemProfile: true,
     });
     logger.info("Created Admin Profile");
   } else {
-    profile.permissions = ALL_PERMISSIONS;
+    profile.modulePermissions = modulePermissions;
+    profile.setupPermissions = setupPermissions;
     profile.isSystemProfile = true;
     await profile.save();
-    logger.info("Admin Profile already exists, updated permissions to ALL_PERMISSIONS");
+    logger.info("Admin Profile already exists, updated permissions to full admin");
   }
 
   // 2. Seed the Admin Role (Hierarchy / Data Access at the very top)
@@ -60,7 +63,6 @@ async function seed() {
       name: "System Admin",
       email: adminEmail,
       phone: "",
-      teamType: TeamType.OPERATIONS,
       regions: [],
       profileId: profile._id,
       roleId: role._id,
@@ -87,9 +89,6 @@ async function seed() {
       logger.info("Updated admin user with new Profile and Role configurations");
     }
   }
-
-  // Clean up legacy UserRoleModel if necessary (not required but good for sanity)
-  // We dropped this pattern in Phase 1, but we can safely ignore it.
 
   logger.info("Seeding complete. You can log in with:", {
     email: adminEmail,

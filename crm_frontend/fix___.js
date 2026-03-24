@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-const f = '/Users/adarsh/MyRepo/Moustache/crm_frontend/src/pages/admin/UserManagement.tsx';
+const f = '/Users/adarsh/MyRepo/Postcard/crm_frontend/src/pages/admin/UserManagement.tsx';
 let txt = fs.readFileSync(f, 'utf8');
 
 txt = txt.replace(/teamType: "MANAGEMENT",?/g, '');

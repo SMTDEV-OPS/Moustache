@@ -66,3 +66,10 @@ export const uploadKnowledgeBase = (
 ) => {
   return upload.array("files", 10);
 };
+
+/** Single file upload for account documents (memory → S3). */
+export const uploadAccountDocument = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 },
+}).single("file");

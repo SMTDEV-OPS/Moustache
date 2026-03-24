@@ -5,6 +5,7 @@ import {
   Users,
   Ticket,
   BookOpen,
+  Building2,
   Calendar,
   Settings2,
   Mail,
@@ -84,6 +85,7 @@ export function Sidebar({
       { title: "Dashboard", url: "dashboard", icon: LayoutDashboard, roles: ["callcenter", "ccmanager", "saleshead", "salesexecutive", "management", "propertymanager1", "admin"] },
       { title: "Call Center", url: "calls", icon: Phone, roles: ["callcenter"] },
       { title: "Leads", url: "admin-leads", icon: Users, roles: [] },
+      { title: "Accounts", url: "account-management", icon: Building2, roles: [] },
       { title: "Follow Ups", url: "todays-followups", icon: Clock, roles: ["callcenter", "salesexecutive", "saleshead", "ccmanager", "management", "admin"] },
       { title: "My Calendar", url: "my-calendar", icon: Calendar, roles: ["callcenter", "salesexecutive", "saleshead", "ccmanager", "management", "admin"] },
       { title: "Reports", url: "reports", icon: BarChart2, roles: ["management", "admin"] },
@@ -104,6 +106,7 @@ export function Sidebar({
               p === "leads.view.all"
           );
         }
+        if (item.url === "account-management") return true;
         if (item.url === "reports") return permissions.includes("reports.view");
         if (item.url === "buddy-management") return canAccessBuddy;
         if (item.url === "ticket-management") {
@@ -161,8 +164,8 @@ export function Sidebar({
         style={{ height: 56 }}
       >
         <img
-          src="/lovable-uploads/moustache-logo.png"
-          alt="Moustache CRM"
+          src="/lovable-uploads/postcard-logo.png"
+          alt={import.meta.env.VITE_HOTEL_BRAND || "CRM"}
           className="h-6 w-auto"
         />
         <div className="flex items-center gap-0.5">

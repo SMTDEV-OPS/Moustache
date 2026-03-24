@@ -1,6 +1,6 @@
 /**
  * Seed script for NEW HOTEL CRM - use this for a fresh, separate database.
- * Does NOT seed any Moustache-specific data.
+ * Does NOT seed any Postcard-specific data.
  *
  * Usage:
  *   1. Set MONGO_URI to your new hotel's database (e.g. mongodb://localhost:27017/newhotelcrm)
@@ -16,7 +16,6 @@ import { logger } from "../src/config/logger";
 import { RoleModel } from "../src/models/role";
 import { UserModel } from "../src/models/user";
 import { UserRoleModel } from "../src/models/userRole";
-import { TeamType } from "../src/models/common";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@newhotelcrm.local";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Admin@123";
@@ -29,31 +28,19 @@ async function seed() {
   });
 
   const adminRoleName = "Admin";
-  const permissions = [
-    "users.manage",
-    "accounts.manage",
-    "properties.manage",
-    "regions.manage",
-    "workflows.manage",
-    "availability.upload",
-    "reports.view",
-  ];
 
   let role = await RoleModel.findOne({ name: adminRoleName });
   if (!role) {
     role = await RoleModel.create({
       name: adminRoleName,
       description: "System administrator role with full management permissions",
-      permissions,
       isSystemRole: true,
     });
     logger.info("Created Admin role");
   } else {
-    const updatedPermissions = Array.from(new Set([...(role.permissions ?? []), ...permissions]));
-    role.permissions = updatedPermissions;
     role.isSystemRole = role.isSystemRole ?? true;
     await role.save();
-    logger.info("Admin role already exists, updated permissions if needed");
+    logger.info("Admin role already exists, updated configuration if needed");
   }
 
   let user = await UserModel.findOne({ email: ADMIN_EMAIL });
@@ -63,7 +50,6 @@ async function seed() {
       name: ADMIN_NAME,
       email: ADMIN_EMAIL,
       phone: "",
-      teamType: TeamType.OPERATIONS,
       regions: [],
       roleId: role._id,
       status: "ACTIVE",

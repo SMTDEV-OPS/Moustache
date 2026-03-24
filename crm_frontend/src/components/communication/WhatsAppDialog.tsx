@@ -22,7 +22,7 @@ export const WhatsAppDialog = ({ open, onOpenChange, guestPhone = "", guestName 
     {
       id: "welcome",
       name: "Welcome Message",
-      content: `Hello ${guestName || '[Guest Name]'}! Welcome to The Moustache Hotels. We're excited to have you stay with us. If you have any questions or need assistance, please don't hesitate to reach out. Have a wonderful day! 🏨✨`
+      content: `Hello ${guestName || '[Guest Name]'}! Welcome to The Postcard Hotels. We're excited to have you stay with us. If you have any questions or need assistance, please don't hesitate to reach out. Have a wonderful day! 🏨✨`
     },
     {
       id: "booking-confirmation",
@@ -32,7 +32,7 @@ export const WhatsAppDialog = ({ open, onOpenChange, guestPhone = "", guestName 
     {
       id: "check-in-reminder",
       name: "Check-in Reminder",
-      content: `Hi ${guestName || '[Guest Name]'}! Just a friendly reminder that your check-in is tomorrow. Check-in time is 3:00 PM. We can't wait to welcome you to The Moustache Hotels! 🎉`
+      content: `Hi ${guestName || '[Guest Name]'}! Just a friendly reminder that your check-in is tomorrow. Check-in time is 3:00 PM. We can't wait to welcome you to The Postcard Hotels! 🎉`
     },
     {
       id: "feedback-request",
@@ -42,7 +42,7 @@ export const WhatsAppDialog = ({ open, onOpenChange, guestPhone = "", guestName 
     {
       id: "special-offer",
       name: "Special Offer",
-      content: `🌟 Exclusive Offer for ${guestName || '[Guest Name]'}! \n\nEnjoy 20% off your next stay with us. Use code: WELCOME20\n\nValid for bookings made within 30 days. Terms and conditions apply.\n\nBook now and create more memories with The Moustache Hotels! 🏖️`
+      content: `🌟 Exclusive Offer for ${guestName || '[Guest Name]'}! \n\nEnjoy 20% off your next stay with us. Use code: WELCOME20\n\nValid for bookings made within 30 days. Terms and conditions apply.\n\nBook now and create more memories with The Postcard Hotels! 🏖️`
     }
   ];
 

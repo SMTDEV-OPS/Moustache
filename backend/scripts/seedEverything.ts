@@ -1,5 +1,5 @@
 /**
- * Seed all engine configuration data into Moustachecrm.
+ * Seed all engine configuration data into Postcardcrm.
  * Idempotent: skips entities that already exist.
  * Uses the same MongoDB config as the app (config.mongoUri).
  *
@@ -28,7 +28,7 @@ async function getOrCreateOrgId(): Promise<Types.ObjectId> {
   if (property) return property._id as Types.ObjectId;
 
   const newAccount = await AccountModel.create({
-    name: "Moustache CRM",
+    name: "Postcard CRM",
     organizationType: "CORPORATE",
     type: "CORPORATE",
     accountLevel: "MASTER",
@@ -219,11 +219,17 @@ async function seedEverything() {
   let fieldsCreated = 0;
   for (const field of fieldDefs) {
     const exists = await CustomFieldModel.findOne({
-      slug: field.slug,
-      entity_type: "lead",
+      $or: [
+        { slug: field.slug, entity_type: "lead" },
+        { module: field.module, fieldName: field.name },
+      ],
     });
     if (!exists) {
-      await CustomFieldModel.create(field);
+      // Legacy index { module, fieldName } is unique; omitting fieldName stores null and duplicates fail (E11000).
+      await CustomFieldModel.create({
+        ...field,
+        fieldName: field.name,
+      });
       fieldsCreated++;
     }
   }

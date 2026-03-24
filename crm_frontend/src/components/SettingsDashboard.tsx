@@ -20,6 +20,7 @@ import {
   Code,
   FileText,
   Info,
+  FileCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -175,6 +176,13 @@ export function SettingsDashboard({
           path: "setup/workflows",
           icon: Workflow,
           setupGuide: "Build workflows with triggers (e.g. lead created, stage changed), conditions, and actions. Test with dry run before activating.",
+        },
+        {
+          name: "Contract Approval Rules",
+          description: "Configure who approves contracts and in what order.",
+          path: "setup/contract-approval-rules",
+          icon: FileCheck,
+          setupGuide: "Define contract approval routing with multi-step approvers by user, role, or submitter manager.",
         },
       ].filter(() => canManageLeads || canManageWorkflows || isAdminLike),
     },

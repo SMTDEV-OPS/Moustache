@@ -4,11 +4,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Moustache CRM — Porcelain Clean Design System */
+/* Postcard CRM — Porcelain Clean Design System */
 
 :root {
   /* Palette */
-  --bg: #f9fafb;
+  --bg: #fefcf7;
   --surface: #ffffff;
   --primary: #4f46e5;
   --primary-light: #f0f0ff;

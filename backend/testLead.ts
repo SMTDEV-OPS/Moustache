@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { createLead } from "./src/services/leadService";
 
 async function run() {
-  await mongoose.connect("mongodb+srv://akash:Aky1234@cluster0.3irqq0z.mongodb.net/moustache_crm?retryWrites=true&w=majority&appName=Cluster0");
+  await mongoose.connect("mongodb+srv://akash:Aky1234@cluster0.3irqq0z.mongodb.net/postcard_crm?retryWrites=true&w=majority&appName=Cluster0");
   const lead = await createLead({
     guestContact: { name: "Test Lead", phone: "9999999999" },
     budget: 700000,

@@ -1,4 +1,4 @@
-# SOP Test Checklist — Moustache Lead Management
+# SOP Test Checklist — Postcard Lead Management
 
 Step-by-step checklist to validate the system against the SOP document. For each item, test the behavior and note any **gaps**, **differences**, or **not configurable** findings. Fixes can be addressed afterward.
 
@@ -217,7 +217,7 @@ Step-by-step checklist to validate the system against the SOP document. For each
 | 4.1.2 | Missed Call – WA req-gathering                                            | Workflow                           | ⚠️ Partial    | Workflow exists; WA placeholder                           |
 | 4.1.3 | Follow-ups by lead quality                                                | FollowupService                    | ✅ Exists      |                                                           |
 | 4.1.4 | Notify sales for new assignment                                           | `lead.created` → assign → notify   | ✅ Exists      | `notifyLeadAssigned`                                      |
-| 4.1.5 | Notify TL after 2 missed FUs                                              | Workflow `followup_missed_count`   | ✅ Exists      | `seedMoustacheWorkflows`                                  |
+| 4.1.5 | Notify TL after 2 missed FUs                                              | Workflow `followup_missed_count`   | ✅ Exists      | `seedPostcardWorkflows`                                  |
 | 4.1.6 | Notify TL+Manager if 12h unattended after 2 FUs                           | Workflow `lead_unattended` 720 min | ✅ Exists      |                                                           |
 | 4.1.7 | Lead movement automation (New→1st Connect→Discussion→Payment→Booked/Lost) | Move stages; check workflows       | ✅ Exists      | Auto-move on mandate; hourly reminder for Payment Request |
 | 4.1.8 | Reminder hourly if in Payment Request not closed                          | Scheduled workflow                 | ✅ Exists      | `scheduled` trigger                                       |

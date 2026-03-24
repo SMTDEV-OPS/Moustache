@@ -47,6 +47,7 @@ import { WorkflowBuilder } from "@/pages/setup/WorkflowBuilder";
 import { LeadAllocationPage } from "@/pages/setup/LeadAllocationPage";
 import { IntegrationHub } from "@/pages/setup/IntegrationHub";
 import { AuditLog } from "@/pages/setup/AuditLog";
+import { ContractApprovalRules } from "@/pages/setup/ContractApprovalRules";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import FollowUpReminder from "@/components/FollowUpReminder";
@@ -121,7 +122,7 @@ export const ProfessionalCRM = ({
     totalStays: 8,
     lastStay: "2024-05-15",
     preferences: ["Ocean view", "Late checkout", "Quiet room"],
-    property: "Moustache Goa",
+    property: "Postcard Goa",
     interactionHistory: [
       { date: "2024-06-10", type: "Call", channel: "Phone", agent: "Harleen Mehta", summary: "Inquiry about booking for July" },
       { date: "2024-06-08", type: "Email", channel: "Email", agent: "Harleen Mehta", summary: "Follow-up on spa services" },
@@ -130,7 +131,7 @@ export const ProfessionalCRM = ({
   };
 
   const canManageUsers = !!isAdmin || permissions?.includes("users.manage");
-  const canManageAccounts = !!isAdmin || permissions?.includes("accounts.manage");
+  const canManageAccounts = true;
   const canViewReports = !!isAdmin || permissions?.includes("reports.view");
   const canManageLeads =
     !!isAdmin ||
@@ -361,7 +362,13 @@ export const ProfessionalCRM = ({
             </div>
           );
         }
-        return <AccountManagement />;
+        return (
+          <AccountManagement
+            isAdmin={isAdmin}
+            isSystemAdmin={isAdmin}
+            permissions={permissions}
+          />
+        );
       case 'setup/fields':
         if (!isAdmin) {
           return (
@@ -399,6 +406,15 @@ export const ProfessionalCRM = ({
           );
         }
         return <LeadAllocationPage />;
+      case 'setup/contract-approval-rules':
+        if (!canManageAccounts && !isAdmin) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to manage contract approval rules.
+            </div>
+          );
+        }
+        return <ContractApprovalRules />;
       case 'setup/followup-rules':
         if (!canManageLeads && !canManageWorkflows) {
           return (
@@ -463,7 +479,13 @@ export const ProfessionalCRM = ({
             </div>
           );
         }
-        return <AccountManagement />;
+        return (
+          <AccountManagement
+            isAdmin={isAdmin}
+            isSystemAdmin={isAdmin}
+            permissions={permissions}
+          />
+        );
       case 'admin-console':
         if (!canManageUsers) {
           return (
@@ -634,7 +656,7 @@ export const ProfessionalCRM = ({
     'email-provider-settings', 'integration-settings', 'pipeline-management', 'module-builder', 'scoring-rules',
     'setup/roles', 'setup/profiles', 'setup/groups', 'setup/data-sharing',
     'setup/users', 'setup/accounts', 'setup/fields', 'setup/pipelines',
-    'setup/scoring', 'setup/allocation', 'setup/followup-rules', 'setup/workflows',
+    'setup/scoring', 'setup/allocation', 'setup/contract-approval-rules', 'setup/followup-rules', 'setup/workflows',
     'setup/templates', 'setup/email-provider', 'setup/call-quality', 'setup/integrations',
     'setup/webhooks', 'setup/audit-log',
   ].includes(activeView);

@@ -254,7 +254,7 @@ export const PropertyCardEditor = ({
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., The Moustache Goa"
+                placeholder="e.g., The Postcard Goa"
                 className="rounded-none h-12"
               />
             </div>
@@ -448,7 +448,7 @@ export const PropertyCardEditor = ({
                 type="email"
                 value={contact.email}
                 onChange={(e) => setContact({ ...contact, email: e.target.value })}
-                placeholder="e.g., goa@theMoustachehotel.com"
+                placeholder="e.g., goa@thePostcardhotel.com"
                 className="rounded-none h-12"
               />
             </div>
@@ -459,7 +459,7 @@ export const PropertyCardEditor = ({
                 id="website"
                 value={contact.website}
                 onChange={(e) => setContact({ ...contact, website: e.target.value })}
-                placeholder="e.g., www.theMoustachehotel.com"
+                placeholder="e.g., www.thePostcardhotel.com"
                 className="rounded-none h-12"
               />
             </div>

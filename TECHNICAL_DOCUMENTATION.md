@@ -1,6 +1,6 @@
-# Moustache CRM — Complete Technical Documentation
+# Postcard CRM — Complete Technical Documentation
 
-This document explains how the Moustache CRM system works for developers who need to maintain, debug, and extend it. It is based on a full codebase read and uses actual file paths, function names, and code references.
+This document explains how the Postcard CRM system works for developers who need to maintain, debug, and extend it. It is based on a full codebase read and uses actual file paths, function names, and code references.
 
 ---
 
@@ -8,14 +8,14 @@ This document explains how the Moustache CRM system works for developers who nee
 
 ### 1. What is this system?
 
-**Moustache CRM** is a hotel-focused Customer Relationship Management system built with Express + TypeScript + MongoDB. It manages leads (potential bookings), guests, accounts, reservations, and integrates with a Property Management System (PMS, Ezee). The system includes configurable engines for lead scoring, follow-ups, workflows, pipeline stages, allocation rules, and field definitions. It supports multi-tenant (org-based) access with profiles, roles, and data-sharing rules.
+**Postcard CRM** is a hotel-focused Customer Relationship Management system built with Express + TypeScript + MongoDB. It manages leads (potential bookings), guests, accounts, reservations, and integrates with a Property Management System (PMS, Ezee). The system includes configurable engines for lead scoring, follow-ups, workflows, pipeline stages, allocation rules, and field definitions. It supports multi-tenant (org-based) access with profiles, roles, and data-sharing rules.
 
 ---
 
 ### 2. Folder Structure (2 levels deep)
 
 ```
-Moustache/
+Postcard/
 ├── backend/                    # Express + TypeScript API server
 │   ├── src/
 │   │   ├── config/             # Environment config, logger

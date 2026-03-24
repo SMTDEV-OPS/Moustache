@@ -8,7 +8,7 @@ import { PropertyModel } from "../src/models/property";
 
 function makePropertyCode(name: string): string {
   // Deterministic, human-readable, and stable across runs.
-  // Example: "Moustache Select Udaipur" -> "MOUSTACHE_SELECT_UDAIPUR"
+  // Example: "Postcard Select Udaipur" -> "MOUSTACHE_SELECT_UDAIPUR"
   const base = name
     .trim()
     .toUpperCase()
@@ -41,21 +41,21 @@ const PROPERTIES = [
   { name: "Srinagar", hotelCode: "44201", authCode: "04518526510fb6786d-a91d-11ee-b" },
   { name: "Cowork", hotelCode: "30080", authCode: "264285454715a2315b-14b2-11ee-b" },
   { name: "Ranthambore", hotelCode: "44999", authCode: "211565806726ffa948-d200-11ee-b" },
-  { name: "Moustache Coimbatore", hotelCode: "45282", authCode: "760229338641954c82-db75-11ee-b" },
-  { name: "Moustache Shoja", hotelCode: "47068", authCode: "44747955487adfb631-383b-11ef-b" },
-  { name: "Moustache Daman", hotelCode: "48502", authCode: "33726398953fec89d0-847b-11ef-a" },
-  { name: "Moustache Agra", hotelCode: "48755", authCode: "7795144848b5d5ed9d-87a2-11ef-a" },
-  { name: "Moustache Mussoorie", hotelCode: "51888", authCode: "4521043221712cf5b0-da51-11ef-a" },
-  { name: "Moustache Select Udaipur", hotelCode: "52629", authCode: "2306602822a0d09718-fa51-11ef-a" },
-  { name: "Moustache Srinagar Houseboat", hotelCode: "52255", authCode: "864357776896e256bc-16d7-11f0-a" },
-  { name: "Moustache Naukuchiatal", hotelCode: "53346", authCode: "223864544392e0be3c-1765-11f0-a" },
-  { name: "Moustache Mukteshwar", hotelCode: "53431", authCode: "36500162108e08728f-16d5-11f0-a" },
-  { name: "Moustache Hostel Pahalgam", hotelCode: "53493", authCode: "665211062551811520-16d6-11f0-a" },
-  { name: "Moustache Select Rishikesh", hotelCode: "53443", authCode: "53027294532063994e-16d3-11f0-a" },
-  { name: "Moustache Rishikesh Hostel", hotelCode: "53669", authCode: "804295165271f44372-2b03-11f0-a" },
-  { name: "Moustache Hostel Bir", hotelCode: "56783", authCode: "9155528041ee7eef90-8f04-11f0-9" },
-  { name: "Moustache Hostel Gangtok", hotelCode: "56028", authCode: "3052637151375d6e30-7782-11f0-9" },
-  { name: "Moustache Jawai", hotelCode: "56620", authCode: "3290282351e36d391c-8d73-11f0-9" },
+  { name: "Postcard Coimbatore", hotelCode: "45282", authCode: "760229338641954c82-db75-11ee-b" },
+  { name: "Postcard Shoja", hotelCode: "47068", authCode: "44747955487adfb631-383b-11ef-b" },
+  { name: "Postcard Daman", hotelCode: "48502", authCode: "33726398953fec89d0-847b-11ef-a" },
+  { name: "Postcard Agra", hotelCode: "48755", authCode: "7795144848b5d5ed9d-87a2-11ef-a" },
+  { name: "Postcard Mussoorie", hotelCode: "51888", authCode: "4521043221712cf5b0-da51-11ef-a" },
+  { name: "Postcard Select Udaipur", hotelCode: "52629", authCode: "2306602822a0d09718-fa51-11ef-a" },
+  { name: "Postcard Srinagar Houseboat", hotelCode: "52255", authCode: "864357776896e256bc-16d7-11f0-a" },
+  { name: "Postcard Naukuchiatal", hotelCode: "53346", authCode: "223864544392e0be3c-1765-11f0-a" },
+  { name: "Postcard Mukteshwar", hotelCode: "53431", authCode: "36500162108e08728f-16d5-11f0-a" },
+  { name: "Postcard Hostel Pahalgam", hotelCode: "53493", authCode: "665211062551811520-16d6-11f0-a" },
+  { name: "Postcard Select Rishikesh", hotelCode: "53443", authCode: "53027294532063994e-16d3-11f0-a" },
+  { name: "Postcard Rishikesh Hostel", hotelCode: "53669", authCode: "804295165271f44372-2b03-11f0-a" },
+  { name: "Postcard Hostel Bir", hotelCode: "56783", authCode: "9155528041ee7eef90-8f04-11f0-9" },
+  { name: "Postcard Hostel Gangtok", hotelCode: "56028", authCode: "3052637151375d6e30-7782-11f0-9" },
+  { name: "Postcard Jawai", hotelCode: "56620", authCode: "3290282351e36d391c-8d73-11f0-9" },
   { name: "Nainital Select", hotelCode: "58563", authCode: "67886304739852e386-d0d9-11f0-9" },
   { name: "Varanasi Luxuria", hotelCode: "59269", authCode: "61140037017b500e06-fc65-11f0-9" },
   { name: "Select Manali", hotelCode: "58459", authCode: "44462169186e9eebc0-c9d0-11f0-9" },

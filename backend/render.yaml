@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: moustachecrm-backend
+    name: postcardcrm-backend
     env: node
     buildCommand: npm install && npm run build
     startCommand: npm start

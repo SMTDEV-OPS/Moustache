@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronLeft, ChevronRight, Save, Building2, User, Phone, MapPin, Briefcase, TrendingUp } from "lucide-react";
+import { Save, X } from "lucide-react";
 import {
     ORGANIZATION_TYPES,
     ACCOUNT_LEVELS,
@@ -18,6 +17,7 @@ import {
 } from "@/constants/accountData";
 import { listConglomerates, Conglomerate } from "@/services/conglomerates";
 import { Account, createAccount, updateAccount, listAccounts } from "@/services/accounts";
+import { listProperties, Property } from "@/services/properties";
 import { cn } from "@/lib/utils";
 
 interface AccountCreationWizardProps {
@@ -27,367 +27,421 @@ interface AccountCreationWizardProps {
     onSuccess: () => void;
 }
 
-const STEPS = [
-    "Account Information",
-    "Organization Type",
-    "Conglomerate",
-    "Headquarter Status",
-    "Account Level",
-    "Relationship Link",
-    "Account Type",
-    "Regional Information",
-    "Sales Assignment",
-    "Industry Category",
-    "Industry Sub-Category",
-    "Contracting Type",
-    "Address & Identification"
-];
+const emptyForm = {
+    name: "",
+    organizationType: "CORPORATE",
+    customOrganizationType: "",
+    conglomerateId: null as string | null,
+    accountLevel: "MASTER",
+    profileStatus: false,
+    accountType: "ACQUISITION",
+    accountTypeOverride: false,
+    parentAccountId: null as string | null,
+    propertyIds: [] as string[],
+    zone: "",
+    city: "",
+    state: "",
+    locality: "",
+    country: "India",
+    addressLine1: "",
+    zip: "",
+    gstin: "",
+    panNumber: "",
+    pmsProfileId: "",
+    email: "",
+    website: "",
+    industryCategory: "",
+    industrySubCategory: "",
+    industrySize: "MEDIUM",
+    contractingTypes: [] as any[],
+    primaryAccountManager: { userId: "", name: "", city: "" },
+    secondaryAccountManagers: [] as any[],
+};
 
 export const AccountCreationWizard = ({ isOpen, onClose, editingAccount, onSuccess }: AccountCreationWizardProps) => {
     const { toast } = useToast();
-    const [currentStep, setCurrentStep] = useState(0);
     const [conglomerates, setConglomerates] = useState<Conglomerate[]>([]);
     const [availableAccounts, setAvailableAccounts] = useState<Account[]>([]);
+    const [properties, setProperties] = useState<Property[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [formData, setFormData] = useState<typeof emptyForm>({ ...emptyForm });
 
-    const [formData, setFormData] = useState<any>({
-        name: "",
-        organizationType: "CORPORATE",
-        customOrganizationType: "",
-        conglomerateId: null,
-        accountLevel: "MASTER",
-        isHeadquarter: false,
-        headquarterName: "",
-        accountType: "ACQUISITION",
-        parentAccountId: null,
-        city: "",
-        state: "",
-        locality: "",
-        country: "India",
-        gstin: "",
-        panNumber: "",
-        industryCategory: "",
-        industrySubCategory: "",
-        industrySize: "MEDIUM",
-        contractingTypes: [],
-        primaryAccountManager: { userId: "", name: "", city: "" },
-        secondaryAccountManagers: [],
-    });
+    const set = (patch: Partial<typeof emptyForm>) => setFormData(prev => ({ ...prev, ...patch }));
 
     useEffect(() => {
         if (editingAccount) {
             setFormData({
-                ...formData,
-                ...editingAccount,
-                conglomerateId: editingAccount.conglomerateId || null,
-                parentAccountId: editingAccount.parentAccountId || null,
+                ...emptyForm,
+                ...(editingAccount as any),
+                conglomerateId: (editingAccount as any).conglomerateId || null,
+                parentAccountId: (editingAccount as any).parentAccountId || null,
+                primaryAccountManager: (editingAccount as any).primaryAccountManager || { userId: "", name: "", city: "" },
+                secondaryAccountManagers: (editingAccount as any).secondaryAccountManagers || [],
             });
         } else {
-            setFormData({
-                name: "",
-                organizationType: "CORPORATE",
-                customOrganizationType: "",
-                conglomerateId: null,
-                accountLevel: "MASTER",
-                isHeadquarter: false,
-                headquarterName: "",
-                accountType: "ACQUISITION",
-                parentAccountId: null,
-                city: "",
-                state: "",
-                locality: "",
-                country: "India",
-                gstin: "",
-                panNumber: "",
-                industryCategory: "",
-                industrySubCategory: "",
-                industrySize: "MEDIUM",
-                contractingTypes: [],
-                primaryAccountManager: { userId: "", name: "", city: "" },
-                secondaryAccountManagers: [],
-            });
+            setFormData({ ...emptyForm });
         }
     }, [editingAccount, isOpen]);
 
     useEffect(() => {
-        const fetchRefData = async () => {
-            try {
-                const [congs, accs] = await Promise.all([
-                    listConglomerates(),
-                    listAccounts()
-                ]);
+        if (!isOpen) return;
+        Promise.all([listConglomerates(), listAccounts(), listProperties()])
+            .then(([congs, accs, props]) => {
                 setConglomerates(congs);
                 setAvailableAccounts(accs);
-            } catch (err) {
-                console.error("Failed to fetch reference data:", err);
-            }
-        };
-        if (isOpen) fetchRefData();
+                setProperties(props);
+            })
+            .catch(err => console.error("Failed to fetch reference data:", err));
     }, [isOpen]);
 
-    const handleNext = () => {
-        if (currentStep === 0 && !formData.name) {
-            toast({ title: "Validation Error", description: "Account Name is required", variant: "destructive" });
+    const handleSubmit = async () => {
+        if (!formData.name.trim()) {
+            toast({ title: "Validation Error", description: "Account name is required", variant: "destructive" });
             return;
         }
-        if (currentStep < STEPS.length - 1) {
-            setCurrentStep(currentStep + 1);
-        } else {
-            handleSubmit();
-        }
-    };
 
-    const handleBack = () => {
-        if (currentStep > 0) setCurrentStep(currentStep - 1);
-    };
-
-    const handleSubmit = async () => {
         try {
             setIsSubmitting(true);
+            const sanitized: any = { ...formData };
 
-            // Sanitize payload before sending to API
-            const sanitizedData = { ...formData };
-
-            // 1. Map modern organizationType to legacy required type field
-            if (!sanitizedData.type) {
-                const orgTypeToLegacy: Record<string, string> = {
-                    "CORPORATE": "CORPORATE",
-                    "TRAVEL_AGENT": "TRAVEL_AGENT",
-                    "EVENT_PLANNER": "EVENT_PLANNER",
-                    "PCO": "EVENT_PLANNER",
-                    "AIRLINE": "AIRLINES",
-                    "GOVERNMENT": "GOVERNMENT",
-                    "EMBASSY_CONSULATE": "GOVERNMENT",
-                    "PSU": "GOVERNMENT",
-                    "CUSTOM": "OTHER"
+            // Map org type to legacy type field
+            if (!sanitized.type) {
+                const legacyMap: Record<string, string> = {
+                    CORPORATE: "CORPORATE", TRAVEL_AGENT: "TRAVEL_AGENT",
+                    EVENT_PLANNER: "EVENT_PLANNER", PCO: "EVENT_PLANNER",
+                    AIRLINE: "AIRLINES", GOVERNMENT: "GOVERNMENT",
+                    EMBASSY_CONSULATE: "GOVERNMENT", PSU: "GOVERNMENT", CUSTOM: "OTHER",
                 };
-                sanitizedData.type = orgTypeToLegacy[sanitizedData.organizationType] || "OTHER";
+                sanitized.type = legacyMap[sanitized.organizationType] || "OTHER";
             }
 
-            // 2. Handle null/empty reference IDs
-            if (sanitizedData.conglomerateId === "" || sanitizedData.conglomerateId === null) {
-                delete sanitizedData.conglomerateId;
-            }
-            if (sanitizedData.parentAccountId === "" || sanitizedData.parentAccountId === null) {
-                delete sanitizedData.parentAccountId;
-            }
+            // Clean up null/empty ref IDs
+            if (!sanitized.conglomerateId) delete sanitized.conglomerateId;
+            if (!sanitized.parentAccountId) delete sanitized.parentAccountId;
 
-            // 3. Clean up Account Managers (Remove empty entries or missing userIds)
-            if (sanitizedData.primaryAccountManager) {
-                if (!sanitizedData.primaryAccountManager.name && !sanitizedData.primaryAccountManager.userId) {
-                    delete sanitizedData.primaryAccountManager;
-                } else if (sanitizedData.primaryAccountManager.userId === "") {
-                    // Backend may fail if userId is passed as empty string
-                    const { userId, ...rest } = sanitizedData.primaryAccountManager;
-                    sanitizedData.primaryAccountManager = rest;
+            // Clean up account managers
+            if (sanitized.primaryAccountManager) {
+                const pam = sanitized.primaryAccountManager;
+                if (!pam.name && !pam.userId) {
+                    delete sanitized.primaryAccountManager;
+                } else if (pam.userId === "") {
+                    sanitized.primaryAccountManager = { name: pam.name, city: pam.city };
                 }
             }
-
-            if (sanitizedData.secondaryAccountManagers && Array.isArray(sanitizedData.secondaryAccountManagers)) {
-                sanitizedData.secondaryAccountManagers = sanitizedData.secondaryAccountManagers
-                    .filter((m: any) => (m.name && m.name.trim() !== "") || (m.userId && m.userId.trim() !== ""))
+            if (sanitized.secondaryAccountManagers?.length) {
+                sanitized.secondaryAccountManagers = sanitized.secondaryAccountManagers
+                    .filter((m: any) => m.name?.trim() || m.userId?.trim())
                     .map((m: any) => {
-                        const sanitizedM = { ...m };
-                        if (sanitizedM.userId === "") delete sanitizedM.userId;
-                        return sanitizedM;
+                        const s = { ...m };
+                        if (s.userId === "") delete s.userId;
+                        return s;
                     });
             }
 
-            // 4. Remove empty strings for other optional fields
-            Object.keys(sanitizedData).forEach(key => {
-                if (sanitizedData[key] === "") {
-                    delete sanitizedData[key];
-                }
-            });
-
-            if (editingAccount) {
-                await updateAccount(editingAccount.id, sanitizedData);
-            } else {
-                await createAccount(sanitizedData);
+            // Strip empty strings for optional fields
+            for (const key of Object.keys(sanitized)) {
+                if (sanitized[key] === "") delete sanitized[key];
             }
 
-            toast({
-                title: "Success",
-                description: editingAccount ? "Account updated successfully" : "Account created successfully"
-            });
+            if (editingAccount) {
+                await updateAccount(editingAccount.id, sanitized);
+            } else {
+                await createAccount(sanitized);
+            }
+
+            toast({ title: "Success", description: editingAccount ? "Account updated" : "Account created" });
             onSuccess();
             onClose();
         } catch (err) {
             toast({
                 title: "Error",
-                description: err instanceof Error ? err.message : "Failed to save account. Please check all fields.",
-                variant: "destructive"
+                description: err instanceof Error ? err.message : "Failed to save account",
+                variant: "destructive",
             });
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const renderStep = () => {
-        switch (currentStep) {
-            case 0: // Account Information
-                return (
-                    <div className="space-y-4">
-                        <Label>1st Step: Account Name (Company Name)</Label>
-                        <Input
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            placeholder="Enter legal entity name"
-                            className="text-lg"
-                        />
-                    </div>
-                );
-            case 1: // Organization Type
-                return (
-                    <div className="space-y-4">
-                        <Label>2nd Step: Choose Organization Type</Label>
-                        <Select
-                            value={formData.organizationType}
-                            onValueChange={(v) => setFormData({ ...formData, organizationType: v })}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {ORGANIZATION_TYPES.map(t => (
-                                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {formData.organizationType === "CUSTOM" && (
-                            <Input
-                                value={formData.customOrganizationType}
-                                onChange={(e) => setFormData({ ...formData, customOrganizationType: e.target.value })}
-                                placeholder="Specify type"
-                            />
-                        )}
-                    </div>
-                );
-            case 2: // Conglomerate
-                return (
-                    <div className="space-y-4">
-                        <Label>3rd Step: Is it part of a Conglomerate?</Label>
-                        <Select
-                            value={formData.conglomerateId || "none"}
-                            onValueChange={(v) => setFormData({ ...formData, conglomerateId: v === "none" ? null : v })}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select conglomerate" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">No / Individual</SelectItem>
-                                {conglomerates.map(c => (
-                                    <SelectItem key={c.id} value={c.id}>{c.name} ({c.country})</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                );
-            case 3: // HQ Status
-                return (
-                    <div className="space-y-4">
-                        <Label>4th Step: Headquarter Status</Label>
-                        <div className="flex items-center space-x-2 p-4 border rounded-lg">
-                            <Checkbox
-                                id="isHq"
-                                checked={formData.isHeadquarter}
-                                onCheckedChange={(v) => setFormData({ ...formData, isHeadquarter: !!v })}
-                            />
-                            <label htmlFor="isHq" className="font-medium">Is this the Headquarter?</label>
-                        </div>
-                        {formData.isHeadquarter && (
-                            <div className="space-y-2">
-                                <Label>Headquarter Name (Search existing)</Label>
+    const addSam = () =>
+        set({ secondaryAccountManagers: [...formData.secondaryAccountManagers, { userId: "", name: "", city: "" }] });
+
+    const removeSam = (i: number) =>
+        set({ secondaryAccountManagers: formData.secondaryAccountManagers.filter((_, idx) => idx !== i) });
+
+    const updateSam = (i: number, patch: any) =>
+        set({
+            secondaryAccountManagers: formData.secondaryAccountManagers.map((m, idx) =>
+                idx === i ? { ...m, ...patch } : m
+            ),
+        });
+
+    const toggleContractingType = (type: string, checked: boolean) => {
+        let types = [...formData.contractingTypes];
+        if (checked) {
+            types.push({ type, fromMonth: 4, toMonth: 3 });
+        } else {
+            types = types.filter((t: any) => t.type !== type);
+        }
+        set({ contractingTypes: types });
+    };
+
+    const updateContractingType = (type: string, patch: any) =>
+        set({
+            contractingTypes: formData.contractingTypes.map((t: any) =>
+                t.type === type ? { ...t, ...patch } : t
+            ),
+        });
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0">
+                <DialogHeader className="px-6 pt-5 pb-4 border-b">
+                    <DialogTitle className="text-base font-semibold">
+                        {editingAccount ? "Edit Account" : "New Account"}
+                    </DialogTitle>
+                </DialogHeader>
+
+                {/* Scrollable form body */}
+                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+
+                    {/* Basic Information */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Basic Information</h4>
+                        <div className="space-y-3">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="name">Account Name <span className="text-destructive">*</span></Label>
                                 <Input
-                                    value={formData.headquarterName}
-                                    onChange={(e) => setFormData({ ...formData, headquarterName: e.target.value })}
-                                    placeholder="Official HQ name"
+                                    id="name"
+                                    value={formData.name}
+                                    onChange={e => set({ name: e.target.value })}
+                                    placeholder="Legal entity name"
                                 />
                             </div>
-                        )}
-                    </div>
-                );
-            case 4: // Account Level
-                return (
-                    <div className="space-y-4">
-                        <Label>5th Step: Choose Account Level</Label>
-                        <div className="grid grid-cols-2 gap-4">
-                            {ACCOUNT_LEVELS.map(l => (
-                                <div
-                                    key={l.value}
-                                    className={cn(
-                                        "p-4 border rounded-lg cursor-pointer transition-all",
-                                        formData.accountLevel === l.value ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:border-slate-300"
-                                    )}
-                                    onClick={() => setFormData({ ...formData, accountLevel: l.value })}
-                                >
-                                    <p className="font-semibold">{l.label}</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label>Organization Type</Label>
+                                    <Select value={formData.organizationType} onValueChange={v => set({ organizationType: v })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {ORGANIZATION_TYPES.map(t => (
+                                                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            case 5: // Parent Link
-                return (
-                    <div className="space-y-4">
-                        <Label>6th Step: Link with Parent/Master Account</Label>
-                        <Select
-                            value={formData.parentAccountId || "none"}
-                            onValueChange={(v) => setFormData({ ...formData, parentAccountId: v === "none" ? null : v })}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select parent account" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">No Parent (Root level)</SelectItem>
-                                {availableAccounts.filter(a => a.id !== editingAccount?.id).map(a => (
-                                    <SelectItem key={a.id} value={a.id}>{a.name} ({a.city})</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                );
-            case 6: // Account Type (Auto check but can override)
-                return (
-                    <div className="space-y-4">
-                        <Label>7th Step: Choose Account Type</Label>
-                        <div className="p-4 bg-slate-50 rounded-lg mb-4">
-                            <p className="text-sm text-slate-500">Calculated Type based on Revenue: <span className="font-bold text-slate-900">ACQUISITION</span></p>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
-                            {["ACQUISITION", "DEVELOPMENT", "RETENTION"].map(type => (
-                                <div
-                                    key={type}
-                                    className={cn(
-                                        "p-4 border rounded-lg cursor-pointer text-center",
-                                        formData.accountType === type ? "border-primary bg-primary/5" : ""
-                                    )}
-                                    onClick={() => setFormData({ ...formData, accountType: type })}
-                                >
-                                    <p className="text-xs font-bold">{type}</p>
+                                {formData.organizationType === "CUSTOM" && (
+                                    <div className="space-y-1.5">
+                                        <Label>Custom Type</Label>
+                                        <Input
+                                            value={formData.customOrganizationType}
+                                            onChange={e => set({ customOrganizationType: e.target.value })}
+                                            placeholder="Specify type"
+                                        />
+                                    </div>
+                                )}
+                                <div className="space-y-1.5">
+                                    <Label>Account Level</Label>
+                                    <Select value={formData.accountLevel} onValueChange={v => set({ accountLevel: v })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {ACCOUNT_LEVELS.map(l => (
+                                                <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                            ))}
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label>Email</Label>
+                                    <Input
+                                        type="email"
+                                        value={formData.email}
+                                        onChange={e => set({ email: e.target.value })}
+                                        placeholder="contact@company.com"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>Website</Label>
+                                    <Input
+                                        value={formData.website}
+                                        onChange={e => set({ website: e.target.value })}
+                                        placeholder="https://..."
+                                    />
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                );
-            case 7: // Regional Information
-                return (
-                    <div className="space-y-4">
-                        <Label>8th Step: Regional / Cluster Information</Label>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Zone</Label>
-                                <Select value={formData.zone} onValueChange={(v) => setFormData({ ...formData, zone: v })}>
-                                    <SelectTrigger><SelectValue placeholder="Select Zone" /></SelectTrigger>
+                    </section>
+
+                    <hr className="border-border" />
+
+                    {/* Classification */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Classification</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Account Type</Label>
+                                <Select value={formData.accountType} onValueChange={v => set({ accountType: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        {["NORTH", "SOUTH", "EAST", "WEST", "CENTRAL"].map(z => <SelectItem key={z} value={z}>{z}</SelectItem>)}
+                                        {["ACQUISITION", "DEVELOPMENT", "RETENTION"].map(t => (
+                                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-1.5">
+                                <Label>Account Type Override</Label>
+                                <div className="flex items-center gap-2 pt-2">
+                                    <Checkbox
+                                        id="accountTypeOverride"
+                                        checked={formData.accountTypeOverride}
+                                        onCheckedChange={v => set({ accountTypeOverride: !!v })}
+                                    />
+                                    <label htmlFor="accountTypeOverride" className="text-sm cursor-pointer">
+                                        Manual override enabled
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 pt-1">
+                            <Checkbox
+                                id="isHq"
+                                checked={formData.profileStatus}
+                                onCheckedChange={v => set({ profileStatus: !!v })}
+                            />
+                            <label htmlFor="isHq" className="text-sm cursor-pointer">This account is a Headquarter</label>
+                        </div>
+                    </section>
+
+                    <hr className="border-border" />
+
+                    {/* Hierarchy */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Hierarchy</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Conglomerate</Label>
+                                <Select
+                                    value={formData.conglomerateId || "none"}
+                                    onValueChange={v => set({ conglomerateId: v === "none" ? null : v })}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">None / Individual</SelectItem>
+                                        {conglomerates.map(c => (
+                                            <SelectItem key={c.id} value={c.id}>{c.name} ({c.country})</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Parent Account</Label>
+                                <Select
+                                    value={formData.parentAccountId || "none"}
+                                    onValueChange={v => set({ parentAccountId: v === "none" ? null : v })}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="Root level" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">Root level (no parent)</SelectItem>
+                                        {availableAccounts
+                                            .filter(a => a.id !== editingAccount?.id)
+                                            .map(a => (
+                                                <SelectItem key={a.id} value={a.id}>
+                                                    {a.name}{a.city ? ` · ${a.city}` : ""}
+                                                </SelectItem>
+                                            ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </section>
+
+                    <hr className="border-border" />
+
+                    {/* Property Mapping */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Assign Properties</h4>
+                        <div className="rounded-md border p-3 space-y-2 max-h-56 overflow-y-auto">
+                            {properties.length === 0 && (
+                                <p className="text-sm text-muted-foreground">No properties found</p>
+                            )}
+                            {properties.map((property) => {
+                                const checked = formData.propertyIds.includes(property._id);
+                                return (
+                                    <label key={property._id} className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={(value) => {
+                                                const next = value
+                                                    ? [...formData.propertyIds, property._id]
+                                                    : formData.propertyIds.filter((id) => id !== property._id);
+                                                set({ propertyIds: next });
+                                            }}
+                                        />
+                                        <span>{property.name}</span>
+                                        {property.location?.city && (
+                                            <span className="text-xs text-muted-foreground">({property.location.city})</span>
+                                        )}
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </section>
+
+                    <hr className="border-border" />
+
+                    {/* Location */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Location</h4>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>City</Label>
+                                <Select value={formData.city || "none"} onValueChange={v => set({ city: v === "none" ? "" : v })}>
+                                    <SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">— Select city —</SelectItem>
+                                        {MAJOR_INDIAN_CITIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>State</Label>
+                                <Select value={formData.state || "none"} onValueChange={v => set({ state: v === "none" ? "" : v })}>
+                                    <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">— Select state —</SelectItem>
+                                        {INDIAN_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Zone</Label>
+                                <Select value={formData.zone || "none"} onValueChange={v => set({ zone: v === "none" ? "" : v })}>
+                                    <SelectTrigger><SelectValue placeholder="Zone" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">— Select zone —</SelectItem>
+                                        {["NORTH", "SOUTH", "EAST", "WEST", "CENTRAL"].map(z => (
+                                            <SelectItem key={z} value={z}>{z}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Locality / Area</Label>
+                                <Input
+                                    value={formData.locality}
+                                    onChange={e => set({ locality: e.target.value })}
+                                    placeholder="e.g. Bandra Kurla Complex"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
                                 <Label>Country</Label>
-                                <Select value={formData.country} onValueChange={(v) => setFormData({ ...formData, country: v })}>
-                                    <SelectTrigger><SelectValue placeholder="Select Country" /></SelectTrigger>
+                                <Select value={formData.country} onValueChange={v => set({ country: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="India">India</SelectItem>
                                         <SelectItem value="Other">Other</SelectItem>
@@ -395,213 +449,224 @@ export const AccountCreationWizard = ({ isOpen, onClose, editingAccount, onSucce
                                 </Select>
                             </div>
                         </div>
-                    </div>
-                );
-            case 8: // Sales Assignment
-                return (
-                    <div className="space-y-4">
-                        <Label>9th Step: Sales Team Assignment</Label>
-                        <div className="p-4 border rounded-lg bg-blue-50/30 border-blue-100">
-                            <Label className="text-blue-700">Primary Account Manager (PAM)</Label>
-                            <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Address</Label>
                                 <Input
-                                    placeholder="Manager Name"
-                                    value={formData.primaryAccountManager?.name || ""}
-                                    onChange={(e) => setFormData({ ...formData, primaryAccountManager: { ...formData.primaryAccountManager, name: e.target.value } })}
+                                    value={formData.addressLine1}
+                                    onChange={e => set({ addressLine1: e.target.value })}
+                                    placeholder="Street / Building"
                                 />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>PIN Code</Label>
                                 <Input
-                                    placeholder="Manager City"
-                                    value={formData.primaryAccountManager?.city || ""}
-                                    onChange={(e) => setFormData({ ...formData, primaryAccountManager: { ...formData.primaryAccountManager, city: e.target.value } })}
+                                    value={formData.zip}
+                                    onChange={e => set({ zip: e.target.value })}
+                                    placeholder="6-digit PIN"
                                 />
                             </div>
                         </div>
-                        <div className="p-4 border rounded-lg">
-                            <Label>Secondary Account Managers (SAM)</Label>
-                            <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => {
-                                const sams = [...(formData.secondaryAccountManagers || []), { userId: "", name: "", city: "" }];
-                                setFormData({ ...formData, secondaryAccountManagers: sams });
-                            }}>+ Add Secondary Manager</Button>
-                        </div>
-                    </div>
-                );
-            case 9: // Industry Category
-                return (
-                    <div className="space-y-4">
-                        <Label>10th Step: Choose Industry Category</Label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {Object.keys(INDUSTRY_CATEGORIES).map(cat => (
-                                <div
-                                    key={cat}
-                                    className={cn(
-                                        "p-3 border rounded cursor-pointer text-sm",
-                                        formData.industryCategory === cat ? "bg-primary/5 border-primary" : "hover:bg-slate-50"
-                                    )}
-                                    onClick={() => setFormData({ ...formData, industryCategory: cat, industrySubCategory: "" })}
-                                >
-                                    {cat}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            case 10: // Industry Sub-Category
-                return (
-                    <div className="space-y-4">
-                        <Label>11th Step: Choose Industry Sub-Category</Label>
-                        <div className="grid grid-cols-1 gap-2">
-                            {formData.industryCategory && INDUSTRY_CATEGORIES[formData.industryCategory]?.map(sub => (
-                                <div
-                                    key={sub}
-                                    className={cn(
-                                        "p-3 border rounded cursor-pointer text-sm",
-                                        formData.industrySubCategory === sub ? "bg-primary/5 border-primary" : "hover:bg-slate-50"
-                                    )}
-                                    onClick={() => setFormData({ ...formData, industrySubCategory: sub })}
-                                >
-                                    {sub}
-                                </div>
-                            ))}
-                            {!formData.industryCategory && <p className="text-slate-400 text-center py-8">Please select a category first</p>}
-                        </div>
-                    </div>
-                );
-            case 11: // Contracting Type
-                return (
-                    <div className="space-y-4">
-                        <Label>12th Step: Contracting Type & Timelines</Label>
-                        <div className="space-y-4">
-                            {["LOCAL_CONTRACTING", "LOCAL_RFP", "GLOBAL_RFP", "ANNUAL_CONTRACT"].map(type => (
-                                <div key={type} className="p-4 border rounded-lg">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <Label className="font-bold">{type.replace("_", " ")}</Label>
-                                        <Checkbox
-                                            checked={formData.contractingTypes?.some((t: any) => t.type === type)}
-                                            onCheckedChange={(v) => {
-                                                let types = [...(formData.contractingTypes || [])];
-                                                if (v) {
-                                                    types.push({ type, fromMonth: 4, toMonth: 3 }); // Default April-March
-                                                } else {
-                                                    types = types.filter((t: any) => t.type !== type);
-                                                }
-                                                setFormData({ ...formData, contractingTypes: types });
-                                            }}
-                                        />
-                                    </div>
-                                    {formData.contractingTypes?.some((t: any) => t.type === type) && (
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <Label className="text-xs">From Month</Label>
-                                                <Select
-                                                    value={formData.contractingTypes.find((t: any) => t.type === type).fromMonth.toString()}
-                                                    onValueChange={(v) => {
-                                                        const types = formData.contractingTypes.map((t: any) => t.type === type ? { ...t, fromMonth: parseInt(v) } : t);
-                                                        setFormData({ ...formData, contractingTypes: types });
-                                                    }}
-                                                >
-                                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                                    <SelectContent>{MONTHS.map(m => <SelectItem key={m.value} value={m.value.toString()}>{m.label}</SelectItem>)}</SelectContent>
-                                                </Select>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className="text-xs">To Month</Label>
-                                                <Select
-                                                    value={formData.contractingTypes.find((t: any) => t.type === type).toMonth.toString()}
-                                                    onValueChange={(v) => {
-                                                        const types = formData.contractingTypes.map((t: any) => t.type === type ? { ...t, toMonth: parseInt(v) } : t);
-                                                        setFormData({ ...formData, contractingTypes: types });
-                                                    }}
-                                                >
-                                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                                    <SelectContent>{MONTHS.map(m => <SelectItem key={m.value} value={m.value.toString()}>{m.label}</SelectItem>)}</SelectContent>
-                                                </Select>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            case 12: // Final Step: Address & IDs
-                return (
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
+                    </section>
+
+                    <hr className="border-border" />
+
+                    {/* Identification */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Identification</h4>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="space-y-1.5">
                                 <Label>GSTIN</Label>
-                                <Input value={formData.gstin} onChange={(e) => setFormData({ ...formData, gstin: e.target.value })} placeholder="15 Digit GSTIN" />
+                                <Input
+                                    value={formData.gstin}
+                                    onChange={e => set({ gstin: e.target.value })}
+                                    placeholder="15-digit GSTIN"
+                                />
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-1.5">
                                 <Label>PAN Number</Label>
-                                <Input value={formData.panNumber} onChange={(e) => setFormData({ ...formData, panNumber: e.target.value })} placeholder="10 Digit PAN" />
+                                <Input
+                                    value={formData.panNumber}
+                                    onChange={e => set({ panNumber: e.target.value })}
+                                    placeholder="10-digit PAN"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>PMS Profile ID</Label>
+                                <Input
+                                    value={formData.pmsProfileId}
+                                    onChange={e => set({ pmsProfileId: e.target.value })}
+                                    placeholder="External system ID"
+                                />
                             </div>
                         </div>
+                    </section>
+
+                    <hr className="border-border" />
+
+                    {/* Sales Team */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sales Team Assignment</h4>
                         <div className="space-y-2">
-                            <Label>PMS Profile ID</Label>
-                            <Input value={formData.pmsProfileId} onChange={(e) => setFormData({ ...formData, pmsProfileId: e.target.value })} placeholder="External System ID" />
+                            <Label className="text-sm">Primary Account Manager (PAM)</Label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Input
+                                    placeholder="Manager name"
+                                    value={formData.primaryAccountManager?.name || ""}
+                                    onChange={e => set({ primaryAccountManager: { ...formData.primaryAccountManager, name: e.target.value } })}
+                                />
+                                <Input
+                                    placeholder="Manager city"
+                                    value={formData.primaryAccountManager?.city || ""}
+                                    onChange={e => set({ primaryAccountManager: { ...formData.primaryAccountManager, city: e.target.value } })}
+                                />
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>City</Label>
-                                <Select value={formData.city} onValueChange={(v) => setFormData({ ...formData, city: v })}>
-                                    <SelectTrigger><SelectValue placeholder="City" /></SelectTrigger>
+
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-sm">Secondary Account Managers (SAM)</Label>
+                                <Button type="button" variant="outline" size="sm" onClick={addSam}>
+                                    + Add SAM
+                                </Button>
+                            </div>
+                            {formData.secondaryAccountManagers.map((sam, i) => (
+                                <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                                    <Input
+                                        placeholder="Name"
+                                        value={sam.name}
+                                        onChange={e => updateSam(i, { name: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="City"
+                                        value={sam.city}
+                                        onChange={e => updateSam(i, { city: e.target.value })}
+                                    />
+                                    <Button type="button" variant="ghost" size="icon" onClick={() => removeSam(i)}>
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    <hr className="border-border" />
+
+                    {/* Industry */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Industry</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Category</Label>
+                                <Select
+                                    value={formData.industryCategory || "none"}
+                                    onValueChange={v => set({ industryCategory: v === "none" ? "" : v, industrySubCategory: "" })}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                                     <SelectContent>
-                                        {MAJOR_INDIAN_CITIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                        <SelectItem value="none">— Select category —</SelectItem>
+                                        {Object.keys(INDUSTRY_CATEGORIES).map(cat => (
+                                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-2">
-                                <Label>State</Label>
-                                <Select value={formData.state} onValueChange={(v) => setFormData({ ...formData, state: v })}>
-                                    <SelectTrigger><SelectValue placeholder="State" /></SelectTrigger>
+                            <div className="space-y-1.5">
+                                <Label>Sub-Category</Label>
+                                <Select
+                                    value={formData.industrySubCategory || "none"}
+                                    onValueChange={v => set({ industrySubCategory: v === "none" ? "" : v })}
+                                    disabled={!formData.industryCategory}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="Select sub-category" /></SelectTrigger>
                                     <SelectContent>
-                                        {INDIAN_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                        <SelectItem value="none">— Select sub-category —</SelectItem>
+                                        {formData.industryCategory && (INDUSTRY_CATEGORIES as any)[formData.industryCategory]?.map((sub: string) => (
+                                            <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label>Locality / Area</Label>
-                            <Input value={formData.locality} onChange={(e) => setFormData({ ...formData, locality: e.target.value })} placeholder="e.g. Bandra Kurla Complex" />
+                        <div className="space-y-1.5">
+                            <Label>Industry Size</Label>
+                            <Select value={formData.industrySize} onValueChange={v => set({ industrySize: v })}>
+                                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="SMALL">Small</SelectItem>
+                                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                                    <SelectItem value="LARGE">Large</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
-                    </div>
-                );
-            default:
-                return <div className="p-8 text-center text-slate-400">Step {currentStep + 1} UI coming soon...</div>;
-        }
-    };
+                    </section>
 
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-3xl min-h-[500px] flex flex-col">
-                <DialogHeader>
-                    <DialogTitle className="flex justify-between items-center pr-8">
-                        <span>{editingAccount ? "Edit Account Profile" : "New Account Creation Wizard"}</span>
-                        <Badge variant="outline" className="text-primary border-primary">Step {currentStep + 1} of {STEPS.length}</Badge>
-                    </DialogTitle>
-                </DialogHeader>
+                    <hr className="border-border" />
 
-                <div className="flex-1 py-6">
-                    <div className="mb-8">
-                        <h3 className="text-xl font-bold text-slate-900">{STEPS[currentStep]}</h3>
-                        <p className="text-sm text-slate-500">Provide details for the section below to proceed.</p>
-                    </div>
+                    {/* Contracting Types */}
+                    <section className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Contracting</h4>
+                        <div className="space-y-3">
+                            {["LOCAL_CONTRACTING", "LOCAL_RFP", "GLOBAL_RFP", "ANNUAL_CONTRACT"].map(type => {
+                                const isChecked = formData.contractingTypes.some((t: any) => t.type === type);
+                                const entry = formData.contractingTypes.find((t: any) => t.type === type);
+                                return (
+                                    <div key={type} className={cn("border rounded-md p-3 space-y-2", isChecked && "border-foreground/20 bg-muted/30")}>
+                                        <div className="flex items-center gap-2">
+                                            <Checkbox
+                                                id={`ct-${type}`}
+                                                checked={isChecked}
+                                                onCheckedChange={v => toggleContractingType(type, !!v)}
+                                            />
+                                            <label htmlFor={`ct-${type}`} className="text-sm font-medium cursor-pointer">
+                                                {type.replace(/_/g, " ")}
+                                            </label>
+                                        </div>
+                                        {isChecked && entry && (
+                                            <div className="grid grid-cols-2 gap-3 pl-6">
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs text-muted-foreground">From Month</Label>
+                                                    <Select
+                                                        value={entry.fromMonth?.toString()}
+                                                        onValueChange={v => updateContractingType(type, { fromMonth: parseInt(v) })}
+                                                    >
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {MONTHS.map(m => <SelectItem key={m.value} value={m.value.toString()}>{m.label}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs text-muted-foreground">To Month</Label>
+                                                    <Select
+                                                        value={entry.toMonth?.toString()}
+                                                        onValueChange={v => updateContractingType(type, { toMonth: parseInt(v) })}
+                                                    >
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {MONTHS.map(m => <SelectItem key={m.value} value={m.value.toString()}>{m.label}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
 
-                    {renderStep()}
                 </div>
 
-                <div className="flex justify-between items-center pt-6 border-t">
-                    <Button variant="ghost" onClick={handleBack} disabled={currentStep === 0}>
-                        <ChevronLeft className="mr-2 h-4 w-4" /> Back
+                <DialogFooter className="px-6 py-4 border-t bg-background">
+                    <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+                        Cancel
                     </Button>
-                    <div className="flex space-x-2">
-                        <Button variant="outline" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
-                        <Button onClick={handleNext} disabled={isSubmitting}>
-                            {isSubmitting ? "Saving..." : currentStep === STEPS.length - 1 ? "Complete Profile" : "Next Step"}
-                            {currentStep < STEPS.length - 1 && <ChevronRight className="ml-2 h-4 w-4" />}
-                        </Button>
-                    </div>
-                </div>
+                    <Button onClick={handleSubmit} disabled={isSubmitting}>
+                        <Save className="h-4 w-4 mr-2" />
+                        {isSubmitting ? "Saving…" : editingAccount ? "Save Changes" : "Create Account"}
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

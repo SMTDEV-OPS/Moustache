@@ -1133,7 +1133,7 @@ leadsRouter.post("/:id/call-quality", async (req, res, next) => {
       throw forbidden("Insufficient permissions to score call quality");
     }
 
-    const orgId = "69ae144fae23030b62f901f5"; // Moustache CRM fallback for single tenant deployments
+    const orgId = "69ae144fae23030b62f901f5"; // Postcard CRM fallback for single tenant deployments
 
     const score = await CallQualityService.submitCallQualityScore(
       req.params.id,

@@ -53,8 +53,16 @@ export interface UpdateFieldPayload extends Partial<CreateFieldPayload> {
 
 const BASE = `${API_BASE_URL}/api/admin/fields`;
 
-export async function listAdminFields(entity: "lead" | "contact" | "deal" = "lead"): Promise<AdminField[]> {
-  const response = await fetch(`${BASE}?entity=${entity}`, { headers: withAuthHeaders() });
+export async function listAdminFields(
+  entity: "lead" | "contact" | "deal" = "lead",
+  options?: { includeInactive?: boolean }
+): Promise<AdminField[]> {
+  const params = new URLSearchParams({ entity });
+  if (options?.includeInactive) {
+    params.set("include_inactive", "true");
+  }
+
+  const response = await fetch(`${BASE}?${params.toString()}`, { headers: withAuthHeaders() });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data?.message || "Failed to fetch fields");

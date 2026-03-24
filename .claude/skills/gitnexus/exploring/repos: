@@ -6,8 +6,8 @@ repos:
     files: 321
     symbols: 1804
     processes: 88
-  - name: "Moustache"
-    path: "/Users/adarsh/MyRepo/Moustache"
+  - name: "Postcard"
+    path: "/Users/adarsh/MyRepo/Postcard"
     indexed: "2026-02-26T10:21:58.213Z"
     commit: "fa5cc4e"
     files: 339

@@ -1,12 +1,14 @@
 import { Schema, model, Document, Types } from "mongoose";
+import { PropertyRef } from "./common";
 
 export interface IAccount extends Document {
   // Basic Information
   name: string; // Company Name
 
   // Organization Classification (NEW)
-  organizationType: "CORPORATE" | "TRAVEL_AGENT" | "EVENT_PLANNER" | "PCO" | "AIRLINE" | "GOVERNMENT" | "EMBASSY_CONSULATE" | "PSU" | "CUSTOM";
+  organizationType: "CORPORATE" | "TRAVEL_AGENT" | "EVENT_PLANNER" | "WEDDING_PLANNER" | "PCO" | "AIRLINE" | "GOVERNMENT" | "EMBASSY_CONSULATE" | "PSU" | "CUSTOM" | "EVENT_ORGANISER" | "PROFESSIONAL_CONFERENCE_ORGANISER" | "GOVERNMENT_BODIES" | "EMBASSIES_AND_CONSULATES" | "PUBLIC_SECTOR_UNIT";
   customOrganizationType?: string; // When organizationType = "CUSTOM"
+  customOrganizationTypes?: string[];
 
   // Conglomerate (NEW)
   conglomerateId?: Types.ObjectId; // Reference to Conglomerate model
@@ -14,9 +16,13 @@ export interface IAccount extends Document {
 
   // Account Hierarchy (NEW)
   accountLevel: "MASTER" | "PARENT" | "BRANCH" | "SUBSIDIARY";
-  isHeadquarter: boolean; // Changed from optional to required
+  /** Legacy HQ flag (kept for existing data). */
+  isHeadquarter: boolean;
+  /** Profile status for no-hard-delete workflows. */
+  profileStatus?: "ACTIVE" | "NA";
   canChangeHeadquarter: boolean; // Admin-only flag (NEW)
   headquarterName?: string; // Headquarter Name
+  hqAccountId?: Types.ObjectId;
 
   // Legacy type field (keeping for backward compatibility)
   type: "TRAVEL_AGENT" | "CORPORATE" | "EVENT_PLANNER" | "AIRLINES" | "GOVERNMENT" | "OTHER"; // Account Type
@@ -42,18 +48,19 @@ export interface IAccount extends Document {
   website?: string; // Website
 
   // Business Information
-  industry?: string; // Industry (legacy)
   marketSegment?: string; // Market Segment
   gstin?: string; // GSTIN
   panNumber?: string; // PAN Number
   accountClassification?: string; // Account Classification
 
   // Industry Classification (NEW - Hierarchical)
+  /** Industry label + PostcardCRM API field (mirrors industryCategory when synced). */
+  industry?: string;
   industryCategory?: string; // e.g., "Consumer & Retail"
   industrySubCategory?: string; // e.g., "FMCG"
-  industrySize?: "SMALL" | "MEDIUM" | "LARGE"; // Industry Status (NEW)
-
-  industryStatus?: string; // Industry Status (legacy)
+  industrySize?: "SMALL" | "MEDIUM" | "LARGE";
+  /** PostcardCRM enum name for size band. */
+  industryStatus?: "SMALL" | "MEDIUM" | "LARGE";
   officeStatus?: string; // Office Status
   travelAgentImplant?: string; // Travel Agent (Implant)
   salesTeam?: string; // Sales Team
@@ -63,13 +70,16 @@ export interface IAccount extends Document {
   // Contracting (NEW - Multiple types with timelines)
   contractingTypes?: Array<{
     type: "LOCAL_CONTRACTING" | "LOCAL_RFP" | "GLOBAL_RFP" | "ANNUAL_CONTRACT";
-    fromMonth: number; // 1-12
-    toMonth: number; // 1-12
+    year?: number;
+    fromYear?: number;
+    toYear?: number;
+    fromMonth: number;
+    toMonth: number;
   }>;
 
   // Account Type Classification (NEW)
   accountType?: "ACQUISITION" | "DEVELOPMENT" | "RETENTION";
-  accountTypeOverride?: "ACQUISITION" | "DEVELOPMENT" | "RETENTION"; // Manual override
+  accountTypeOverride?: boolean; // Manual override toggle
 
   // Sales & Credit Information
   businessPotentialCity?: string; // Business Potential City (legacy)
@@ -108,7 +118,10 @@ export interface IAccount extends Document {
   distance?: number; // Distance
   roomNight?: number; // Room Night
   rate?: number; // Rate
+  adr?: number; // Average Daily Rate (ADR)
   remarks?: string; // Remarks
+
+  propertyIds?: Types.ObjectId[];
 
   // Additional fields
   marketArea?: string; // Market/Area
@@ -121,6 +134,12 @@ export interface IAccount extends Document {
     email?: string;
   };
   notes?: string;
+
+  tags?: string[];
+  status?: "LEAD" | "PROSPECT" | "ACTIVE" | "INACTIVE" | "BLACKLISTED" | "NA";
+  systemSyncedFields?: string[];
+  followUpDate?: Date | null;
+  followUpNote?: string;
 }
 
 const accountSchema = new Schema<IAccount>(
@@ -131,10 +150,27 @@ const accountSchema = new Schema<IAccount>(
     // Organization Classification (NEW)
     organizationType: {
       type: String,
-      enum: ["CORPORATE", "TRAVEL_AGENT", "EVENT_PLANNER", "PCO", "AIRLINE", "GOVERNMENT", "EMBASSY_CONSULATE", "PSU", "CUSTOM"],
+      enum: [
+        "CORPORATE",
+        "TRAVEL_AGENT",
+        "EVENT_PLANNER",
+        "WEDDING_PLANNER",
+        "PCO",
+        "AIRLINE",
+        "GOVERNMENT",
+        "EMBASSY_CONSULATE",
+        "PSU",
+        "CUSTOM",
+        "EVENT_ORGANISER",
+        "PROFESSIONAL_CONFERENCE_ORGANISER",
+        "GOVERNMENT_BODIES",
+        "EMBASSIES_AND_CONSULATES",
+        "PUBLIC_SECTOR_UNIT",
+      ],
       required: true,
     },
     customOrganizationType: String,
+    customOrganizationTypes: [{ type: String }],
 
     // Conglomerate (NEW)
     conglomerateId: {
@@ -152,8 +188,14 @@ const accountSchema = new Schema<IAccount>(
       default: "MASTER",
     },
     isHeadquarter: { type: Boolean, required: true, default: false },
+    profileStatus: { type: String, enum: ["ACTIVE", "NA"], default: "ACTIVE" },
     canChangeHeadquarter: { type: Boolean, default: true },
     headquarterName: String,
+    hqAccountId: {
+      type: Schema.Types.ObjectId,
+      ref: "Account",
+      default: null,
+    },
 
     // Legacy type field (keeping for backward compatibility)
     type: {
@@ -187,34 +229,37 @@ const accountSchema = new Schema<IAccount>(
     website: String,
 
     // Business Information
-    industry: String, // Legacy
+    industry: String,
     marketSegment: String,
     gstin: String,
     panNumber: String,
     accountClassification: String,
 
-    // Industry Classification (NEW - Hierarchical)
     industryCategory: String,
     industrySubCategory: String,
     industrySize: {
       type: String,
       enum: ["SMALL", "MEDIUM", "LARGE"],
     },
-
-    industryStatus: String, // Legacy
+    industryStatus: {
+      type: String,
+      enum: ["SMALL", "MEDIUM", "LARGE"],
+    },
     officeStatus: String,
     travelAgentImplant: String,
     salesTeam: String,
     contractingType: String, // Legacy
     pmsSource: String,
 
-    // Contracting (NEW - Multiple types with timelines)
     contractingTypes: [
       {
         type: {
           type: String,
           enum: ["LOCAL_CONTRACTING", "LOCAL_RFP", "GLOBAL_RFP", "ANNUAL_CONTRACT"],
         },
+        year: { type: Number },
+        fromYear: { type: Number },
+        toYear: { type: Number },
         fromMonth: {
           type: Number,
           min: 1,
@@ -233,10 +278,7 @@ const accountSchema = new Schema<IAccount>(
       type: String,
       enum: ["ACQUISITION", "DEVELOPMENT", "RETENTION"],
     },
-    accountTypeOverride: {
-      type: String,
-      enum: ["ACQUISITION", "DEVELOPMENT", "RETENTION"],
-    },
+    accountTypeOverride: { type: Boolean, default: false },
 
     // Sales & Credit Information
     businessPotentialCity: String, // Legacy
@@ -283,19 +325,30 @@ const accountSchema = new Schema<IAccount>(
     distance: Number,
     roomNight: Number,
     rate: Number,
+    adr: { type: Number, default: null },
     remarks: String,
 
-    // Additional fields
+    propertyIds: { type: [PropertyRef], default: [] },
+
     marketArea: String,
     competitor: String,
 
-    // Legacy fields (keeping for backward compatibility)
     primaryContact: {
       name: String,
       phone: String,
       email: String,
     },
     notes: String,
+
+    tags: [String],
+    status: {
+      type: String,
+      enum: ["LEAD", "PROSPECT", "ACTIVE", "INACTIVE", "BLACKLISTED", "NA"],
+      default: "ACTIVE",
+    },
+    systemSyncedFields: [String],
+    followUpDate: { type: Date, default: null },
+    followUpNote: { type: String, default: "" },
   },
   { timestamps: true }
 );
@@ -305,11 +358,23 @@ accountSchema.index({ parentAccountId: 1 });
 accountSchema.index({ organizationType: 1 }); // NEW
 accountSchema.index({ conglomerateId: 1 }); // NEW
 accountSchema.index({ accountLevel: 1 }); // NEW
-accountSchema.index({ industryCategory: 1, industrySubCategory: 1 }); // NEW
+accountSchema.index({ industry: 1, industrySubCategory: 1 });
+accountSchema.index({ industryCategory: 1, industrySubCategory: 1 });
+accountSchema.index({ status: 1 });
+accountSchema.index({ tags: 1 });
 accountSchema.index({ accountType: 1 }); // NEW
 accountSchema.index({ 'primaryAccountManager.userId': 1 }); // NEW
 accountSchema.index({ city: 1, organizationType: 1 }); // Compound index for filtering
 accountSchema.index({ name: 'text' }); // Text search index
+
+// Keep profileStatus soft-delete flag aligned with status when explicitly NA.
+accountSchema.pre("save", function (next) {
+  const doc = this as IAccount;
+  if (doc.profileStatus === "NA") {
+    doc.status = "NA";
+  }
+  next();
+});
 
 // Prevent circular references
 accountSchema.pre("save", async function (next) {

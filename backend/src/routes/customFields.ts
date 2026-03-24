@@ -14,7 +14,8 @@ router.get("/module/:moduleName", async (req: Request, res: Response) => {
         const { moduleName } = req.params;
         const fields = await CustomFieldModel.find({
             module: moduleName,
-            isActive: true,
+            isActive: { $ne: false },
+            is_active: { $ne: false },
         }).sort({ order: 1 });
 
         res.json(fields);

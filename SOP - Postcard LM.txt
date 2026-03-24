@@ -1,0 +1,743 @@
+﻿SOP - Postcard LM
+1. Lead Management (LM) Module
+1.1 Lead Capture Sources
+Supports capturing leads from:
+* IVR / CTI
+   * API integration with Cloud Connect / Exotel to fetch real-time call data. 
+   * Only leads where the customer has pressed 1 (Sales) on IVR will be captured. 
+   * The system should be able to pick calls via the LM tool so that recordings can be mapped inside each lead’s activity timeline.
+
+   * WhatsApp API
+   * Generate new leads if a new customer has reached out to us.
+   * Currently using WATI 
+   * Open to in-house or pre-integrated WhatsApp solutions.
+
+      * Website
+
+      * Email  -  Suggestions to finalize the integration method required.
+
+      * Social Media Integrations
+
+      * Manual Entry
+
+      * CSV Upload
+
+Notes - 
+         * Industry operates mixed processes (manual + tech), hence the system must simplify adoption to avoid dual entry. Refer to Duplicate lead checkpoint. 
+________________
+
+
+
+
+
+
+
+
+
+
+
+
+1.2 Lead Tagging
+Fields of lead for tags based on:
+         * City Name
+
+         * Property Name
+
+         * Customer Type:
+            * B2C
+            * B2B
+            * Corporate
+            * Influencer
+            * NRI
+            * HNI
+            * Reference
+
+               * Travel Dates
+
+               * Minimum Budget
+
+               * Lead Source (as defined in 1.1)
+
+               * Booking window
+________________
+
+
+1.3 Lead Allocation Algorithm
+Automated assignment based on:
+                  * Round-robin allocation to logged-in team members
+
+                  * Lead allocation to be done till 8hrs from login time. Last one hour to complete pending followups and tasks. 
+
+                  * By Tags:
+
+                     * B2B → B2B team only
+                     * B2C → B2C team only
+                     * Corporate → B2B team only
+                     * Influencer/NRI/HNI/Reference → B2C team only
+
+                        * Workload Distribution:
+                        * Daily lead handling limit: 30 sales leads per person
+                        * When someone reaches their limit, they are skipped in round-robin allocation
+
+                           * Excess Workload Handling (extra leads):
+                           * Leads remain in system unassigned initially
+                           * Automated requirement-gathering message sent
+                           * Responses are taken and fed into lead fields.
+                           * Lead scoring runs automatically as per the updated data. 
+                           * Qualified HOT leads are then automatically distributed to working team members.
+                           * Criteria to allocate leads - Max leads to one who has minimum open leads in the system. 
+
+                              * Alerts:
+                              * Warning to TL/Manager when an agent reaches 90% workload of today’s leads + overall open count.
+                              * Notifications for all qualified leads in Excess Workload bucket
+
+                                 * Optional 
+                                 * By City
+                                 * By Segment
+
+                                    * Team Structure:
+                                    * B2C: 10 members (expanding to 15)
+                                    * B2B: 5 members
+________________
+
+
+1.4 Duplicate Handling
+                                    * Auto-detection via mobile + email
+
+                                    * Multiple property inquiries from the same customer should be merged under a single master lead with multi-property inquiry support.
+                                    * For the same product but different sources. Do not add product information. Just add lead count to understand how many times the customer has tried to reach
+________________
+1.5 Lead Bucketing (Smart Filters)
+Predefined buckets:
+                                       * By Lead quality - 
+                                       * Hot 
+                                       * Travel Date within next 7 days
+OR
+                                       * Revenue with 50,000 or More
+OR
+                                       * Want to book within 5 hrs
+                                          * Warm 
+                                          * Travel data between 7 - 30 days
+OR
+                                          * Revenue between 20,000 - 50,000
+OR
+                                          * Want to book within 24 hrs
+                                             * Cold
+                                             * Travel data 30+ days
+OR
+                                             * Revenue Less than 20,000
+OR
+                                             * Yet to decide final plan 
+
+
+                                                * Pending Follow-ups
+
+                                                * Booked leads 
+                                                   * Upcoming Check-ins next 7 days
+                                                   * current quarter
+                                                   * current month 
+
+                                                      * Not Contacted - First contact pending 
+
+                                                      * By source
+
+                                                      * By deal size
+                                                         * 0 - 20000 - 50000
+                                                         * 20000 - 50000
+                                                         * 50000 +
+________________
+
+
+1.6 Source Attribution Tracking (Marketing)
+Tracks:
+                                                         * UTM Parameters
+
+                                                         * Ad IDs
+
+                                                         * Marketing channel mapping for ROI analysis
+________________
+
+
+1.7 Customer Journey Tracking
+Unified timeline containing:
+                                                            * Lead window should contain
+                                                            * Calls done
+                                                            * WhatsApp Chats
+                                                            * Emails
+                                                            * Agent Notes
+                                                            * Follow-up Logs
+________________
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.8 Follow-up Scheduler
+Mention on screen to seller
+                                                            * Smart follow-up suggestions
+                                                            * Hot - After 3 hrs 
+                                                            * Warm - After 24 hrs 
+                                                            * Cold - After 3 Days
+
+                                                               * Auto-create next follow-up based on lead activity (can be updated manually)
+                                                               * Hot - 2 followups 
+                                                               1. After 2 hours from lead creation time
+                                                               2. After 5 hours from lead creation time
+                                                               * Warm - 2 followups
+                                                               1. After 24 hrs from lead creation time
+                                                               2. After 48 hrs from lead creation time
+                                                               * Cold - 1 Followup 
+                                                               1. After 5 Days from created date
+
+                                                                  * Follow-up reminders and alerts
+________________
+
+
+1.9 Mandatory Data Control
+Mandatory fields to be filled before moving to the next stage
+                                                                  * Customer Name
+                                                                  * Customer Mobile
+                                                                  * Automatic +91 code with option to change if required
+
+                                                                     * Property Name
+                                                                     * Budget
+                                                                     * Follow up setup
+                                                                     * 1st Call
+                                                                     * Call Update (Lead type)
+                                                                     * Notes
+                                                                     * Lead closure reason 
+                                                                     * Won
+                                                                     * Lost - reasons:
+                                                                     * Sold out
+                                                                     * Budget
+                                                                     * Booked elsewhere - 
+                                                                     * OTA
+                                                                     * Website
+                                                                     * Other property
+                                                                     * No Response - To be available only after 2 followups
+                                                                     * Policy issue - 
+                                                                     * Under 18
+                                                                     * Local Id
+                                                                     * Pet
+                                                                     * Alcohol 
+                                                                     * Credit Card
+                                                                     * Property under maintenance
+1.10 Lead Call quality 
+Fields to put call quality marks for TL or above 
+                                                                     * Parameter        
+                                                                     1. 15% - Warm Welcome & Greeting 
+                                                                     * Hello + Name + Company
+                                                                     2. 15% - Understanding Guest Needs 
+                                                                     * Ask + Listen + Confirm
+                                                                     3. 15% Building Rapport & Connection(Personalisation)
+                                                                     * Friendly + Empathetic + Uses Name
+                                                                     4. 15% - Product Knowledge(Details shared)
+                                                                     * Suggest + Benefits + Correct Info
+                                                                     5. 10% - Pitching(Communication Skills)
+                                                                     * Experience + Guest Type + Urgency
+                                                                     6. 10% Objection Handling(Answer to guest questions)
+                                                                     * Listen + Solve + Positive note
+                                                                     7. 10% Closing
+                                                                     * Close note with booking confirmation or Payment update        
+                                                                     8. 10% Follow up
+                                                                     * Done / Missed
+
+                                                                        * Option to change weightage of each parameter
+1.11 Lead Scoring
+0 - 10 Model
+Final Lead Score Range
+                                                                        * Hot: 7 - 10
+                                                                        * Warm: 4 - 6
+                                                                        * Cold: 0 - 3
+                                                                        * Inactive: No response 
+                                                                        * 48 hrs → Orange
+                                                                        * 72 hrs → Red
+1. Travel Date (Urgency Score: 0 to 3 points)
+                                                                        * Duration from lead created date 
+                                                                        * 3 points: Within 0 - 10 days.
+                                                                        * 2 points: Within 10 - 30 days.
+                                                                        * 1 point: Within 30 - 60 days.
+                                                                        * 0 points: Within 60+ days.
+2. Budget Fit (0 to 2 points)
+                                                                        * Price of product chosen or budget mentioned in response 
+                                                                        * 2 points: Customer’s budget is equal to or higher than the property price.
+                                                                        * 1 point: The customer's budget is 10 - 20% lower than the property price.
+                                                                        * 0 points: Customer’s budget is more than 20% lower than the property price.
+3. Engagement Level (0 to 2 points) - 
+                                                                        * Response rate via WhatsApp or calls.
+                                                                        * 2 points: 90% +
+                                                                        * 1 points: Up to 70% 
+                                                                        * 0 point: Up to 50%
+4. Call back requested (0 to 1 point)
+                                                                        * Customer asked to call back by pressing IVR option
+                                                                        * 1 point - Yes 
+                                                                        * 0 points: No
+5. Deal Size (0 to 2 point)
+                                                                        * Traveler type mentioned 
+                                                                        * 2 point: 50000+ 
+                                                                        * 1 point: 20000 - 50000
+                                                                        * 0 point: 0 - 20000
+As per the total score Lead Categorisation will be -
+                                                                        * Hot Leads (Score: 7 - 10)
+                                                                        * Priority assignment to agents.
+
+                                                                           * Warm Leads (Score: 4 - 6)
+                                                                           * Standard follow-up workflow..
+
+                                                                              * Cold Leads (Score: 0–3)
+                                                                              * Auto Lost if still active and no response for 2 times 
+Inactive Leads
+                                                                              * 48 hours no response: Mark leads as Orange.
+
+                                                                              * 72 hours no response: Mark lead as Red and notify Team Lead.
+________________
+
+
+
+
+
+
+
+
+
+
+2. Communication & Engagement Module
+2.1 WhatsApp Integration
+                                                                                 * Two-way WhatsApp communication
+                                                                                 * From lead creation time. If lead is not attended for 30mins, trigger requirement gathering texts on whatsapp to capture mandate data. Update the captured info in lead.
+                                                                                 * Allow user to choose booking window out of - 
+                                                                                 * Within 5 hrs
+                                                                                 * Within 24 hrs
+                                                                                 * Yet to decide final plan
+
+                                                                                    * Automate follow-ups message on whatsapp if assigned followup missed for 3 hrs. 
+Time slot - 9 AM to 10 PM
+                                                                                    * Send payment links on whatsapp, 
+                                                                                    * Share booking confirmations on whatsapp with all available booking details.
+
+                                                                                       * Templates
+                                                                                       * Manual Requirement Gathering
+                                                                                       * Followup - 1 
+                                                                                       * Followup - 2
+                                                                                       * Details sharing
+                                                                                       * Creatives - Sales deck 
+                                                                                       * Photos of room
+                                                                                       * Primary Policies
+                                                                                       * Primary USP
+                                                                                       * Primary details of property
+
+                                                                                          * Single business number on WATI
+                                                                                          * Customer will connect on one single number 
+                                                                                          * That number will be integrated to all the executives
+                                                                                          * Each member will be able to see chats related to their own lead only. 
+
+                                                                                             * Unified communication logs
+________________
+
+
+2.2 WhatsApp Chat Bot
+Automation for:
+                                                                                             * Sales query (IVR Option 1)
+                                                                                             * Whatsapp flow as mention in 2.1
+                                                                                             * Post Sales Query (IVR Option 2) 
+                                                                                             * Send whatsapp text asking for property name
+                                                                                             * Ask booking reference number
+                                                                                             * Share Contact number of front desk + Google Map location
+                                                                                             * Ask to connect to front desk for any help  
+                                                                                             * If reference number not available
+                                                                                             * Ask to request a call back (store this in the lead’s - call back requested tag)
+________________
+
+
+2.3 Email Integration
+                                                                                             * Two-way sync
+
+                                                                                             * Incoming/outgoing email updates mapped to CRM
+________________
+
+
+2.4 Unified Inbox
+Consolidates:
+                                                                                                * Calls
+
+                                                                                                * WhatsApp
+
+                                                                                                * Emails
+________________
+
+
+2.5 Template Library
+                                                                                                   * Message templates
+                                                                                                   * Manual Requirement Gathering
+                                                                                                   * Followup - 1 
+                                                                                                   * Followup - 2
+                                                                                                   * Details sharing
+                                                                                                   * Creatives - Sales deck 
+                                                                                                   * Photos of room
+                                                                                                   * Primary Policies
+                                                                                                   * Primary USP
+                                                                                                   * Primary details of property
+
+                                                                                                      * Email templates
+                                                                                                      * Manual Requirement Gathering
+                                                                                                      * Followup - 1 
+                                                                                                      * Followup - 2
+                                                                                                      * Details sharing
+                                                                                                      * Creatives - Sales deck 
+                                                                                                      * Photos of room
+                                                                                                      * Primary Policies
+                                                                                                      * Primary USP
+                                                                                                      * Primary details of property
+
+                                                                                                         * Booking Confirmation
+________________
+
+
+2.6 Marketing Broadcasts
+                                                                                                         * Bulk messaging by lead segment
+
+                                                                                                         * Personalised broadcast campaigns
+________________
+
+
+2.7 Mobile App Support
+                                                                                                            * All Dashboards 
+
+                                                                                                            * Filters
+
+                                                                                                            * Leads visibility 
+
+                                                                                                            * Functionality to update leads
+
+                                                                                                            * Optimized UI
+
+                                                                                                            * Push notifications for hot/urgent leads
+
+                                                                                                            * Call connectivity IVR <> LM integration
+________________
+
+
+2.8 Post-Stay Feedback
+                                                                                                               * Automated feedback messaging
+
+                                                                                                               * Review submission links
+
+                                                                                                               * Allow to review feedback before posting
+________________
+
+
+3. Booking & PMS Integration Module
+3.1 Ezee PMS Sync
+                                                                                                                  * Real-time booking sync
+
+                                                                                                                  * Mapping PMS bookings to existing leads
+
+                                                                                                                  * Real Time Price fetching 
+
+3.2 Booking Data API
+                                                                                                                     * Two-way sync
+
+                                                                                                                     * Unified booking data structure
+________________
+
+
+
+
+4. Automation & Workflow Module
+4.1 Workflow Builder
+Automation for:
+                                                                                                                        * Lead lifecycle 
+                                                                                                                        * New Lead (Live Call) 
+                                                                                                                        * Auto update mobile number 
+                                                                                                                        * Fill Mandate fields
+                                                                                                                        * Missed Call
+                                                                                                                        * Follow requirement gathering via whatsapp automation 
+
+                                                                                                                           * Follow-ups
+                                                                                                                           * Set followups as per lead quality. Refer 1.8
+
+                                                                                                                              * Notifications
+                                                                                                                              * Notify sales person for new lead assignment 
+                                                                                                                              * Notify TL when 2 followups missed on a lead.
+                                                                                                                              * Notify TL and manager when 2 followups missed still lead in unattended for 12 hrs
+
+                                                                                                                                 * Lead allocation - Refer to 1.3
+
+                                                                                                                                 * Lead movement
+                                                                                                                                    * New Lead (automate for executive)
+
+                                                                                                                                    * 1st Connect (automate for executive)
+                                                                                                                                       * Live Call - Move leads to this if the mandate details are filled by the executive.
+                                                                                                                                       * Missed Call - Move lead if mandate details captured by whatsapp automation. 
+
+                                                                                                                                          * Discussion (Manual for executive)
+                                                                                                                                          * Move to this when guest shared response on shared proposal 
+
+                                                                                                                                             * Payment Request (automate for executive) 
+                                                                                                                                             * Move to this as soon as payment link is sent on whatsapp via PMS integration
+
+                                                                                                                                                * Booked / Lost (Manual for executive)
+                                                                                                                                                *  Reminder every hour if not marked after moving to ‘Payment request’
+4.2 Task Allocation
+                                                                                                                                                * Allow TL or above to put a task on a lead for another user. 
+
+                                                                                                                                                * Automate tasks when a lead is left unattended
+
+                                                                                                                                                * Show pending tasks on dashboard
+
+
+4.3 Escalation Matrix
+                                                                                                                                                   * Lead work process
+                                                                                                                                                   * If first followup missed then escalate to sales person 
+                                                                                                                                                   * If two followup missed then escalate to TL  
+                                                                                                                                                   * 2 Followups missed then escalate to TL and manager when unattended for 12 hrs
+
+                                                                                                                                                      * Lead Handling Efficiency
+                                                                                                                                                      * 100% leads to be catered from day’s allocation 
+                                                                                                                                                      * Escalate to TL if not done 
+
+                                                                                                                                                         * Conversion Rate - 20%
+                                                                                                                                                         * Escalate to TL if dropped by 20% of required
+
+                                                                                                                                                            * Revenue Generation        
+                                                                                                                                                            * Escalation report to TL if someone is lagging more than 20% of required revenue average
+
+                                                                                                                                                               * Time Management & Shift Discipline
+                                                                                                                                                               * Escalate to TL if someone does not complete 9 hrs.
+4.4 Automated Follow-ups
+                                                                                                                                                               * To be planned in next phase
+
+4.5 Not-Booked Data Extraction
+                                                                                                                                                                  * Periodic extraction of “not booked/Lost” leads to understand pain points 
+________________
+
+
+5. Dashboard & Monitoring Module
+5.1 Real-Time Dashboard & Visual charts
+Option to choose timeline 
+                                                                                                                                                                  * Leads
+                                                                                                                                                                  * Won
+                                                                                                                                                                  * Lost 
+                                                                                                                                                                  * Unallocated
+                                                                                                                                                                  * Pipeline
+                                                                                                                                                                  * Dropdown Default - Current month
+                                                                                                                                                                  * Dropdown Default - Current quarter
+                                                                                                                                                                  * Open leads of the day
+                                                                                                                                                                  * Pending followups
+                                                                                                                                                                  * Conversion Rate
+                                                                                                                                                                  * Revenue generated
+                                                                                                                                                                  * Dropdown Default - Running Month
+                                                                                                                                                                  * Dropdown Default - Running quarter
+                                                                                                                                                                  * Dropdown Default - Today
+                                                                                                                                                                  * Discipline
+                                                                                                                                                                  * Late login days
+                                                                                                                                                                  * Days count Below 9 hrs worktime 
+
+                                                                                                                                                                     * Property wise performance 
+                                                                                                                                                                     * Total leads of a property 
+                                                                                                                                                                     * Total bookings 
+                                                                                                                                                                     * Conversion %
+
+                                                                                                                                                                        * Individual performance 
+                                                                                                                                                                        * Conversion %
+                                                                                                                                                                        * Total Revenue
+5.2 Conversion Funnel
+Stages Required:
+                                                                                                                                                                        * New Lead
+                                                                                                                                                                        * 1st Connect 
+                                                                                                                                                                        * Discussion 
+                                                                                                                                                                        * Payment Request 
+                                                                                                                                                                        * Booked / Lost
+5.3 Revenue Forecasting
+                                                                                                                                                                        * Pipeline-based projections
+5.4 Agent Productivity Metrics
+Tracks:
+                                                                                                                                                                        * First response time
+
+                                                                                                                                                                        * Follow-up adherence
+
+                                                                                                                                                                        * Conversion %
+
+                                                                                                                                                                        * Daily call count (with average)
+
+                                                                                                                                                                        * Weekly progress graph (option to change timeline)
+
+                                                                                                                                                                        * Weekly working hours
+5.5 Report Builder
+                                                                                                                                                                           * Custom reports by user on their visible data
+
+
+
+
+5.6 Auto Report Sharing
+                                                                                                                                                                           * WhatsApp and email-based scheduled sharing of reports
+                                                                                                                                                                           * Total leads taken 
+                                                                                                                                                                           * Conversion count and % 
+                                                                                                                                                                           * Total revenue
+                                                                                                                                                                           * Property wise performance
+                                                                                                                                                                           * Work shift discipline
+                                                                                                                                                                           * Call Quality (parameter %)
+5.7 Work Hours Monitoring
+                                                                                                                                                                           * Mapping first Login
+
+                                                                                                                                                                           * Last Logout (9 hrs window)
+
+                                                                                                                                                                           * Auto-logout after 10 minutes idle
+
+                                                                                                                                                                           * Detect multiple simultaneous logins
+
+                                                                                                                                                                           * Total Idle time 
+
+                                                                                                                                                                           * Logout is not allowed unless 100% followups and pending leads are done. 
+5.8 Performance Benchmarking
+                                                                                                                                                                              * City/property/team-level comparison tools
+________________
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+6. Knowledge & Content Management Module
+6.1 Knowledge Base
+                                                                                                                                                                              * Document to fetch data - https://docs.google.com/spreadsheets/d/1KEp-KHh55GYfS4MxmsnX8sUcx2WaXep69GpEguGJg_I/edit?usp=sharing
+
+                                                                                                                                                                                 * Property Information 
+                                                                                                                                                                                 * General Information
+                                                                                                                                                                                 * Rooms Category
+                                                                                                                                                                                 * Room Amenities
+                                                                                                                                                                                 * Hostel Amenities
+                                                                                                                                                                                 * Safety and Security
+                                                                                                                                                                                 * Front Office
+
+                                                                                                                                                                                    * City Information
+                                                                                                                                                                                    * Nearby Restro and Cafes
+                                                                                                                                                                                    * Shopping Places
+                                                                                                                                                                                    * Night Life
+                                                                                                                                                                                    * Attractions
+                                                                                                                                                                                    * Important Places
+                                                                                                                                                                                    * Street Food
+
+                                                                                                                                                                                       * Hierarchy: Segment → City → Property
+
+                                                                                                                                                                                       * Auto-filtering data based on selections in the lead
+6.2 Creative Repository
+                                                                                                                                                                                          * Sales Decks 
+
+                                                                                                                                                                                          * Property photos
+
+                                                                                                                                                                                          * Room images
+
+                                                                                                                                                                                          * Offer Templates
+
+                                                                                                                                                                                          * Videos
+6.3 Smart Search
+                                                                                                                                                                                             * Keyword search
+
+                                                                                                                                                                                             * Tag - based search
+
+________________
+
+
+
+
+7. Infrastructure, Access & Security
+7.1 Role-Based Access Control
+                                                                                                                                                                                                * Roles, access & Permissions by role
+
+                                                                                                                                                                                                   * Sales Executive
+                                                                                                                                                                                                   * All access to allocated leads
+                                                                                                                                                                                                   * Data visible of allocated leads
+                                                                                                                                                                                                   * Add new leads 
+
+                                                                                                                                                                                                      * Team Lead
+                                                                                                                                                                                                      * All access under designated department / departments
+                                                                                                                                                                                                      * Data visible of team’s leads
+                                                                                                                                                                                                      * Add new leads
+                                                                                                                                                                                                      * Manual allocation of leads
+                                                                                                                                                                                                      * Task assignment
+
+                                                                                                                                                                                                         * Sales Manager
+                                                                                                                                                                                                         * All access of designated TLs
+                                                                                                                                                                                                         * Data visible of TLs and their team
+                                                                                                                                                                                                         * Add new leads
+                                                                                                                                                                                                         * Manual allocation of leads
+                                                                                                                                                                                                         * Task assignment
+                                                                                                                                                                                                         * User Management - Permission, create, delete and update information 
+
+                                                                                                                                                                                                            * Department Head
+                                                                                                                                                                                                            * All access of designated department / departments
+                                                                                                                                                                                                            * Data visible of full department
+                                                                                                                                                                                                            * Change/ update data of individual OR department
+
+                                                                                                                                                                                                               * Admin - Full access
+                                                                                                                                                                                                               * 100% allowance of system
+7.2 Audit Trail
+                                                                                                                                                                                                               * All edits logged in activity section
+
+                                                                                                                                                                                                               * All actions trackable
+7.3 Data Backup & Export
+                                                                                                                                                                                                                  * Daily backup
+
+                                                                                                                                                                                                                  * Admin export option
+
+
+
+
+7.4 Secure API Architecture
+                                                                                                                                                                                                                     * Authentication & Authorization
+
+                                                                                                                                                                                                                     * API rate limits
+
+                                                                                                                                                                                                                     * Secure third-party integrations
+7.5 API Library
+                                                                                                                                                                                                                        * Documentation for integrations
+
+                                                                                                                                                                                                                        * Auth-based scalable structure
+________________
+
+
+8. Template Automation & Sharing
+                                                                                                                                                                                                                           * Auto "Send Proposal" button on lead creation
+
+                                                                                                                                                                                                                           * Auto-fetch decks/factsheets/media by property
+
+                                                                                                                                                                                                                           * Manual + automated sharing (Email/WhatsApp)
+
+                                                                                                                                                                                                                           * Pre-defined templates.
+
+                                                                                                                                                                                                                           * Customizable templates following brand tone
+________________

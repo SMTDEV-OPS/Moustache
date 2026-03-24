@@ -1,8 +1,8 @@
 /**
- * Seed Moustache workflows for event-driven automation.
+ * Seed Postcard workflows for event-driven automation.
  * Idempotent: uses name+orgId uniqueness to avoid duplicates.
  *
- * Usage: npx ts-node scripts/seedMoustacheWorkflows.ts [orgId]
+ * Usage: npx ts-node scripts/seedPostcardWorkflows.ts [orgId]
  */
 import "dotenv/config";
 declare var process: any;
@@ -27,7 +27,7 @@ async function findTemplateByName(namePattern: string | RegExp) {
   return TemplateModel.findOne({ name: pattern, medium: "WHATSAPP", isActive: true }).lean();
 }
 
-export async function seedMoustacheWorkflows(orgId: string) {
+export async function seedPostcardWorkflows(orgId: string) {
   const oid = new Types.ObjectId(orgId);
   const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).lean();
   if (!pipeline) {
@@ -194,7 +194,7 @@ async function main() {
   const orgId = process.argv[2] || "69ae144fae23030b62f901f5";
 
   await mongoose.connect(config.mongoUri);
-  await seedMoustacheWorkflows(orgId);
+  await seedPostcardWorkflows(orgId);
   await mongoose.disconnect();
   logger.info("Seed complete");
 }
