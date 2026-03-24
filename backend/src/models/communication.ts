@@ -23,6 +23,13 @@ export interface ICommunication extends Document {
   emailMessageId?: any;
   messageContent?: string;
   externalMessageId?: string;
+  metadata?: {
+    messageId?: string;
+    threadId?: string;
+    from?: string;
+    subject?: string;
+    to?: string;
+  };
 }
 
 const communicationSchema = new Schema<ICommunication>(
@@ -50,12 +57,20 @@ const communicationSchema = new Schema<ICommunication>(
     emailMessageId: { type: Schema.Types.ObjectId, ref: "EmailMessage" },
     messageContent: String,
     externalMessageId: String,
+    metadata: {
+      messageId: String,
+      threadId: String,
+      from: String,
+      subject: String,
+      to: String,
+    },
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );
 
 communicationSchema.index({ leadId: 1, createdAt: -1 });
 communicationSchema.index({ performedByUserId: 1, createdAt: -1 });
+communicationSchema.index({ "metadata.threadId": 1, leadId: 1, createdAt: 1 });
 
 export const CommunicationModel = model<ICommunication>(
   "Communication",

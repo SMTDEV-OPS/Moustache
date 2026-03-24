@@ -33,7 +33,13 @@ interface ScheduleFollowUpDialogProps {
   leadNumber?: string;
   guestName?: string;
   defaultOwnerUserId?: string;
-  defaultFollowUpType?: "call" | "email" | "whatsapp" | "meeting" | "other";
+  defaultFollowUpType?:
+    | "call"
+    | "email"
+    | "whatsapp"
+    | "meeting"
+    | "other"
+    | "followup";
   pauseWorkflowOnSchedule?: boolean;
 }
 
@@ -47,12 +53,13 @@ const QUICK_TIMES = [
 ];
 
 const FOLLOW_UP_TYPES = [
+  { value: "followup", label: "Follow-up", icon: FileText },
   { value: "call", label: "Phone Call", icon: Phone },
   { value: "email", label: "Email", icon: Mail },
   { value: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { value: "meeting", label: "Meeting", icon: Video },
   { value: "other", label: "Other", icon: FileText },
-];
+] as const;
 
 export const ScheduleFollowUpDialog = ({
   open,
@@ -179,6 +186,10 @@ export const ScheduleFollowUpDialog = ({
         ownerUserId,
         leadId: leadId || undefined,
         dueAt: dueAt.toISOString(),
+        type:
+          followUpType === "other"
+            ? "followup"
+            : (followUpType as "followup" | "call" | "email" | "whatsapp" | "meeting"),
       });
 
       // Pause workflow if requested
@@ -222,7 +233,7 @@ export const ScheduleFollowUpDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="w-[min(96vw,760px)] max-w-[760px] overflow-x-hidden rounded-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
@@ -232,16 +243,16 @@ export const ScheduleFollowUpDialog = ({
 
         <div className="space-y-4 py-4">
           {/* Quick Time Buttons */}
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <Label className="text-xs text-muted-foreground">Quick Schedule</Label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 min-w-0">
               {QUICK_TIMES.map((qt) => (
                 <Button
                   key={qt.label}
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="text-xs"
+                  className="text-xs rounded-md max-w-full whitespace-normal break-words"
                   onClick={() => handleQuickTime(qt.getValue)}
                 >
                   {qt.label}
@@ -251,9 +262,9 @@ export const ScheduleFollowUpDialog = ({
           </div>
 
           {/* Follow-up Type */}
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <Label>Follow-up Type</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 min-w-0">
               {FOLLOW_UP_TYPES.map((type) => {
                 const Icon = type.icon;
                 return (
@@ -262,7 +273,7 @@ export const ScheduleFollowUpDialog = ({
                     type="button"
                     variant={followUpType === type.value ? "default" : "outline"}
                     size="sm"
-                    className="flex-1"
+                    className="rounded-md h-9 px-3 shrink-0"
                     onClick={() => handleFollowUpTypeChange(type.value)}
                   >
                     <Icon className="h-4 w-4 mr-1" />
@@ -297,7 +308,7 @@ export const ScheduleFollowUpDialog = ({
           </div>
 
           {/* Date and Time */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="dueDate">
                 <Calendar className="h-3 w-3 inline mr-1" />

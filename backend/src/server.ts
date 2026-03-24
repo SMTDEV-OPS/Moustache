@@ -48,6 +48,9 @@ async function start() {
     const { ensureDefaultProfiles } = await import("./scripts/ensureDefaultProfiles");
     await ensureDefaultProfiles();
 
+    const { ensureDefaultGroups } = await import("./scripts/ensureDefaultGroups");
+    await ensureDefaultGroups();
+
     // Seed allocation config for default org
     const defaultOrgId = process.env.DEFAULT_ORG_ID;
     let orgId: string | null = null;

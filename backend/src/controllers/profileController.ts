@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { ProfileModel } from "../models/profile";
+import { UserModel } from "../models/user";
 import { logger } from "../config/logger";
 import { isValidObjectId } from "mongoose";
 
@@ -105,8 +106,14 @@ export const deleteProfile = async (req: Request, res: Response) => {
             return res.status(403).json({ error: { message: "Cannot delete system profiles" } });
         }
 
-        // TODO: Check if users are assigned to this profile before deleting
-        // ...
+        const assignedUserCount = await UserModel.countDocuments({ profileId: id });
+        if (assignedUserCount > 0) {
+            return res.status(400).json({
+                error: {
+                    message: `Cannot delete profile — ${assignedUserCount} user(s) are assigned to it. Reassign them first.`,
+                },
+            });
+        }
 
         await ProfileModel.findByIdAndDelete(id);
 

@@ -5,26 +5,20 @@ import { logger } from "../config/logger";
 import { ScoringThresholdModel } from "../models/scoringThreshold";
 
 export class ScoringService {
-    static async evaluateThreshold(orgId: string | undefined | null, finalScore: number) {
+    static async evaluateThreshold(_orgId: string | undefined | null, finalScore: number) {
         let bucket = "Cold";
         let color = "#3b82f6";
         let thresholdId = undefined;
 
-        if (orgId) {
-            const threshold = await ScoringThresholdModel.findOne({
-                orgId,
-                min_score: { $lte: finalScore },
-                max_score: { $gte: finalScore }
-            });
+        const threshold = await ScoringThresholdModel.findOne({
+            min_score: { $lte: finalScore },
+            max_score: { $gte: finalScore }
+        }).sort({ min_score: -1 });
 
-            if (threshold) {
-                bucket = threshold.label;
-                color = threshold.color;
-                thresholdId = threshold._id;
-            } else {
-                if (finalScore >= 7) { bucket = "Hot"; color = "#ef4444"; }
-                else if (finalScore >= 4) { bucket = "Warm"; color = "#eab308"; }
-            }
+        if (threshold) {
+            bucket = threshold.label;
+            color = threshold.color;
+            thresholdId = threshold._id;
         } else {
             if (finalScore >= 7) { bucket = "Hot"; color = "#ef4444"; }
             else if (finalScore >= 4) { bucket = "Warm"; color = "#eab308"; }
@@ -79,7 +73,6 @@ export class ScoringService {
      */
     static async calculateScoreForLead(leadData: any): Promise<number> {
         const rules = await ScoringRuleModel.find({
-            module: "leads",
             isActive: true
         }).sort({ priority: -1 });
 
@@ -110,13 +103,13 @@ export class ScoringService {
 
     /**
      * Evaluates a single condition against lead data.
-     * Supports nested fields and customData.
+     * Supports nested fields, customData Map, and itinerary fields.
      */
     private static evaluateCondition(lead: any, condition: IScoringCondition): boolean {
         const { field, operator, value } = condition;
 
-        // Extract property value (handles nested fields like 'guests.adults' or 'customData.field')
-        const actualValue = this.getFieldValue(lead, field);
+        // Extract property value (checks direct, customData, itineraries)
+        const actualValue = this.getLeadFieldValue(lead, field);
 
         switch (operator) {
             case "is":
@@ -146,26 +139,51 @@ export class ScoringService {
         }
     }
 
-    private static getFieldValue(obj: any, path: string): any {
+    private static getLeadFieldValue(lead: any, path: string): any {
+        // Handle _daysUntil_ prefix for date comparisons (e.g. "within N days")
         if (path.startsWith("_daysUntil_")) {
-            const actualPath = path.replace("_daysUntil_", "");
-            const dateVal = actualPath.split(".").reduce((acc, part) => acc && (acc instanceof Map ? acc.get(part) : (acc as any)[part]), obj);
-            if (!dateVal) return null;
-            const targetDate = new Date(dateVal);
-            if (isNaN(targetDate.getTime())) return null;
-            const diffTime = targetDate.getTime() - new Date().getTime();
-            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            path = path.replace("_daysUntil_", "");
         }
 
-        return path.split(".").reduce((acc: any, part) => {
-            if (acc == null) return acc;
+        let val = undefined;
 
-            // Support Map-based dynamic fields (e.g. Mongoose Map for customData)
-            if (acc instanceof Map || (typeof acc.get === "function" && !(part in acc))) {
-                return acc.get(part);
+        // 1. Direct model field
+        val = lead[path];
+
+        // 2. customData Map
+        if ((val === undefined || val === null || val === '') && typeof lead.customData?.get === 'function') {
+            val = lead.customData.get(path);
+        }
+
+        // 3. customData plain object
+        if ((val === undefined || val === null || val === '') && lead.customData && typeof lead.customData === 'object' && typeof lead.customData.get !== 'function') {
+            val = lead.customData[path];
+        }
+
+        // 4. first itinerary
+        if ((val === undefined || val === null || val === '') && lead.itineraries?.[0]) {
+            val = lead.itineraries[0][path];
+        }
+
+        // 5. Fallbacks
+        if (val === undefined || val === null || val === '') {
+            if (path === 'budget') {
+                val = lead.estimatedValue;
+            } else if (path === 'bookingWindow') {
+                val = lead.bookingWindow ?? lead.customData?.get?.('booking_window') ?? lead.customData?.booking_window ?? lead.customData?.get?.('bookingWindow') ?? lead.customData?.bookingWindow;
             }
+        }
 
-            return acc[part];
-        }, obj);
+        // Date field conversion
+        if (['checkInDate', 'travelDate', 'travel_date'].includes(path)) {
+            if (val) {
+                const date = new Date(val);
+                if (!isNaN(date.getTime())) {
+                    return Math.ceil((date.getTime() - Date.now()) / 86400000);
+                }
+            }
+        }
+
+        return val;
     }
 }

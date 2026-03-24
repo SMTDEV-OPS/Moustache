@@ -513,7 +513,6 @@ export async function registerTrigger(
     trigger_event: triggerEvent,
     is_active: true,
   };
-  if (orgId) workflowQuery.orgId = new Types.ObjectId(orgId);
   if (payload.workflowId) workflowQuery._id = new Types.ObjectId(payload.workflowId);
 
   const workflows = await WorkflowV2Model.find(workflowQuery).lean();

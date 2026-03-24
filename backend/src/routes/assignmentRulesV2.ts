@@ -32,7 +32,7 @@ router.get("/:module", async (req, res) => {
   try {
     const module = req.params.module;
     const rules = await AssignmentRuleModel.find({ module }).sort({ priority: 1, createdAt: 1 })
-      .populate("employeeGroupId", "groupName")
+      .populate("employeeGroupId", "name")
       .populate("specificUserId", "name email");
 
     res.json(rules);
@@ -44,7 +44,7 @@ router.get("/:module", async (req, res) => {
 router.get("/details/:id", async (req, res) => {
   try {
     const rule = await AssignmentRuleModel.findById(req.params.id)
-      .populate("employeeGroupId", "groupName")
+      .populate("employeeGroupId", "name")
       .populate("specificUserId", "name email");
     if (!rule) return res.status(404).json({ error: "Rule not found" });
     res.json(rule);

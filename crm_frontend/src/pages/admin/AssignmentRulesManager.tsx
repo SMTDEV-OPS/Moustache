@@ -20,12 +20,14 @@ import {
 const MODULE_FIELDS: Record<RuleModule, { value: string; label: string; type: "string" | "number" | "enum" | "boolean" }[]> = {
     leads: [
         { value: "source", label: "Lead Source", type: "enum" },
+        { value: "leadType", label: "Lead Type", type: "enum" },
+        { value: "budget", label: "Budget", type: "number" },
+        { value: "estimatedBudget", label: "Estimated Budget (alias)", type: "number" },
+        { value: "bookingWindow", label: "Booking Window", type: "string" },
+        { value: "customerType", label: "Customer Type", type: "string" },
         { value: "status", label: "Lead Status", type: "enum" },
-        { value: "priority", label: "Priority", type: "enum" },
         { value: "country", label: "Country", type: "string" },
         { value: "city", label: "City", type: "string" },
-        { value: "estimatedBudget", label: "Estimated Budget", type: "number" },
-        { value: "leadScore", label: "Lead Score", type: "number" },
         { value: "name", label: "Lead Name", type: "string" },
         { value: "email", label: "Email", type: "string" },
         { value: "phone", label: "Phone", type: "string" },

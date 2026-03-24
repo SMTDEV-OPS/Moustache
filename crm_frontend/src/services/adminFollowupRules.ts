@@ -19,9 +19,8 @@ export type UpdateFollowupRulePayload = Partial<CreateFollowupRulePayload>;
 
 const BASE = `${API_BASE_URL}/api/admin/followup-rules`;
 
-export async function listFollowupRules(orgId?: string): Promise<Record<FollowupBucket, FollowupRule[]>> {
-  const url = orgId ? `${BASE}?org_id=${orgId}` : BASE;
-  const response = await fetch(url, { headers: withAuthHeaders() });
+export async function listFollowupRules(): Promise<Record<FollowupBucket, FollowupRule[]>> {
+  const response = await fetch(BASE, { headers: withAuthHeaders() });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data?.message || "Failed to fetch follow-up rules");

@@ -46,6 +46,7 @@ import adminFieldsRouter from "./routes/adminFields";
 import "./models/leadItinerary";
 import { pipelinesRouter } from "./routes/pipelines";
 import { scoringRouter } from "./routes/scoringRules";
+import { leadEmailRouter } from "./routes/leadEmail";
 
 export const app = express();
 
@@ -86,6 +87,7 @@ app.use("/leads", leadsRouter);
 app.use("/leads", communicationsRouter);
 app.use("/leads", quotationsRouter);
 app.use("/leads", paymentLinksRouter);
+app.use("/leads", leadEmailRouter);
 app.use("/reservations", reservationsRouter);
 app.use("/tasks", tasksRouter);
 app.use("/reports", reportsRouter);

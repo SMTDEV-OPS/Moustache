@@ -4,7 +4,7 @@ export type ObjectId = Types.ObjectId;
 
 export interface IRuleCondition {
   field: string;
-  operator: "is" | "is_not" | "contains" | "starts_with" | "greater_than" | "less_than" | "is_empty" | "is_not_empty";
+  operator: "is" | "is_not" | "in" | "not_in" | "contains" | "starts_with" | "greater_than" | "less_than" | "is_empty" | "is_not_empty";
   value: string | number | boolean | any[];
 }
 
@@ -31,7 +31,7 @@ const ruleConditionSchema = new Schema<IRuleCondition>({
   field: { type: String, required: true },
   operator: { 
     type: String, 
-    enum: ["is", "is_not", "contains", "starts_with", "greater_than", "less_than", "is_empty", "is_not_empty"],
+    enum: ["is", "is_not", "in", "not_in", "contains", "starts_with", "greater_than", "less_than", "is_empty", "is_not_empty"],
     required: true 
   },
   value: { type: Schema.Types.Mixed }

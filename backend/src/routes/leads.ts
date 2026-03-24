@@ -14,9 +14,10 @@ import { LeadModel, ILead } from "../models/lead";
 import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import { CommunicationModel } from "../models/communication";
 import { badRequest, notFound, forbidden } from "../utils/httpError";
-import { createLead, reassignLead, validateStageMove, leadEventBus } from "../services/leadService";
+import { createLead, reassignLead, validateStageMove, leadEventBus, dryRunAssignment } from "../services/leadService";
 import { assertLeadAccess } from "../utils/leadAccess";
 import { logAudit } from "../utils/auditLog";
+import { logger } from "../config/logger";
 import { getEligibleUsersForManualAssignment } from "../services/assignmentService";
 import { UserModel } from "../models/user";
 import { getCommunicationTimeline } from "../services/communicationService";
@@ -25,6 +26,20 @@ import { uploadResource } from "../middleware/upload";
 import { parse } from "csv-parse/sync";
 
 export const leadsRouter = Router();
+
+/** Spread customData fields to top level for frontend compatibility (reads lead.budget, lead.customerType, etc.) */
+function spreadCustomDataToLead(leadObj: any): any {
+  if (!leadObj) return leadObj;
+  const obj = leadObj.toObject ? leadObj.toObject() : { ...leadObj };
+  if (obj.customData) {
+    const customDataObj =
+      obj.customData instanceof Map ? Object.fromEntries(obj.customData) : obj.customData;
+    if (customDataObj && typeof customDataObj === "object") {
+      Object.assign(obj, customDataObj);
+    }
+  }
+  return obj;
+}
 
 // All lead operations require authentication. Fine-grained permissions are
 // enforced per endpoint and per-lead below.
@@ -70,10 +85,18 @@ const leadCreateSchema = z.object({
   guestId: z.string().optional(),
   guestContact: z
     .object({
-      name: z.string(),
-      phone: z.string().optional(),
-      email: z.string().email().optional(),
+      name: z.string().trim().min(1, "Guest name is required"),
+      phone: z
+        .string()
+        .trim()
+        .regex(/^\+?[0-9\s\-()]{10,15}$/, "Invalid phone number")
+        .optional(),
+      email: z.string().trim().email().optional(),
     })
+    .refine(
+      (value) => Boolean(value.phone?.trim() || value.email?.trim()),
+      "At least one contact method (phone or email) is required"
+    )
     .optional(),
   propertyId: z.string().optional(),
   accountId: z.string().optional(),
@@ -96,6 +119,9 @@ const leadCreateSchema = z.object({
   // Dynamic custom fields
   customData: z.record(z.any()).optional(),
   hotels: z.array(hotelSchema).optional(),
+  budget: z.number().optional(),
+  bookingWindow: z.string().optional(),
+  customerType: z.string().optional(),
 });
 
 // Get eligible users for manual assignment based on lead type
@@ -121,6 +147,49 @@ leadsRouter.get("/eligible-assignees", async (req, res, next) => {
   }
 });
 
+/** Dry-run assignment: test what assignee would be chosen without creating a lead */
+leadsRouter.post("/test-assignment", async (req, res, next) => {
+  try {
+    if (!req.user) throw badRequest("Missing authenticated user");
+    if (!req.user.isAdmin && !hasPermission(req.user, PERMISSIONS.LEADS.MANAGE)) {
+      throw forbidden("Insufficient permissions for test assignment");
+    }
+
+    const data = req.body;
+    const { PropertyModel } = await import("../models/property");
+    const { AccountModel } = await import("../models/account");
+    const { Types } = await import("mongoose");
+
+    let orgId: string | undefined;
+    if (data.propertyId && Types.ObjectId.isValid(data.propertyId)) {
+      orgId = data.propertyId;
+    } else if (data.accountId && Types.ObjectId.isValid(data.accountId)) {
+      orgId = data.accountId;
+    } else {
+      const firstProp = await PropertyModel.findOne().select("_id").lean();
+      if (firstProp) orgId = String((firstProp as any)._id);
+    }
+
+    const result = await dryRunAssignment(
+      {
+        source: data.source,
+        leadType: data.leadType,
+        assignmentMode: data.assignmentMode ?? "auto",
+        assignedToUserId: data.assignedToUserId,
+        budget: data.budget,
+        bookingWindow: data.bookingWindow,
+        customerType: data.customerType,
+        customData: data.customData,
+      },
+      orgId
+    );
+
+    res.json({ assignment: result, orgId });
+  } catch (err) {
+    next(err);
+  }
+});
+
 leadsRouter.post("/", async (req, res, next) => {
   try {
     if (
@@ -140,6 +209,12 @@ leadsRouter.post("/", async (req, res, next) => {
 
     const data = parsed.data;
 
+    const hotels = data.hotels?.map((h) => ({
+      ...h,
+      checkInDate: h.checkInDate ? new Date(h.checkInDate) : undefined,
+      checkOutDate: h.checkOutDate ? new Date(h.checkOutDate) : undefined,
+    }));
+
     const lead = await createLead({
       guestId: data.guestId,
       guestContact: data.guestContact,
@@ -158,11 +233,15 @@ leadsRouter.post("/", async (req, res, next) => {
       gstin: data.gstin,
       estimatedValue: data.estimatedValue,
       notes: data.notes,
+      budget: data.budget ?? data.customData?.budget,
+      bookingWindow: data.bookingWindow ?? data.customData?.bookingWindow ?? data.customData?.booking_window,
+      customerType: data.customerType ?? data.customData?.customerType ?? data.customData?.customer_type,
       // Pass assignment options
       assignmentMode: data.assignmentMode ?? "auto",
       assignedToUserId: data.assignedToUserId,
       createdByUserId: req.user?.id,
       customData: data.customData,
+      hotels,
     });
 
     // Note: Activity logging is now handled in leadService.createLead
@@ -220,20 +299,23 @@ leadsRouter.post("/bulk-upload", uploadResource.single("file"), async (req, res,
       const row: any = records[i];
       try {
         // Map common CSV columns to our schema
-        const name = row.Name || row.name || row.GuestName;
-        const phone = row.Phone || row.phone || row.Contact;
-        const email = row.Email || row.email;
+        const name = String(row.Name || row.name || row.GuestName || "").trim();
+        const phone = String(row.Phone || row.phone || row.Contact || "").trim();
+        const email = String(row.Email || row.email || "").trim();
         const notes = row.Notes || row.notes || "Imported via CSV Bulk Upload";
 
         if (!name) {
           throw new Error("Name is required");
         }
+        if (!phone && !email) {
+          throw new Error("Either phone or email is required");
+        }
 
         await createLead({
           guestContact: {
             name,
-            phone,
-            email,
+            phone: phone || undefined,
+            email: email || undefined,
           },
           source: LeadSource.CSV_UPLOAD,
           leadType: LeadType.STAY, // default
@@ -268,7 +350,7 @@ leadsRouter.get("/", async (req, res, next) => {
       throw badRequest("Missing authenticated user");
     }
 
-    const { status, assigneeId, propertyId, fromDate, toDate, heat, scope } =
+    const { status, assigneeId, propertyId, fromDate, toDate, heat, scope, assignmentSource } =
       req.query;
     const filter: Record<string, unknown> = {};
 
@@ -276,6 +358,9 @@ leadsRouter.get("/", async (req, res, next) => {
     if (assigneeId) filter.assignedToUserId = assigneeId;
     if (propertyId) filter.propertyId = propertyId;
     if (heat) filter.heatLevel = heat;
+    if (assignmentSource && ["v2_rule", "legacy_rule", "round_robin_fallback", "manual", "overflow", "none"].includes(String(assignmentSource))) {
+      filter.assignmentSource = assignmentSource;
+    }
 
     if (fromDate || toDate) {
       filter.createdAt = {};
@@ -349,11 +434,55 @@ leadsRouter.get("/", async (req, res, next) => {
 
     const leads = await LeadModel.find(filter)
       .populate("guestId", "name phone email")
-      .populate("itineraries")
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
-    res.json(leads);
+
+    const { LeadItineraryModel } = await import("../models/leadItinerary");
+    const leadsWithCustomData = await Promise.all(
+      leads.map(async (l) => {
+        const obj = spreadCustomDataToLead(l);
+        const itineraries = await LeadItineraryModel.find({ leadId: l._id })
+          .select("checkInDate checkOutDate hotelName")
+          .lean();
+        return { ...obj, itineraries };
+      })
+    );
+    res.json(leadsWithCustomData);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Get assignment source stats - counts by how leads were assigned (for verifying rules) */
+leadsRouter.get("/assignment-stats", async (req, res, next) => {
+  try {
+    if (!req.user) throw badRequest("Missing authenticated user");
+    if (!req.user.isAdmin && !hasPermission(req.user, PERMISSIONS.LEADS.MANAGE)) {
+      throw forbidden("Insufficient permissions for assignment stats");
+    }
+
+    const { fromDate, toDate } = req.query;
+    const match: Record<string, unknown> = {};
+    if (fromDate || toDate) {
+      match.createdAt = {};
+      if (fromDate) (match.createdAt as any).$gte = new Date(String(fromDate));
+      if (toDate) (match.createdAt as any).$lte = new Date(String(toDate));
+    }
+
+    const stats = await LeadModel.aggregate([
+      { $match: Object.keys(match).length ? match : {} },
+      { $group: { _id: "$assignmentSource", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+
+    const bySource: Record<string, number> = {};
+    for (const s of stats) {
+      const key = s._id != null ? String(s._id) : "not_tracked"; // Old leads created before this field
+      bySource[key] = s.count;
+    }
+
+    res.json({ bySource, total: stats.reduce((sum, s) => sum + s.count, 0) });
   } catch (err) {
     next(err);
   }
@@ -363,6 +492,7 @@ leadsRouter.get("/:id", async (req, res, next) => {
   try {
     const lead = await LeadModel.findById(req.params.id)
       .populate("guestId", "name phone email")
+      .populate("propertyId", "name")
       .lean();
     if (!lead) {
       throw notFound("Lead not found");
@@ -416,7 +546,11 @@ leadsRouter.get("/:id", async (req, res, next) => {
       }
     }
 
-    res.json({ lead, activities, communications, previousCommunications });
+    const { LeadItineraryModel } = await import("../models/leadItinerary");
+    const itineraries = await LeadItineraryModel.find({ leadId: lead._id }).sort({ createdAt: 1 }).lean();
+
+    const leadObj = spreadCustomDataToLead(lead);
+    res.json({ lead: { ...leadObj, itineraries }, activities, communications, previousCommunications });
   } catch (err) {
     next(err);
   }
@@ -426,11 +560,15 @@ import { ScoringService } from "../services/scoringService";
 
 const leadUpdateSchema = z.object({
   status: z.nativeEnum(LeadStatus).optional(),
+  source: z.nativeEnum(LeadSource).optional(),
   heatLevel: z.nativeEnum(HeatLevel).optional(),
   callStatus: z.nativeEnum(CallStatus).optional(),
   notes: z.string().optional(),
   assignedToUserId: z.string().optional(),
   stageId: z.string().optional(),
+  budget: z.number().optional(),
+  bookingWindow: z.string().optional(),
+  customerType: z.string().optional(),
   // Allow updating contact details (the inquiry snapshot)
   contactDetails: z
     .object({
@@ -493,6 +631,10 @@ leadsRouter.patch("/:id", async (req, res, next) => {
       }
     }
 
+    if (parsed.data.source !== undefined) {
+      existing.source = parsed.data.source;
+    }
+
     if (parsed.data.heatLevel !== undefined) {
       existing.heatLevel = parsed.data.heatLevel;
     }
@@ -507,9 +649,20 @@ leadsRouter.patch("/:id", async (req, res, next) => {
 
     if (parsed.data.customData) {
       existing.customData = new Map(Object.entries(parsed.data.customData));
-      // Using markModified to ensure Mongoose knows it changed
       existing.markModified("customData");
+      const cd = parsed.data.customData;
+      if (cd.budget !== undefined) existing.budget = Number(cd.budget) || 0;
+      if (cd.booking_window !== undefined || cd.bookingWindow !== undefined) {
+        existing.bookingWindow = (cd.booking_window ?? cd.bookingWindow) as string;
+      }
+      if (cd.customer_type !== undefined || cd.customerType !== undefined) {
+        existing.customerType = (cd.customer_type ?? cd.customerType) as string;
+      }
     }
+
+    if (parsed.data.budget !== undefined) existing.budget = parsed.data.budget;
+    if (parsed.data.bookingWindow !== undefined) existing.bookingWindow = parsed.data.bookingWindow;
+    if (parsed.data.customerType !== undefined) existing.customerType = parsed.data.customerType;
 
     // Handle contactDetails update (with normalization)
     if (parsed.data.contactDetails) {
@@ -565,7 +718,7 @@ leadsRouter.patch("/:id", async (req, res, next) => {
               req,
               { orgId: existing.orgId?.toString() }
             );
-            return res.json(updatedLead);
+            return res.json(spreadCustomDataToLead(updatedLead));
           }
         } else {
           existing.assignedToUserId = newAssigneeId as any;
@@ -573,16 +726,6 @@ leadsRouter.patch("/:id", async (req, res, next) => {
       } else {
         throw forbidden("Insufficient permissions to assign leads");
       }
-    }
-
-    // Recalculate score using dynamic scoring rules based on latest lead data
-    try {
-      const updatedLeadData = existing.toObject();
-      const newScore = await ScoringService.calculateScoreForLead(updatedLeadData);
-      existing.score = newScore;
-    } catch (scoreError) {
-      // If scoring fails, log but do not block lead update
-      console.error("Failed to recalculate lead score on update:", scoreError);
     }
 
     // Handle Stage Move (Pipeline Builder E2)
@@ -648,6 +791,20 @@ leadsRouter.patch("/:id", async (req, res, next) => {
     }
 
     await existing.save();
+
+    // Re-score asynchronously when scoring-relevant fields change
+    const body = req.body || {};
+    const scoringFields = ["budget", "checkInDate", "customerType", "source", "bookingWindow", "hotels", "customData"];
+    const scoringFieldChanged = scoringFields.some(
+      (f) => body[f] !== undefined || body.customData?.[f] !== undefined
+    );
+    if (scoringFieldChanged) {
+      import("../services/scoringService").then(({ ScoringService }) => {
+        ScoringService.calculateLeadScore(existing._id.toString()).catch((err) =>
+          logger.error("Re-scoring failed after lead update", {}, err instanceof Error ? err : new Error(String(err)))
+        );
+      });
+    }
 
     // Log status change
     if (parsed.data.status && parsed.data.status !== prevStatus) {
@@ -756,7 +913,8 @@ leadsRouter.patch("/:id", async (req, res, next) => {
       );
     }
 
-    res.json(existing);
+    const responseLead = spreadCustomDataToLead(existing);
+    res.json(responseLead);
   } catch (err) {
     next(err);
   }

@@ -31,7 +31,7 @@ const actionSchema = z.object({
 });
 
 const createWorkflowSchema = z.object({
-  orgId: z.string(),
+  orgId: z.string().optional(),
   name: z.string().min(1),
   description: z.string().optional(),
   trigger_event: z.enum(TRIGGER_EVENTS as unknown as [string, ...string[]]),
@@ -62,21 +62,10 @@ adminWorkflowsRouter.get("/logs/lead/:leadId", async (req, res, next) => {
   }
 });
 
-// GET /api/admin/workflows
+// GET /api/admin/workflows — returns all workflows (no org filter)
 adminWorkflowsRouter.get("/", async (req, res, next) => {
   try {
-    const orgId = req.query.orgId as string | undefined;
-    const query: Record<string, any> = {};
-    if (orgId) {
-      let orgObjectId;
-      try {
-        orgObjectId = new Types.ObjectId(orgId);
-      } catch {
-        return res.status(400).json({ error: 'Invalid orgId format' });
-      }
-      query.orgId = orgObjectId;
-    }
-    const list = await WorkflowV2Model.find(query)
+    const list = await WorkflowV2Model.find({ is_active: { $ne: false } })
       .sort({ createdAt: -1 })
       .lean();
     const workflows = await Promise.all(
@@ -100,12 +89,9 @@ adminWorkflowsRouter.post("/", async (req, res, next) => {
       throw badRequest(parsed.error.errors[0]?.message || "Invalid workflow payload");
     }
     const data = parsed.data;
-    let orgObjectId;
-    try {
-      orgObjectId = new Types.ObjectId(data.orgId);
-    } catch {
-      return res.status(400).json({ error: 'Invalid orgId format' });
-    }
+    const orgObjectId = data.orgId
+      ? (() => { try { return new Types.ObjectId(data.orgId); } catch { return new Types.ObjectId("69ae144fae23030b62f901f5"); } })()
+      : new Types.ObjectId("69ae144fae23030b62f901f5");
     const wf = await WorkflowV2Model.create({
       orgId: orgObjectId,
       name: data.name,

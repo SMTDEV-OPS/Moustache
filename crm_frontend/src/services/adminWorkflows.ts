@@ -69,7 +69,7 @@ export interface AdminWorkflow {
 }
 
 export interface CreateWorkflowPayload {
-  orgId: string;
+  orgId?: string;
   name: string;
   description?: string;
   trigger_event: TriggerEvent;
@@ -90,9 +90,8 @@ export interface WorkflowTestResult {
 
 const BASE = `${API_BASE_URL}/api/admin/workflows`;
 
-export async function listAdminWorkflows(orgId?: string): Promise<AdminWorkflow[]> {
-  const url = orgId ? `${BASE}?orgId=${orgId}` : BASE;
-  const response = await fetch(url, { headers: withAuthHeaders() });
+export async function listAdminWorkflows(): Promise<AdminWorkflow[]> {
+  const response = await fetch(BASE, { headers: withAuthHeaders() });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data?.message || "Failed to fetch workflows");

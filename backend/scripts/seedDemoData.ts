@@ -7,7 +7,7 @@ import { CallQualityDimensionModel } from "../src/models/callQualityDimension";
 import { CustomFieldModel } from "../src/models/customField";
 import { LeadModel } from "../src/models/lead";
 
-const ORG_ID = "650c82f2a741c88c75ffb701";
+const ORG_ID = process.argv[2] || "69ae144fae23030b62f901f5";
 
 const scoringThresholds = [
     { orgId: ORG_ID, label: "Hot", min_score: 7, max_score: 10, color: "#ef4444", inactive_hours_warning: 48, inactive_hours_critical: 72, auto_action: "notify_tl" },
@@ -16,11 +16,11 @@ const scoringThresholds = [
 ];
 
 const followupRules = [
-    { orgId: ORG_ID, bucket: "Hot", followup_number: 1, offset_hours: 2, description: "First hot follow-up" },
-    { orgId: ORG_ID, bucket: "Hot", followup_number: 2, offset_hours: 5, description: "Second hot follow-up" },
-    { orgId: ORG_ID, bucket: "Warm", followup_number: 1, offset_hours: 24, description: "Warm follow-up day 1" },
-    { orgId: ORG_ID, bucket: "Warm", followup_number: 2, offset_hours: 48, description: "Warm follow-up day 2" },
-    { orgId: ORG_ID, bucket: "Cold", followup_number: 1, offset_days: 5, description: "Cold check-in" }
+    { bucket: "Hot", followup_number: 1, offset_hours: 2, description: "First hot follow-up", display_order: 1, is_active: true },
+    { bucket: "Hot", followup_number: 2, offset_hours: 5, description: "Second hot follow-up", display_order: 2, is_active: true },
+    { bucket: "Warm", followup_number: 1, offset_hours: 24, description: "Warm follow-up day 1", display_order: 3, is_active: true },
+    { bucket: "Warm", followup_number: 2, offset_hours: 48, description: "Warm follow-up day 2", display_order: 4, is_active: true },
+    { bucket: "Cold", followup_number: 1, offset_days: 5, description: "Cold check-in", display_order: 5, is_active: true }
 ];
 
 const callQualityDimensions = [

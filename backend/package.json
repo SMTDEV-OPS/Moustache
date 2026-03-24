@@ -15,8 +15,10 @@
     "seed:moustache-workflows": "ts-node scripts/seedMoustacheWorkflows.ts",
     "seed:system-filters": "ts-node scripts/seedSystemFilters.ts",
     "seed:dashboard-widgets": "ts-node scripts/seedDashboardWidgets.ts",
+    "seed:everything": "ts-node scripts/seedEverything.ts",
     "seed:complete": "ts-node scripts/seedComplete.ts",
     "list:users": "ts-node scripts/listUsers.ts",
+    "test:v2-allocation": "ts-node scripts/testV2Allocation.ts",
     "reset:password": "ts-node scripts/resetPassword.ts",
     "lint": "echo \"no linter configured yet\"",
     "test": "ts-node"

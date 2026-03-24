@@ -6,11 +6,19 @@ import { processInboundEmailForLeads } from "./emailLeadParser";
 import { EmailMessageModel, IEmailMessage } from "../models/emailMessage";
 import { decryptPassword } from "../models/emailAccount";
 import { handleClientResponse } from "./clientResponseService";
-import { linkEmailToCRM } from "./emailService";
 import { emitToUser } from "../websocket";
+import { matchAndStore } from "./emailMatchingService";
 
 // We keep a registry of active clients to gracefully close them or avoid duplicates
 const activeClients: Map<string, ImapFlow> = new Map();
+
+function extractHeader(rawSource: Buffer, headerName: string): string | undefined {
+    const raw = rawSource.toString("utf8");
+    const match = raw.match(new RegExp(`^${headerName}:\\s*(.+)$`, "gim"));
+    if (!match || match.length === 0) return undefined;
+    const lastLine = match[match.length - 1];
+    return lastLine.replace(new RegExp(`^${headerName}:\\s*`, "i"), "").trim();
+}
 
 export async function initializeImapListeners() {
     logger.info("[IMAPListener] Initializing IMAP IDLE listeners...");
@@ -119,44 +127,47 @@ async function processPushedMessage(rawSource: Buffer, uid: string, account: IEm
             return; // Already handled by the cron sync or previous event
         }
 
-        const emailData: Partial<IEmailMessage> = {
+        const parsedTo = ((parsed.to as any)?.value || []).map((t: any) => ({
+            name: t?.name,
+            email: t?.address || "",
+        })).filter((t: { email: string }) => Boolean(t.email));
+
+        const xGmThrid = extractHeader(rawSource, "X-GM-THRID");
+        const referencesHeader = extractHeader(rawSource, "References");
+
+        const result = await matchAndStore({
             emailAccountId: account._id as any,
-            threadId: parsed.inReplyTo || messageId,
             messageId,
+            threadId: xGmThrid || parsed.inReplyTo || messageId,
+            inReplyTo: parsed.inReplyTo || undefined,
+            references: referencesHeader,
             from: {
                 name: parsed.from?.value[0]?.name,
-                email: parsed.from?.value[0]?.address || "unknown@email.com"
+                email: parsed.from?.value[0]?.address || "unknown@email.com",
             },
-            to: (parsed.to && Array.isArray(parsed.to) ? parsed.to[0]?.value : (parsed.to as any)?.value)?.map((t: any) => ({ name: t.name, email: t.address })) || [],
+            to: parsedTo,
             subject: parsed.subject || "(no subject)",
             bodyText: parsed.text || "",
-            bodyHtml: parsed.html || parsed.textAsHtml || "",
-            snippet: parsed.text?.substring(0, 200) || "",
-            folder: "INBOX",
-            isRead: false,
-            isStarred: false,
-            isDraft: false,
-            isArchived: false,
+            bodyHtml: (typeof parsed.html === "string" ? parsed.html : parsed.textAsHtml) || "",
             receivedAt: parsed.date || new Date(),
-        };
+        });
 
-        const savedEmail = await EmailMessageModel.create(emailData);
-        emailData._id = savedEmail._id;
-
-        // Link to CRM
-        await linkEmailToCRM(emailData);
+        const savedEmail = await EmailMessageModel.findById(result.emailMessageId);
+        if (!savedEmail) {
+            return;
+        }
 
         // Push real-time notification to the frontend user!
         emitToUser(account.userId.toString(), "EMAIL_RECEIVED", { emailId: savedEmail._id });
 
         // Run LLM parsing right away ONLY if this is a company inbox enabled for lead capture
-        if (!emailData.linkedLeadId) {
+        if (!result.matched) {
             if (account.isLeadCaptureEnabled) {
-                const bodyText = emailData.bodyText || emailData.bodyHtml?.replace(/<[^>]+>/g, " ") || "";
+                const bodyText = savedEmail.bodyText || savedEmail.bodyHtml?.replace(/<[^>]+>/g, " ") || "";
                 await processInboundEmailForLeads({
-                    fromName: emailData.from?.name || null,
-                    fromEmail: emailData.from?.email || null,
-                    subject: emailData.subject || null,
+                    fromName: savedEmail.from?.name || null,
+                    fromEmail: savedEmail.from?.email || null,
+                    subject: savedEmail.subject || null,
                     body: bodyText,
                 }, savedEmail._id.toString());
             } else {
@@ -164,8 +175,6 @@ async function processPushedMessage(rawSource: Buffer, uid: string, account: IEm
             }
         } else {
             // Already identified author
-            savedEmail.linkedLeadId = emailData.linkedLeadId as any;
-            savedEmail.linkedGuestId = emailData.linkedGuestId as any;
             await handleClientResponse(savedEmail as IEmailMessage);
         }
 

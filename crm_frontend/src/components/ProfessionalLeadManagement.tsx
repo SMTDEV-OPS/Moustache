@@ -12,7 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Search, Filter, Plus, Phone, Mail, Calendar as CalendarIcon, Clock, User as UserIcon, TrendingUp, Eye, Users, MessageSquare, AlertTriangle, Trash2, Hotel } from "lucide-react";
+import { Search, Filter, Plus, Phone, Mail, Calendar as CalendarIcon, Clock, User as UserIcon, TrendingUp, Eye, Users, MessageSquare, AlertTriangle, Trash2, Hotel, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,12 +20,14 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { EmailDialog } from "@/components/communication/EmailDialog";
-import { listLeads, Lead } from "@/services/leads";
+import { listLeads, createLead, Lead, getLeadContactInfo } from "@/services/leads";
 import { listUsers, User } from "@/services/users";
+import { listProperties, Property } from "@/services/properties";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
 import { API_BASE_URL, withAuthHeaders } from "@/services/api";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SendQuotationDialog } from "@/components/SendQuotationDialog";
 
 interface ProfessionalLeadManagementProps {
   userRole: string;
@@ -91,10 +93,12 @@ const ProfessionalLeadManagement = ({
   const [userList, setUserList] = useState<User[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState(false);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [hotelOptions, setHotelOptions] = useState<Property[]>([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [customFields, setCustomFields] = useState<any[]>([]);
   const [customData, setCustomData] = useState<Record<string, any>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const canViewTeamLeads =
     !!permissions?.includes("leads.view.team") ||
@@ -157,7 +161,11 @@ const ProfessionalLeadManagement = ({
         });
         if (response.ok) {
           const data = await response.json();
-          setCustomFields(data.filter((f: any) => f.is_active).sort((a: any, b: any) => a.display_order - b.display_order));
+          setCustomFields(
+            data
+              .filter((f: any) => f.is_active !== false && f.isActive !== false)
+              .sort((a: any, b: any) => a.display_order - b.display_order)
+          );
         }
       } catch (err) {
         console.error("Failed to fetch custom fields", err);
@@ -166,8 +174,56 @@ const ProfessionalLeadManagement = ({
     void fetchCustomFields();
   }, [backendUserId, scope]);
 
+  // Refresh custom fields when opening the Add Lead dialog so field-builder changes apply immediately.
+  useEffect(() => {
+    if (!isAddLeadOpen) return;
+    const fetchCustomFields = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/admin/fields?entity=lead`, {
+          headers: withAuthHeaders(),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setCustomFields(
+            data
+              .filter((f: any) => f.is_active !== false && f.isActive !== false)
+              .sort((a: any, b: any) => a.display_order - b.display_order)
+          );
+        }
+      } catch (err) {
+        console.error("Failed to fetch custom fields", err);
+      }
+    };
+    void fetchCustomFields();
+  }, [isAddLeadOpen]);
+
+  useEffect(() => {
+    const fetchPmsHotels = async () => {
+      try {
+        const properties = await listProperties();
+        const pmsEnabledHotels = properties.filter(
+          (property) => property.status === "ACTIVE" && property.pmsProvider && property.pmsProvider !== "NONE"
+        );
+        setHotelOptions(pmsEnabledHotels);
+      } catch (err) {
+        console.error("Failed to fetch PMS hotels", err);
+        setHotelOptions([]);
+      }
+    };
+
+    void fetchPmsHotels();
+  }, []);
+
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [emailLead, setEmailLead] = useState<{ name: string; email: string } | null>(null);
+  const [showQuotationDialog, setShowQuotationDialog] = useState(false);
+  const [quotationLead, setQuotationLead] = useState<Lead | null>(null);
+  const [quotationContext, setQuotationContext] = useState<{
+    guestName?: string;
+    guestEmail?: string;
+    guestPhone?: string;
+    propertyName?: string;
+  } | null>(null);
   const [showCallbackDialog, setShowCallbackDialog] = useState(false);
   const [callbackLead, setCallbackLead] = useState<{ name: string } | null>(null);
   const [callbackDate, setCallbackDate] = useState<Date | undefined>(new Date());
@@ -443,13 +499,131 @@ const ProfessionalLeadManagement = ({
     // In real implementation, this would update the lead assignment
   };
 
-  const onSubmit = (data: LeadFormData) => {
-    const payload = { ...data, customData };
-    console.log("New lead data:", payload);
-    toast.success("Lead added successfully!");
-    setIsAddLeadOpen(false);
-    form.reset();
-    setCustomData({});
+  const openQuotationForLead = (leadId: string, propertyName?: string) => {
+    const targetLead = leads.find((item) => item.id === leadId);
+    if (!targetLead) {
+      toast.error("Lead details not found for quotation");
+      return;
+    }
+
+    const contact = getLeadContactInfo(targetLead);
+    setQuotationLead(targetLead);
+    setQuotationContext({
+      guestName: contact.name || targetLead.leadNumber,
+      guestEmail: contact.email || undefined,
+      guestPhone: contact.phone || undefined,
+      propertyName,
+    });
+    setShowQuotationDialog(true);
+  };
+
+  const bookingSourceToLeadSource: Record<string, string> = {
+    Website: "BRAND_WEBSITE",
+    Email: "EMAIL",
+    Phone: "DIRECT_CALL",
+    "Walk-in": "WALK_IN",
+    "Travel Agent": "TRAVEL_AGENT",
+    Corporate: "CORPORATE_OFFICE",
+    "OTA (Online Travel Agency)": "OTA",
+    "Social Media": "SOCIAL",
+    Referral: "REFERRAL",
+    Other: "MANUAL",
+  };
+
+  const leadTypeToEnum: Record<string, string> = {
+    FIT: "STAY",
+    Corporate: "MICE",
+    Group: "STAY",
+    Wedding: "WEDDING",
+    MICE: "MICE",
+  };
+
+  const onSubmit = async (data: LeadFormData) => {
+    try {
+      setIsSubmitting(true);
+
+      const guestFullName = [data.firstName, data.middleName, data.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+      const hotels = (data.hotels || []).map((hotel: any) => {
+        const selectedProperty = hotelOptions.find((property) => property.name === hotel.hotelName);
+        return {
+          hotelName: hotel.hotelName,
+          propertyId: selectedProperty?._id || undefined,
+          checkInDate: hotel.checkInDate ? new Date(hotel.checkInDate) : undefined,
+          checkOutDate: hotel.checkOutDate ? new Date(hotel.checkOutDate) : undefined,
+          roomCategory: hotel.roomCategory || undefined,
+          roomPreference: hotel.roomPreference || undefined,
+          numberOfGuests: hotel.numberOfGuests ? String(hotel.numberOfGuests) : undefined,
+          numberOfRooms: 1,
+          adults: 1,
+          children: 0,
+        };
+      });
+
+      const mappedSource =
+        bookingSourceToLeadSource[data.bookingSource] ||
+        (data.source as string) ||
+        "MANUAL";
+      const mappedLeadType =
+        leadTypeToEnum[data.leadType || ""] || (data.leadType as string) || "STAY";
+
+      const payload = {
+        guestContact: {
+          name: guestFullName,
+          phone: data.guestContactNumber,
+          email: data.guestEmail || undefined,
+        },
+        source: mappedSource,
+        leadType: mappedLeadType,
+        estimatedValue: data.value || undefined,
+        occasion: undefined,
+        notes: data.notes || undefined,
+        alternateContact: data.alternateContact || undefined,
+        occupation: data.occupation || undefined,
+        specialRequests: data.specialRequests || undefined,
+        isCorporateBooking: data.corporateBooking === "yes",
+        companyName: data.companyName || undefined,
+        gstin: data.gstin || undefined,
+        heatLevel: undefined,
+        hotels: hotels.length > 0 ? hotels : undefined,
+        customData,
+      };
+
+      await createLead(payload);
+
+      toast.success("Lead created successfully!");
+      setIsAddLeadOpen(false);
+      form.reset();
+      setCustomData({});
+
+      const fetchData = async () => {
+        try {
+          setIsLoadingLeads(true);
+          setLoadError(null);
+          const [leadData, usersData] = await Promise.all([
+            listLeads({ scope }),
+            listUsers(),
+          ]);
+          setLeads(leadData);
+          setUserList(usersData);
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Unable to load leads";
+          setLoadError(message);
+          toast.error(message);
+        } finally {
+          setIsLoadingLeads(false);
+        }
+      };
+      void fetchData();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to create lead");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -575,10 +749,17 @@ const ProfessionalLeadManagement = ({
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
-                                <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
-                                <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
-                                <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
+                                {hotelOptions.length > 0 ? (
+                                  hotelOptions.map((property) => (
+                                    <SelectItem key={property._id} value={property.name}>
+                                      {property.name}
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <SelectItem value="no-hotels-available" disabled>
+                                    No PMS hotels available
+                                  </SelectItem>
+                                )}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -941,19 +1122,21 @@ const ProfessionalLeadManagement = ({
                   />
                 </div>
 
-                <FormField
-                  control={form.control}
-                  name="value"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Estimated Value</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., ₹25,000" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-1 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="value"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Estimated Value</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., ₹25,000" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <FormField
                   control={form.control}
@@ -969,111 +1152,16 @@ const ProfessionalLeadManagement = ({
                   )}
                 />
 
-                {customFields.length > 0 && (
-                  <div className="pt-4">
-                    <div className="relative flex items-center mb-6">
-                      <div className="flex-grow border-t border-[#9ca3af]"></div>
-                      <span className="flex-shrink-0 mx-4 text-[13px] font-medium text-[#c0c2ce]" style={{ color: '#9ca3af' }}>
-                        Additional Details
-                      </span>
-                      <div className="flex-grow border-t border-[#9ca3af]"></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      {customFields.map((field) => (
-                        <div key={field.slug} className="space-y-2">
-                          <Label className="text-[13px] font-medium text-[#374151]">
-                            {field.name}
-                          </Label>
-                          {field.type === "text" && (
-                            <Input
-                              value={customData[field.slug] || ""}
-                              onChange={(e) => setCustomData({ ...customData, [field.slug]: e.target.value })}
-                            />
-                          )}
-                          {field.type === "number" && (
-                            <Input
-                              type="number"
-                              value={customData[field.slug] || ""}
-                              onChange={(e) => setCustomData({ ...customData, [field.slug]: e.target.value ? Number(e.target.value) : "" })}
-                            />
-                          )}
-                          {field.type === "date" && (
-                            <Input
-                              type="date"
-                              value={customData[field.slug] || ""}
-                              onChange={(e) => setCustomData({ ...customData, [field.slug]: e.target.value })}
-                            />
-                          )}
-                          {field.type === "dropdown" && (
-                            <Select
-                              value={customData[field.slug] || ""}
-                              onValueChange={(val) => setCustomData({ ...customData, [field.slug]: val })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder={`Select ${field.name}`} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {field.options?.map((opt: string) => (
-                                  <SelectItem key={opt} value={opt}>
-                                    {opt}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          {field.type === "multi_select" && (
-                            <Select
-                              value={customData[field.slug] && customData[field.slug].length > 0 ? "selected" : ""}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder={`Select ${field.name}`} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {field.options?.map((opt: string) => (
-                                  <div key={opt} className="flex items-center px-2 py-1 hover:bg-muted cursor-pointer" onClick={(e) => {
-                                    e.preventDefault();
-                                    const current = customData[field.slug] || [];
-                                    const idx = current.indexOf(opt);
-                                    if (idx === -1) {
-                                      setCustomData({ ...customData, [field.slug]: [...current, opt] });
-                                    } else {
-                                      setCustomData({ ...customData, [field.slug]: current.filter((x: string) => x !== opt) });
-                                    }
-                                  }}>
-                                    <Checkbox className="mr-2" checked={(customData[field.slug] || []).includes(opt)} />
-                                    <span className="text-sm">{opt}</span>
-                                  </div>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          {field.type === "boolean" && (
-                            <div className="pt-2">
-                              <Switch
-                                checked={!!customData[field.slug]}
-                                onCheckedChange={(val) => setCustomData({ ...customData, [field.slug]: val })}
-                              />
-                            </div>
-                          )}
-                          {field.type === "phone" && (
-                            <Input
-                              type="tel"
-                              value={customData[field.slug] || ""}
-                              onChange={(e) => setCustomData({ ...customData, [field.slug]: e.target.value })}
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {false && customFields.length > 0 && (
+                  <div className="pt-4" />
                 )}
 
                 <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsAddLeadOpen(false)}>
+                  <Button type="button" variant="outline" onClick={() => setIsAddLeadOpen(false)} disabled={isSubmitting}>
                     Cancel
                   </Button>
-                  <Button type="submit">
-                    Add Lead
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? "Adding..." : "Add Lead"}
                   </Button>
                 </div>
               </form>
@@ -1397,6 +1485,14 @@ const ProfessionalLeadManagement = ({
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => openQuotationForLead(lead.id, lead.property)}
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            Send Quotation
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => setSelectedLead(selectedLead === lead.id ? null : lead.id)}
                           >
                             <Eye className="h-4 w-4 mr-2" />
@@ -1570,6 +1666,14 @@ const ProfessionalLeadManagement = ({
                       <Button
                         size="sm"
                         variant="outline"
+                        onClick={() => openQuotationForLead(lead.id, lead.property)}
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Send Quotation
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => setSelectedLead(selectedLead === lead.id ? null : lead.id)}
                       >
                         <Eye className="h-4 w-4 mr-2" />
@@ -1694,6 +1798,16 @@ const ProfessionalLeadManagement = ({
         onOpenChange={setShowEmailDialog}
         guestEmail={emailLead?.email}
         guestName={emailLead?.name}
+      />
+
+      <SendQuotationDialog
+        open={showQuotationDialog}
+        onOpenChange={setShowQuotationDialog}
+        lead={quotationLead}
+        guestName={quotationContext?.guestName}
+        guestEmail={quotationContext?.guestEmail}
+        guestPhone={quotationContext?.guestPhone}
+        propertyName={quotationContext?.propertyName}
       />
     </div >
   );

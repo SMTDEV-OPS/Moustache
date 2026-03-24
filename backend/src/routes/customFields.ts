@@ -66,6 +66,15 @@ router.put(
     requirePermissions([PERMISSIONS.SETTINGS.MANAGE]),
     async (req: Request, res: Response) => {
         try {
+        // Keep legacy and new active flags in sync.
+        // Some UI uses `isActive` while other consumers check `is_active`.
+        if (typeof req.body.isActive === "boolean" && typeof req.body.is_active !== "boolean") {
+            req.body.is_active = req.body.isActive;
+        }
+        if (typeof req.body.is_active === "boolean" && typeof req.body.isActive !== "boolean") {
+            req.body.isActive = req.body.is_active;
+        }
+
         const { id } = req.params;
         const updatedField = await CustomFieldModel.findByIdAndUpdate(
             id,
@@ -98,7 +107,7 @@ router.delete(
         // Soft delete is preferred over actual deletion to maintain data integrity
         const updatedField = await CustomFieldModel.findByIdAndUpdate(
             id,
-            { isActive: false },
+            { isActive: false, is_active: false },
             { new: true }
         );
 

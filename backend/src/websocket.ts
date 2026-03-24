@@ -3,6 +3,10 @@ import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { config } from "./config/env";
 import { logger } from "./config/logger";
+import { LeadModel } from "./models/lead";
+import { UserModel } from "./models/user";
+import { AccessControlService } from "./services/auth/AccessControlService";
+import { assertLeadAccess } from "./utils/leadAccess";
 
 let io: Server | null = null;
 
@@ -57,6 +61,40 @@ export function initializeWebSocket(httpServer: HttpServer): Server {
 
     // Join user's personal room for notifications
     socket.join(`user:${userId}`);
+
+    socket.on("lead:join", async (leadId: string, ack?: (payload: { ok: boolean; error?: string }) => void) => {
+      try {
+        if (!leadId) {
+          throw new Error("Missing leadId");
+        }
+
+        const [userDoc, lead] = await Promise.all([
+          UserModel.findById(userId).lean(),
+          LeadModel.findById(leadId).lean(),
+        ]);
+
+        if (!userDoc || !lead) {
+          throw new Error("Lead not found or user unavailable");
+        }
+
+        const { permissions, isAdmin } = await AccessControlService.getUserPermissions(String(userDoc._id));
+        await assertLeadAccess(
+          {
+            id: String(userDoc._id),
+            email: userDoc.email,
+            isAdmin,
+            permissions,
+          },
+          lead
+        );
+
+        socket.join(`lead:${leadId}`);
+        ack?.({ ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to join lead room";
+        ack?.({ ok: false, error: message });
+      }
+    });
 
     socket.on("disconnect", () => {
       logger.info(`WebSocket disconnected: user ${userId}`);

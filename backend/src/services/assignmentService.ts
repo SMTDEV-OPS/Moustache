@@ -19,6 +19,10 @@ export interface AssignmentResult {
   wasRedirectedToBuddy?: boolean;
   originalAssigneeId?: Types.ObjectId;
   isOverflow?: boolean;
+  /** How the lead was assigned (for auditing) */
+  assignmentSource?: "v2_rule" | "legacy_rule" | "round_robin_fallback" | "manual" | "overflow" | "none";
+  /** Name of the V2 rule that matched (when assignmentSource is v2_rule) */
+  assignmentRuleName?: string;
 }
 
 export interface EligibleUser {
@@ -188,11 +192,27 @@ export async function tryV2Assignment(leadInput: any, orgId?: string): Promise<A
 
       for (const cond of rule.conditions) {
         // Find property in customData or at the root of the input using fallback
+        // Support field aliases: UI may use "estimatedBudget" but input has "budget", etc.
+        const fieldAliases: Record<string, string[]> = {
+          estimatedBudget: ["budget", "estimatedBudget"],
+          budget: ["budget", "estimatedBudget"],
+          leadType: ["leadType", "lead_type"],
+          lead_type: ["leadType", "lead_type"],
+          customerType: ["customerType", "customer_type"],
+          customer_type: ["customerType", "customer_type"],
+          bookingWindow: ["bookingWindow", "booking_window"],
+          booking_window: ["bookingWindow", "booking_window"],
+        };
+        const candidates = fieldAliases[cond.field] ?? [cond.field];
+
         let leadValue: any;
-        if (leadInput.customData instanceof Map) {
-          leadValue = leadInput.customData.get(cond.field) ?? leadInput[cond.field];
-        } else {
-          leadValue = leadInput.customData?.[cond.field] ?? leadInput[cond.field];
+        for (const f of candidates) {
+          if (leadInput.customData instanceof Map) {
+            leadValue = leadInput.customData.get(f) ?? (leadInput as any)[f];
+          } else {
+            leadValue = (leadInput.customData as any)?.[f] ?? (leadInput as any)[f];
+          }
+          if (leadValue !== undefined && leadValue !== null) break;
         }
 
         let passed = false;
@@ -285,6 +305,8 @@ export async function tryV2Assignment(leadInput: any, orgId?: string): Promise<A
             assignmentMethod: "none",
             reason: `Capacity reached for V2 rule: ${rule.name}`,
             isOverflow: true,
+            assignmentSource: "overflow",
+            assignmentRuleName: rule.name,
           };
         }
       }
@@ -297,6 +319,8 @@ export async function tryV2Assignment(leadInput: any, orgId?: string): Promise<A
           reason: `Auto-assigned by V2 rule: ${rule.name}`,
           wasRedirectedToBuddy: buddyResolution.wasRedirected,
           originalAssigneeId: buddyResolution.wasRedirected ? new Types.ObjectId(rule.specificUserId.toString()) : undefined,
+          assignmentSource: "v2_rule",
+          assignmentRuleName: rule.name,
         };
       }
 
@@ -313,6 +337,8 @@ export async function tryV2Assignment(leadInput: any, orgId?: string): Promise<A
           reason: `Auto-assigned by V2 rule: ${rule.name}`,
           wasRedirectedToBuddy: buddyResolution.wasRedirected,
           originalAssigneeId: buddyResolution.wasRedirected ? result.userId : undefined,
+          assignmentSource: "v2_rule",
+          assignmentRuleName: rule.name,
         };
       }
     }
@@ -337,6 +363,7 @@ export async function autoAssignLead(
     return {
       assignmentMethod: "none",
       reason: `No active assignment rule found for lead type: ${leadType}`,
+      assignmentSource: "none",
     };
   }
 
@@ -351,6 +378,7 @@ export async function autoAssignLead(
         employeeGroupId: rule.employeeGroupId,
         assignmentMethod: "none",
         reason: `No active users found in the assigned employee group`,
+        assignmentSource: "none",
       };
     }
   }
@@ -364,6 +392,7 @@ export async function autoAssignLead(
         assignmentMethod: "none",
         reason: "Auto-assignment disabled (manual only mode).",
         isOverflow: true,
+        assignmentSource: "overflow",
       };
     }
 
@@ -382,7 +411,8 @@ export async function autoAssignLead(
         employeeGroupId: rule.employeeGroupId,
         assignmentMethod: "none",
         reason: `Capacity reached. No available agents under capacity.`,
-        isOverflow: true
+        isOverflow: true,
+        assignmentSource: "overflow",
       };
     }
   }
@@ -397,6 +427,7 @@ export async function autoAssignLead(
       employeeGroupId: rule.employeeGroupId,
       assignmentMethod: "none",
       reason: "Could not determine user with least leads",
+      assignmentSource: "none",
     };
   }
 
@@ -415,6 +446,7 @@ export async function autoAssignLead(
     reason: reason,
     wasRedirectedToBuddy: buddyResolution.wasRedirected,
     originalAssigneeId: buddyResolution.wasRedirected ? result.userId : undefined,
+    assignmentSource: "legacy_rule",
   };
 }
 
@@ -726,5 +758,66 @@ export async function getEmployeeGroupIdForLeadType(
 ): Promise<Types.ObjectId | null> {
   const rule = await getAssignmentRule(leadType);
   return rule ? rule.employeeGroupId : null;
+}
+
+/**
+ * Fallback: assign to the active user with the fewest open leads (round-robin)
+ * when no assignment rules exist or match.
+ */
+export async function assignToLeastLoadedUser(): Promise<{
+  assignedToUserId: string | undefined;
+  assignmentMethod: string;
+}> {
+  console.log('[Assignment Debug] Fallback triggered');
+  const activeUsers = await UserModel.find({
+    status: "ACTIVE",
+  })
+    .select("_id name email")
+    .lean();
+
+  console.log('[Assignment Debug] Active users found:', activeUsers.length);
+
+  if (!activeUsers || activeUsers.length === 0) {
+    logger.warn("[Fallback Assignment] No active users found in system");
+    return { assignedToUserId: undefined, assignmentMethod: "none" };
+  }
+
+  const openLeadCounts = await LeadModel.aggregate([
+    {
+      $match: {
+        assignedToUserId: { $in: activeUsers.map((u) => u._id) },
+        status: { $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED] },
+      },
+    },
+    {
+      $group: {
+        _id: "$assignedToUserId",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const countMap = new Map(openLeadCounts.map((r) => [r._id.toString(), r.count]));
+
+  let selectedUser = activeUsers[0];
+  let minCount = countMap.get(activeUsers[0]._id.toString()) ?? 0;
+
+  for (const user of activeUsers) {
+    const count = countMap.get(user._id.toString()) ?? 0;
+    if (count < minCount) {
+      minCount = count;
+      selectedUser = user;
+    }
+  }
+
+  logger.info(
+    `[Fallback Assignment] Assigned to ${selectedUser.name} ` +
+      `(${minCount} open leads) via round-robin fallback`
+  );
+
+  return {
+    assignedToUserId: selectedUser._id.toString(),
+    assignmentMethod: "round_robin_fallback",
+  };
 }
 

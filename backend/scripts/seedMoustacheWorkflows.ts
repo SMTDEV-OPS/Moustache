@@ -146,7 +146,7 @@ export async function seedMoustacheWorkflows(orgId: string) {
       continue;
     }
 
-    const existing = await WorkflowV2Model.findOne({ orgId: oid, name: w.name });
+    const existing = await WorkflowV2Model.findOne({ name: w.name });
     if (existing) {
       logger.info(`Workflow "${w.name}" already exists for org ${orgId}, skipping`);
       continue;
@@ -191,11 +191,7 @@ export async function seedMoustacheWorkflows(orgId: string) {
 }
 
 async function main() {
-  const orgId = process.argv[2];
-  if (!orgId) {
-    console.error("Usage: npx ts-node scripts/seedMoustacheWorkflows.ts <orgId>");
-    process.exit(1);
-  }
+  const orgId = process.argv[2] || "69ae144fae23030b62f901f5";
 
   await mongoose.connect(config.mongoUri);
   await seedMoustacheWorkflows(orgId);

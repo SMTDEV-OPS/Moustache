@@ -28,12 +28,7 @@ export const AdminFollowupRulesController = {
     // GET /api/admin/followup-rules
     async listRules(req: Request, res: Response) {
         try {
-            const { org_id } = req.query;
-            const query: any = {};
-
-            if (org_id) query.org_id = org_id;
-
-            const rules = await FollowupRuleModel.find(query).sort({ bucket: 1, display_order: 1 });
+            const rules = await FollowupRuleModel.find({ is_active: { $ne: false } }).sort({ bucket: 1, display_order: 1 });
 
             // Group by bucket
             const grouped = rules.reduce((acc, rule) => {

@@ -266,8 +266,9 @@ export async function sendEmail(
   // Save sent email
   const emailMessage: Partial<IEmailMessage> = {
     emailAccountId: account._id as Types.ObjectId,
-    threadId: `thread-${Date.now()}`,
+    threadId: options.threadId || options.inReplyTo || `thread-${Date.now()}`,
     messageId,
+    inReplyTo: options.inReplyTo,
     from: { email: account.email },
     to: options.to,
     cc: options.cc,
@@ -283,8 +284,6 @@ export async function sendEmail(
     isArchived: false,
     sentAt: new Date(),
   };
-
-  await linkEmailToCRM(emailMessage);
 
   const savedEmail = await EmailMessageModel.create(emailMessage);
   return savedEmail;

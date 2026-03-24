@@ -32,7 +32,7 @@ export interface AssignmentRuleV2 {
     conditionLogic: ConditionLogic;
     conditions: RuleCondition[];
     assignTo: AssignTo;
-    employeeGroupId?: string | { _id: string; groupName: string };
+    employeeGroupId?: string | { _id: string; name?: string; groupName?: string };
     specificUserId?: string | { _id: string; name: string; email: string };
     createdAt: string;
     updatedAt: string;

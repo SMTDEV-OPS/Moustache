@@ -4,6 +4,8 @@ import { AgentDailyWorkloadModel } from "../models/agentDailyWorkload";
 import { UserModel } from "../models/user";
 import { EmployeeGroupModel } from "../models/employeeGroup";
 import { AllocationRoutingRuleModel } from "../models/allocationRoutingRule";
+import { LeadModel } from "../models/lead";
+import { LeadStatus } from "../models/common";
 import { leadEventBus } from "./leadService";
 
 export function getTodayDateString(): string {
@@ -32,8 +34,8 @@ export async function seedAllocationConfig(orgId: string): Promise<void> {
     }
 }
 
-export async function getConfigValue(orgId: string, key: string, defaultValue: string): Promise<string> {
-    const config = await AllocationConfigModel.findOne({ orgId: new Types.ObjectId(orgId), key }).lean();
+export async function getConfigValue(_orgId: string | null, key: string, defaultValue: string): Promise<string> {
+    const config = await AllocationConfigModel.findOne({ key }).lean();
     return config ? config.value : defaultValue;
 }
 
@@ -64,17 +66,21 @@ export async function getAvailableAgents(
 
     if (agentIds.length === 0) return [];
 
+    // Include users who logged in recently OR have no lastLoginAt (e.g. new users, never logged in)
     const eligibleUsers = await UserModel.find({
         _id: { $in: agentIds },
         status: "ACTIVE",
-        lastLoginAt: { $gte: loginCutoff }
+        $or: [
+            { lastLoginAt: { $gte: loginCutoff } },
+            { lastLoginAt: null },
+            { lastLoginAt: { $exists: false } },
+        ],
     }).select('_id').lean();
 
     const eligibleUserIds = eligibleUsers.map(u => u._id);
     if (eligibleUserIds.length === 0) return [];
 
     const workloads = await AgentDailyWorkloadModel.find({
-        orgId: new Types.ObjectId(orgId),
         date: today,
         agentId: { $in: eligibleUserIds }
     }).lean();
@@ -103,10 +109,10 @@ export async function getAvailableAgents(
 
 async function getRoutingGroup(
     lead: any,
-    orgId: string
+    _orgId: string
 ): Promise<Types.ObjectId | null> {
     const rules = await AllocationRoutingRuleModel
-        .find({ orgId, is_active: true })
+        .find({ is_active: true })
         .sort({ priority: 1 })
         .lean();
 
@@ -187,7 +193,6 @@ export async function checkCapacityAlerts(orgId: string): Promise<void> {
     const threshold = Math.floor(cap * pct / 100);
 
     const alerts = await AgentDailyWorkloadModel.find({
-        orgId: new Types.ObjectId(orgId),
         date: today,
         lead_count: { $gte: threshold },
         alert_sent: false
@@ -206,9 +211,9 @@ export async function checkCapacityAlerts(orgId: string): Promise<void> {
     }
 }
 
-/** Return all allocation config entries for an org */
-export async function getAllocationConfig(orgId: string): Promise<Record<string, { value: string; description?: string }>> {
-    const configs = await AllocationConfigModel.find({ orgId: new Types.ObjectId(orgId) }).lean();
+/** Return all allocation config entries (no org filter) */
+export async function getAllocationConfig(_orgId?: string | null): Promise<Record<string, { value: string; description?: string }>> {
+    const configs = await AllocationConfigModel.find({}).lean();
     const result: Record<string, { value: string; description?: string }> = {};
     for (const c of configs) {
         result[c.key] = { value: c.value, description: c.description };
@@ -228,20 +233,64 @@ export async function updateAllocationConfig(orgId: string, updates: Record<stri
     }
 }
 
-/** Return daily workload map for org/date (date defaults to today YYYY-MM-DD) */
-export async function getWorkloadsForDate(orgId: string, date?: string): Promise<Array<{ agentId: string; lead_count: number; is_available: boolean; alert_sent: boolean }>> {
+/** Return workload for all active users with today's lead counts and open lead counts */
+export async function getWorkloadsForDate(orgId: string | null, date?: string): Promise<Array<{
+    agentId: string;
+    name: string;
+    email: string;
+    isOnline: boolean;
+    lastLoginAt?: Date;
+    leadsToday: number;
+    openLeads: number;
+    isAvailable: boolean;
+    alertSent: boolean;
+}>> {
     const d = date ?? getTodayDateString();
-    const workloads = await AgentDailyWorkloadModel.find({
-        orgId: new Types.ObjectId(orgId),
-        date: d
-    }).lean();
 
-    return workloads.map(w => ({
-        agentId: w.agentId.toString(),
-        lead_count: w.lead_count,
-        is_available: w.is_available,
-        alert_sent: w.alert_sent
-    }));
+    const users = await UserModel.find({ status: "ACTIVE" })
+        .select("_id name email isOnline lastLoginAt roleId")
+        .lean();
+
+    const workloadQuery: Record<string, any> = { date: d };
+    if (orgId) workloadQuery.orgId = new Types.ObjectId(orgId);
+
+    const workloads = await AgentDailyWorkloadModel.find(workloadQuery).lean();
+
+    const userIds = users.map((u) => u._id);
+    const openLeadCounts = await LeadModel.aggregate([
+        {
+            $match: {
+                assignedToUserId: { $in: userIds },
+                status: { $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED] },
+            },
+        },
+        { $group: { _id: "$assignedToUserId", count: { $sum: 1 } } },
+    ]);
+
+    const openLeadMap = new Map(
+        openLeadCounts.map((r) => [r._id.toString(), r.count])
+    );
+
+    const workloadMap = new Map(
+        workloads.map((w) => [w.agentId.toString(), w])
+    );
+
+    return users.map((user) => {
+        const workload = workloadMap.get(user._id.toString());
+        const openLeads = openLeadMap.get(user._id.toString()) ?? 0;
+
+        return {
+            agentId: user._id.toString(),
+            name: user.name ?? "Unknown",
+            email: user.email ?? "",
+            isOnline: user.isOnline ?? false,
+            lastLoginAt: user.lastLoginAt,
+            leadsToday: workload?.lead_count ?? 0,
+            openLeads,
+            isAvailable: workload?.is_available !== false,
+            alertSent: workload?.alert_sent ?? false,
+        };
+    });
 }
 
 /** Toggle is_available for an agent for a given date (defaults to today) */

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getUnreadCount } from "@/services/notifications";
+import { getTaskSummary } from "@/services/tasks";
 import { AppShell, Sidebar } from "@/components/layout";
 import { AgentDashboard } from "@/components/AgentDashboard";
 import { EnhancedCallInterface } from "@/components/EnhancedCallInterface";
@@ -20,7 +22,6 @@ import { EmployeeGroupsManagement } from "@/components/EmployeeGroupsManagement"
 import { AccountManagement } from "@/components/AccountManagement";
 import { AdminApiConsole } from "@/components/AdminApiConsole";
 import { AdminLeads } from "@/components/AdminLeads";
-import AssignmentRulesManager from "@/pages/admin/AssignmentRulesManager";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { MessageTemplates } from "@/components/MessageTemplates";
 import { EmailSettings } from "@/components/EmailSettings";
@@ -43,11 +44,12 @@ import { PipelineBuilder } from "@/pages/setup/PipelineBuilder";
 import { ScoringEngine } from "@/pages/setup/ScoringEngine";
 import { FollowupRules } from "@/pages/setup/FollowupRules";
 import { WorkflowBuilder } from "@/pages/setup/WorkflowBuilder";
-import { AllocationRules } from "@/pages/setup/AllocationRules";
+import { LeadAllocationPage } from "@/pages/setup/LeadAllocationPage";
 import { IntegrationHub } from "@/pages/setup/IntegrationHub";
 import { AuditLog } from "@/pages/setup/AuditLog";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import FollowUpReminder from "@/components/FollowUpReminder";
 
 interface ProfessionalCRMProps {
   userRole: string;
@@ -72,6 +74,14 @@ export const ProfessionalCRM = ({
   const [previousView, setPreviousView] = useState<string>('dashboard');
   const [pendingLeadView, setPendingLeadView] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const { data: taskSummary } = useQuery({
+    queryKey: ["task-summary"],
+    queryFn: getTaskSummary,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const followupsBadgeCount =
+    (taskSummary?.overdue ?? 0) + (taskSummary?.dueToday ?? 0);
 
   useEffect(() => {
     const loadUnreadCount = async () => {
@@ -388,7 +398,7 @@ export const ProfessionalCRM = ({
             </div>
           );
         }
-        return <AllocationRules />;
+        return <LeadAllocationPage />;
       case 'setup/followup-rules':
         if (!canManageLeads && !canManageWorkflows) {
           return (
@@ -550,7 +560,7 @@ export const ProfessionalCRM = ({
             </div>
           );
         }
-        return <AssignmentRulesManager module="leads" />;
+        return <LeadAllocationPage />;
       case 'workflow-management':
         if (!canManageWorkflows) {
           return (
@@ -642,9 +652,22 @@ export const ProfessionalCRM = ({
           unreadCount={unreadCount}
           isAdmin={!!isAdmin}
           permissions={permissions || []}
+          followupsBadgeCount={followupsBadgeCount}
+          hasOverdueFollowups={(taskSummary?.overdue ?? 0) > 0}
         />
       }
     >
+      <div className="mb-2 flex justify-end">
+        <FollowUpReminder
+          onNavigateToFollowUps={() => setActiveView("todays-followups")}
+          onViewLead={(leadId) => {
+            if (!leadId) return;
+            setPreviousView(activeView);
+            setSelectedLeadId(leadId);
+            setPendingLeadView("lead-detail");
+          }}
+        />
+      </div>
       {isSettingsView && (
         <div className="-mt-1 mb-4">
           <Button

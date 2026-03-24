@@ -77,6 +77,8 @@ export class GmailProvider {
     if (bcc) emailBody += `Bcc: ${bcc}\r\n`;
     emailBody += `Subject: ${options.subject}\r\n`;
     if (options.replyTo) emailBody += `Reply-To: ${options.replyTo}\r\n`;
+    if (options.inReplyTo) emailBody += `In-Reply-To: ${options.inReplyTo}\r\n`;
+    if (options.references) emailBody += `References: ${options.references}\r\n`;
     emailBody += `Content-Type: text/html; charset=utf-8\r\n\r\n`;
     emailBody += options.bodyHtml || options.bodyText || "";
 
@@ -86,6 +88,7 @@ export class GmailProvider {
       userId: "me",
       requestBody: {
         raw: encodedMessage,
+        threadId: options.threadId,
       },
     });
 

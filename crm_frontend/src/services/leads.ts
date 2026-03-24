@@ -249,6 +249,11 @@ export interface UpdateLeadPayload {
   notes?: string;
   hotels?: Omit<LeadItinerary, 'id' | '_id'>[];
   occasion?: string;
+  budget?: number;
+  customerType?: string;
+  bookingWindow?: string;
+  source?: string;
+  leadType?: string;
   assignedToUserId?: string;
   contactDetails?: LeadContactDetails;
   closedReason?: string;
@@ -326,6 +331,48 @@ export const createLead = async (
     id: id ?? _id,
     ...rest,
   } as Lead;
+};
+
+export interface TestAssignmentPayload {
+  source?: string;
+  leadType?: string;
+  budget?: number;
+  bookingWindow?: string;
+  customerType?: string;
+  customData?: Record<string, any>;
+  propertyId?: string;
+  accountId?: string;
+}
+
+export interface TestAssignmentResult {
+  assignment: {
+    assignedToUserId?: string;
+    assignmentMethod?: string;
+    assignmentSource?: string;
+    assignmentRuleName?: string;
+    isOverflow?: boolean;
+    reason?: string;
+  };
+  orgId?: string;
+}
+
+export const testAssignment = async (payload: TestAssignmentPayload): Promise<TestAssignmentResult> => {
+  const response = await fetch(`${API_BASE_URL}/leads/test-assignment`, {
+    method: "POST",
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    let message = "Test assignment failed";
+    try {
+      const data = await response.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return response.json();
 };
 
 export const getLeadDetail = async (leadId: string): Promise<LeadDetail> => {

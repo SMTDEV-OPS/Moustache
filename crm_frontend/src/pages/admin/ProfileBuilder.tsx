@@ -26,10 +26,13 @@ const ALL_MODULES = [
   'assignment-rules','notifications','email','buddies'
 ];
 
+// Must match backend constants/permissions.ts setup-level keys
 const ALL_SETUP_KEYS = [
-  'settings.manage','users.manage','roles.manage','reports.manage',
-  'assignment-rules.manage','workflows.manage','templates.manage',
-  'knowledge-base.manage','pms.manage','notifications.manage'
+  "settings.manage", "users.manage", "roles.manage", "reports.manage",
+  "groups.manage", "regions.manage", "assignment-rules.manage",
+  "workflows.manage", "templates.manage", "knowledge-base.manage",
+  "pms.manage", "notifications.manage", "buddies.manage",
+  "conglomerates.manage", "account-potentials.manage", "hotel-brands.manage",
 ];
 
 export const ProfileBuilder = () => {
@@ -159,27 +162,33 @@ export const ProfileBuilder = () => {
       return;
     }
 
+    const payload = {
+      name: profileName.trim(),
+      description: profileDescription.trim() || undefined,
+      modulePermissions: modulePermissions.map((mp) => ({
+        module: mp.module,
+        view: !!mp.view,
+        create: !!mp.create,
+        edit: !!mp.edit,
+        delete: !!mp.delete,
+      })),
+      setupPermissions: setupPermissions.map((sp) => ({
+        key: sp.key,
+        enabled: !!sp.enabled,
+      })),
+    };
+
     try {
       setIsSubmitting(true);
 
       if (editingProfile) {
-        await updateProfile(editingProfile._id, {
-          name: profileName.trim(),
-          description: profileDescription.trim() || undefined,
-          modulePermissions,
-          setupPermissions
-        });
+        await updateProfile(editingProfile._id, payload);
         toast({
           title: "Success",
           description: "Profile updated successfully",
         });
       } else {
-        await createProfile({
-          name: profileName.trim(),
-          description: profileDescription.trim() || undefined,
-          modulePermissions,
-          setupPermissions
-        });
+        await createProfile(payload);
         toast({
           title: "Success",
           description: "Profile created successfully",

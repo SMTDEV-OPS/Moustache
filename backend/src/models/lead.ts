@@ -57,6 +57,10 @@ export interface ILead extends Document {
   isFirstTimeGuest: boolean;
   assignedToUserId?: Types.ObjectId;
   assignedRegionId?: Types.ObjectId;
+  /** How the lead was assigned: v2_rule, legacy_rule, round_robin_fallback, manual, overflow, none */
+  assignmentSource?: "v2_rule" | "legacy_rule" | "round_robin_fallback" | "manual" | "overflow" | "none";
+  /** Name of the V2 assignment rule that matched (when assignmentSource is v2_rule) */
+  assignmentRuleName?: string;
   createdAt: Date;
   leadAssignedAt?: Date;
   firstResponseAt?: Date;
@@ -124,6 +128,8 @@ const leadSchema = new Schema<ILead>(
     thresholdId: Schema.Types.ObjectId,
     assignedToUserId: UserRef,
     assignedRegionId: RegionRef,
+    assignmentSource: { type: String, enum: ["v2_rule", "legacy_rule", "round_robin_fallback", "manual", "overflow", "none"], index: true },
+    assignmentRuleName: String,
     leadAssignedAt: { type: Date },
     firstResponseAt: { type: Date },
     closedAt: { type: Date },
@@ -143,6 +149,9 @@ const leadSchema = new Schema<ILead>(
     gstin: String,
     estimatedValue: String,
     notes: String,
+    budget: Number,
+    bookingWindow: String,
+    customerType: String,
     callStatus: {
       type: String,
       enum: Object.values(CallStatus),

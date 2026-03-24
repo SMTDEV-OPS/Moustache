@@ -13,6 +13,13 @@ export interface ISetupPermission {
     enabled: boolean;
 }
 
+export interface ProfilePayload {
+    name: string;
+    description?: string;
+    modulePermissions: IModulePermission[];
+    setupPermissions: ISetupPermission[];
+}
+
 export interface IProfile {
     _id: string;
     name: string;
@@ -32,7 +39,7 @@ export const getProfiles = async (): Promise<IProfile[]> => {
         let message = "Unable to fetch profiles";
         try {
             const data = await response.json();
-            if (data?.message) message = data.message;
+            message = data?.error?.message ?? data?.message ?? message;
         } catch { }
         throw new Error(message);
     }
@@ -40,7 +47,7 @@ export const getProfiles = async (): Promise<IProfile[]> => {
     return await response.json();
 };
 
-export const createProfile = async (data: Partial<IProfile>): Promise<IProfile> => {
+export const createProfile = async (data: ProfilePayload): Promise<IProfile> => {
     const response = await fetch(`${API_BASE_URL}/profiles`, {
         method: "POST",
         headers: withAuthHeaders({
@@ -53,7 +60,7 @@ export const createProfile = async (data: Partial<IProfile>): Promise<IProfile> 
         let message = "Unable to create profile";
         try {
             const resData = await response.json();
-            if (resData?.message) message = resData.message;
+            message = resData?.error?.message ?? resData?.message ?? message;
         } catch { }
         throw new Error(message);
     }
@@ -61,7 +68,7 @@ export const createProfile = async (data: Partial<IProfile>): Promise<IProfile> 
     return await response.json();
 };
 
-export const updateProfile = async (id: string, data: Partial<IProfile>): Promise<IProfile> => {
+export const updateProfile = async (id: string, data: ProfilePayload): Promise<IProfile> => {
     const response = await fetch(`${API_BASE_URL}/profiles/${id}`, {
         method: "PUT",
         headers: withAuthHeaders({
@@ -74,7 +81,7 @@ export const updateProfile = async (id: string, data: Partial<IProfile>): Promis
         let message = "Unable to update profile";
         try {
             const resData = await response.json();
-            if (resData?.message) message = resData.message;
+            message = resData?.error?.message ?? resData?.message ?? message;
         } catch { }
         throw new Error(message);
     }
@@ -92,7 +99,7 @@ export const deleteProfile = async (id: string): Promise<void> => {
         let message = "Unable to delete profile";
         try {
             const data = await response.json();
-            if (data?.message) message = data.message;
+            message = data?.error?.message ?? data?.message ?? message;
         } catch { }
         throw new Error(message);
     }

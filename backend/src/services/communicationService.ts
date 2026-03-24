@@ -243,6 +243,8 @@ export async function getCommunicationTimeline(leadId: string): Promise<any[]> {
       performedByUserId: comm.performedByUserId,
       createdAt: comm.createdAt,
       emailMessageId: comm.emailMessageId,
+      metadata: (comm as any).metadata,
+      threadId: (comm as any).metadata?.threadId,
     });
   }
 

@@ -5,11 +5,8 @@ import {
   updateAllocationConfig,
   getWorkloadsForDate,
   toggleAgentAvailability,
-  getTodayDateString,
 } from "../services/allocationService";
 import { badRequest } from "../utils/httpError";
-import { PropertyModel } from "../models/property";
-import { AccountModel } from "../models/account";
 
 /** Resolve orgId: "default_org" -> first property or account id; otherwise return if valid ObjectId */
 async function resolveOrgId(orgId: string): Promise<string> {
@@ -25,27 +22,21 @@ async function resolveOrgId(orgId: string): Promise<string> {
   */
 }
 
-/** GET config - query: orgId */
+/** GET config - returns all allocation config (no org filter) */
 export async function getConfig(req: Request, res: Response) {
-  const { orgId } = req.query;
-  if (!orgId || typeof orgId !== "string") {
-    throw badRequest("orgId query parameter is required");
-  }
-  const resolved = await resolveOrgId(orgId);
-  const config = await getAllocationConfig(resolved);
+  const config = await getAllocationConfig();
   res.json(config);
 }
 
-/** PUT config - body: { orgId, keys: Record<string, string> } */
+/** PUT config - body: { keys: Record<string, string> }. orgId optional for single-tenant. */
 export async function updateConfig(req: Request, res: Response) {
   const { orgId, keys } = req.body;
-  if (!orgId || typeof orgId !== "string") {
-    throw badRequest("orgId is required");
-  }
   if (!keys || typeof keys !== "object") {
     throw badRequest("keys must be an object of key-value pairs");
   }
-  const resolved = await resolveOrgId(orgId);
+  const resolved = orgId && typeof orgId === "string"
+    ? await resolveOrgId(orgId)
+    : "69ae144fae23030b62f901f5";
   const updates: Record<string, string> = {};
   for (const [key, value] of Object.entries(keys)) {
     if (typeof value !== "string") {
@@ -57,26 +48,24 @@ export async function updateConfig(req: Request, res: Response) {
   res.json({ success: true });
 }
 
-/** GET workloads - query: orgId, date? (YYYY-MM-DD, defaults to today) */
+/** GET workloads - query: date? (YYYY-MM-DD, defaults to today). Returns all active users with lead counts. orgId not required. */
 export async function getWorkloads(req: Request, res: Response) {
-  const { orgId, date } = req.query;
-  if (!orgId || typeof orgId !== "string") {
-    throw badRequest("orgId query parameter is required");
-  }
-  const resolved = await resolveOrgId(orgId);
-  const workloads = await getWorkloadsForDate(resolved, typeof date === "string" ? date : undefined);
-  res.json({ date: date ?? getTodayDateString(), workloads });
+  const { date } = req.query;
+  const workloads = await getWorkloadsForDate(
+    null,
+    typeof date === "string" ? date : undefined
+  );
+  const dateStr =
+    typeof date === "string" ? date : new Date().toISOString().slice(0, 10);
+  res.json({ date: dateStr, workloads });
 }
 
-/** PUT workload availability - params: agentId, body: { is_available: boolean }, query: orgId, date? */
+/** PUT workload availability - params: agentId, body: { is_available: boolean }, query: date? */
 export async function putWorkloadAvailability(req: Request, res: Response) {
   const { agentId } = req.params;
   const { orgId, date } = req.query;
   const { is_available } = req.body;
 
-  if (!orgId || typeof orgId !== "string") {
-    throw badRequest("orgId query parameter is required");
-  }
   if (!Types.ObjectId.isValid(agentId)) {
     throw badRequest("Invalid agentId");
   }
@@ -84,7 +73,9 @@ export async function putWorkloadAvailability(req: Request, res: Response) {
     throw badRequest("is_available must be a boolean");
   }
 
-  const resolved = await resolveOrgId(orgId);
+  const resolved = orgId && typeof orgId === "string"
+    ? await resolveOrgId(orgId)
+    : "69ae144fae23030b62f901f5";
   await toggleAgentAvailability(
     resolved,
     agentId,

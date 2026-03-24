@@ -19,6 +19,7 @@ import { WorkflowV2Model } from "../models/workflowV2";
 import { PipelineModel } from "../models/pipeline";
 import { PipelineStageModel } from "../models/pipelineStage";
 import { syncEzeeReservations } from "./ezeeSync";
+import { logAudit } from "../utils/auditLog";
 
 async function runAutoClosureJob() {
   const tomorrow = new Date();
@@ -124,6 +125,24 @@ async function runFollowupMissedJob() {
       ).lean();
 
       const newCount = (updated as any)?.missed_followup_count ?? 1;
+
+      await LeadActivityModel.create({
+        leadId,
+        type: LeadActivityType.FOLLOW_UP,
+        note: `Follow-up missed for task ${task._id.toString()} (missed count: ${newCount})`,
+        performedAt: now,
+        metadata: { taskId: task._id.toString(), missedCount: newCount },
+      });
+
+      logAudit(
+        "updated",
+        "task",
+        task._id.toString(),
+        { workflowFollowupMissedEmittedAt: null },
+        { workflowFollowupMissedEmittedAt: now.toISOString(), missedFollowupCount: newCount },
+        undefined,
+        { orgId: (task as any).leadId?.orgId?.toString() }
+      );
 
       leadEventBus.emit("lead.followup_missed", {
         leadId,

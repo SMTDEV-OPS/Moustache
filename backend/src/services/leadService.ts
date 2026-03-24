@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 import {
   LeadModel,
   ILead,
@@ -21,6 +21,7 @@ import { TaskModel } from "../models/task";
 import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import {
   autoAssignLead as autoAssignFromRules,
+  assignToLeastLoadedUser,
   getEmployeeGroupIdForLeadType,
 } from "./assignmentService";
 import { notifyLeadAssigned } from "./notificationService";
@@ -86,10 +87,12 @@ export interface CreateLeadInput {
 export interface AutoAssignResult {
   assignedToUserId?: Types.ObjectId;
   employeeGroupId?: Types.ObjectId;
-  assignmentMethod: "auto" | "manual" | "legacy" | "none";
+  assignmentMethod: "auto" | "manual" | "legacy" | "round_robin_fallback" | "none";
   wasRedirectedToBuddy?: boolean;
   originalAssigneeId?: Types.ObjectId;
   isOverflow?: boolean;
+  assignmentSource?: "v2_rule" | "legacy_rule" | "round_robin_fallback" | "manual" | "overflow" | "none";
+  assignmentRuleName?: string;
 }
 
 // Helper to calculate lead score (0-10) based on SOP 1.11
@@ -125,6 +128,13 @@ async function performAssignment(
   orgId?: string
 ): Promise<AutoAssignResult> {
   const { leadType, source, assignmentMode = "auto", assignedToUserId: manualAssigneeId } = input;
+
+  console.log('[Assignment Debug] Starting assignment for lead', {
+    leadType: input.leadType,
+    source: input.source,
+    assignmentMode: input.assignmentMode,
+    manualAssigneeId: input.assignedToUserId
+  });
 
   // Manual assignment
   if (assignmentMode === "manual" && manualAssigneeId) {
@@ -171,11 +181,13 @@ async function performAssignment(
         assignmentMethod: "manual",
       });
 
+      console.log('[Assignment Debug] Returning:', { assignedToUserId: buddyResolution.finalUserId, assignmentMethod: 'manual' });
       return {
         assignedToUserId: buddyResolution.finalUserId, employeeGroupId: groupId ?? undefined,
         assignmentMethod: "manual",
         wasRedirectedToBuddy: buddyResolution.wasRedirected,
         originalAssigneeId: buddyResolution.wasRedirected ? user._id : undefined,
+        assignmentSource: "manual",
       };
     } else {
       logger.warn("[Manual Assignment] User not found", {
@@ -190,12 +202,15 @@ async function performAssignment(
   
   if (v2Agent) {
     if (v2Agent.assignmentMethod === "auto" && v2Agent.assignedToUserId) {
+      console.log('[Assignment Debug] Returning:', { assignedToUserId: v2Agent.assignedToUserId, assignmentMethod: 'auto', assignmentSource: 'v2_rule' });
       return {
         assignedToUserId: v2Agent.assignedToUserId,
         employeeGroupId: v2Agent.employeeGroupId,
         assignmentMethod: "auto",
         wasRedirectedToBuddy: v2Agent.wasRedirectedToBuddy,
         originalAssigneeId: v2Agent.originalAssigneeId,
+        assignmentSource: "v2_rule",
+        assignmentRuleName: v2Agent.assignmentRuleName,
       };
     }
     if (v2Agent.isOverflow) {
@@ -203,7 +218,9 @@ async function performAssignment(
         assignedToUserId: undefined,
         employeeGroupId: v2Agent.employeeGroupId,
         assignmentMethod: "none",
-        isOverflow: true
+        isOverflow: true,
+        assignmentSource: "overflow",
+        assignmentRuleName: v2Agent.assignmentRuleName,
       };
     }
   }
@@ -212,26 +229,70 @@ async function performAssignment(
   const ruleResult = await autoAssignFromRules(leadType, source, orgId);
 
   if (ruleResult.assignmentMethod === "auto" && ruleResult.assignedToUserId) {
-    const user = await UserModel.findById(ruleResult.assignedToUserId).exec();
+    console.log('[Assignment Debug] Returning:', { assignedToUserId: ruleResult.assignedToUserId, assignmentMethod: 'auto', assignmentSource: 'legacy_rule' });
     return {
       assignedToUserId: ruleResult.assignedToUserId, employeeGroupId: ruleResult.employeeGroupId,
       assignmentMethod: "auto",
       wasRedirectedToBuddy: ruleResult.wasRedirectedToBuddy,
       originalAssigneeId: ruleResult.originalAssigneeId,
+      assignmentSource: "legacy_rule",
     };
   }
 
-  if (ruleResult.isOverflow) {
-    return {
-      assignedToUserId: undefined,
-      employeeGroupId: ruleResult.employeeGroupId,
-      assignmentMethod: "none",
-      isOverflow: true
-    };
+  // At this point V2 failed and legacy failed
+  // This is where fallback must be
+
+  const activeUsers = await UserModel.find({ status: 'ACTIVE' })
+    .select('_id name email')
+    .lean();
+
+  if (!activeUsers || activeUsers.length === 0) {
+    logger.warn('[Assignment] No active users in system');
+    console.log('[Assignment Debug] Returning:', { assignedToUserId: undefined, assignmentMethod: 'none' });
+    return { assignedToUserId: undefined, assignmentMethod: 'none', assignmentSource: 'none' };
   }
 
-  // Fallback to legacy assignment if no rules configured
-  return legacyAutoAssignLead(leadType, source);
+  // Count open leads per user to find least loaded
+  const openCounts = await LeadModel.aggregate([
+    { 
+      $match: { 
+        assignedToUserId: { $in: activeUsers.map(u => u._id) },
+        status: { $nin: ['LOST', 'CLOSED_AUTO', 'CONFIRMED'] }
+      }
+    },
+    { $group: { _id: '$assignedToUserId', count: { $sum: 1 } } }
+  ]);
+
+  const countMap = new Map(openCounts.map(c => [c._id.toString(), c.count]));
+
+  let selectedUser = activeUsers[0];
+  let minCount = countMap.get(activeUsers[0]._id.toString()) ?? 0;
+
+  for (const user of activeUsers) {
+    const c = countMap.get(user._id.toString()) ?? 0;
+    if (c < minCount) {
+      selectedUser = user;
+      minCount = c;
+    }
+  }
+
+  logger.info(`[Assignment] Round-robin fallback → ${(selectedUser as any).name}`);
+  console.log('[Assignment Debug] Fallback assigned to:', (selectedUser as any).name);
+  console.log('[Assignment Debug] Returning:', { assignedToUserId: selectedUser._id.toString(), assignmentMethod: 'round_robin_fallback' });
+
+  return {
+    assignedToUserId: selectedUser._id.toString() as any,
+    assignmentMethod: 'round_robin_fallback',
+    assignmentSource: 'round_robin_fallback',
+  };
+}
+
+/**
+ * Dry-run assignment: returns what assignee would be chosen without creating a lead.
+ * Use for testing/debugging the V2 allocation engine.
+ */
+export async function dryRunAssignment(input: CreateLeadInput, orgId?: string): Promise<AutoAssignResult> {
+  return performAssignment(input, orgId);
 }
 
 /** Resolve default org ID for allocation when lead has no property/account (e.g. bulk CSV) */
@@ -295,6 +356,14 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     // Normalize contact details
     const normalizedPhone = normalizePhone(phone);
     const normalizedEmail = normalizeEmail(email);
+    const normalizedName = name?.trim();
+
+    if (!normalizedName) {
+      throw new Error("Guest name is required");
+    }
+    if (!normalizedPhone && !normalizedEmail) {
+      throw new Error("At least one contact method (phone or email) is required");
+    }
 
     // Search for existing guest by email OR phone (including secondaries)
     let existingGuest = null;
@@ -374,7 +443,7 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     } else {
       // Create new guest if not found
       const guest = await GuestModel.create({
-        name,
+        name: normalizedName,
         phone: normalizedPhone,
         email: normalizedEmail,
         firstSeenAt: new Date(),
@@ -506,13 +575,37 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     if (dates.length > 0) earliestCheckIn = dates[0];
   }
 
+  const inputCustomData = input.customData || {};
+  const inputCustomMap = typeof inputCustomData === "object" && !(inputCustomData instanceof Map)
+    ? inputCustomData as Record<string, any>
+    : {};
+  const budgetForScoring = input.budget ?? inputCustomMap.budget;
+  const customerTypeForScoring = input.customerType ?? inputCustomMap.customer_type ?? inputCustomMap.customerType;
+  const bookingWindowForScoring = input.bookingWindow ?? inputCustomMap.booking_window ?? inputCustomMap.bookingWindow;
+
+  const customDataMap = input.customData ? new Map(Object.entries(input.customData)) : new Map<string, any>();
+
+  const budgetValue = input.budget ?? customDataMap.get("budget") ?? (input.customData as any)?.budget;
+  const bookingWindowValue = input.bookingWindow ?? customDataMap.get("booking_window") ?? customDataMap.get("bookingWindow") ?? (input.customData as any)?.booking_window ?? (input.customData as any)?.bookingWindow;
+  const customerTypeValue = input.customerType ?? customDataMap.get("customer_type") ?? customDataMap.get("customerType") ?? (input.customData as any)?.customer_type ?? (input.customData as any)?.customerType;
+
   // Prepare initial lead object for scoring/heat calculation
-  const initialLeadState: Partial<ILead> = {
-    budget: input.budget,
+  const initialLeadState: any = {
+    budget: budgetValue != null ? Number(budgetValue) : undefined,
+    bookingWindow: bookingWindowValue,
+    customerType: customerTypeValue,
     estimatedValue: input.estimatedValue,
     contactDetails,
     status: LeadStatus.NEW,
-    source: input.source
+    source: input.source,
+    ...(earliestCheckIn && {
+      itineraries: [{ checkInDate: earliestCheckIn }],
+      checkInDate: earliestCheckIn,
+    }),
+    customData: input.customData ? new Map(Object.entries(input.customData)) : new Map(),
+    ...(input.customData?.budget && { budget: Number(input.customData.budget) }),
+    ...(input.customData?.booking_window && { bookingWindow: input.customData.booking_window }),
+    ...(input.customData?.customer_type && { customerType: input.customData.customer_type }),
   };
 
   const calculatedScore = await calculateLeadScore(initialLeadState);
@@ -537,6 +630,8 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     if (stage) defaultStageId = stage._id as Types.ObjectId;
   }
 
+  // (Variables moved above)
+
   const lead = await LeadModel.create({
     leadNumber,
     guestId,
@@ -549,11 +644,13 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     leadType: input.leadType,
     status: assignment.isOverflow ? LeadStatus.UNASSIGNED_OVERFLOW : LeadStatus.NEW,
     stageId: defaultStageId, // Dynamically assigned stage
-    heatLevel: input.heatLevel ?? bucket, // Use manual or calculated
+    heatLevel: bucket, // Use calculated bucket used in score
     color,
     thresholdId,
     score: calculatedScore, // Set score
     assignedToUserId: assignment.assignedToUserId, leadAssignedAt: assignment.assignedToUserId ? new Date() : undefined,
+    assignmentSource: assignment.assignmentSource,
+    assignmentRuleName: assignment.assignmentRuleName,
     // Additional form fields
     alternateContact: input.alternateContact,
     occupation: input.occupation,
@@ -564,7 +661,10 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     gstin: input.gstin,
     estimatedValue: input.estimatedValue,
     notes: input.notes,
-    customData: input.customData ? new Map(Object.entries(input.customData)) : undefined,
+    budget: budgetValue != null ? Number(budgetValue) || 0 : undefined,
+    bookingWindow: bookingWindowValue,
+    customerType: customerTypeValue,
+    customData: input.customData && Object.keys(input.customData).length > 0 ? customDataMap : undefined,
   });
 
   // Create Itineraries (Line Items)
@@ -614,18 +714,27 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
   // Log assignment activity
   if (assignment.assignedToUserId) {
     const assignmentType =
-      assignment.assignmentMethod === "auto" || assignment.assignmentMethod === "legacy"
+      assignment.assignmentMethod === "auto" ||
+      assignment.assignmentMethod === "legacy" ||
+      assignment.assignmentMethod === "round_robin_fallback"
         ? LeadActivityType.AUTO_ASSIGNED
         : LeadActivityType.MANUAL_ASSIGNED;
 
     const isAuto = assignmentType === LeadActivityType.AUTO_ASSIGNED;
 
+    const assignmentNote = assignment.assignmentSource === "v2_rule" && assignment.assignmentRuleName
+      ? `Lead auto-assigned by rule: ${assignment.assignmentRuleName}`
+      : assignment.assignmentSource === "legacy_rule"
+        ? "Lead auto-assigned by legacy rule (lead type)"
+        : assignment.assignmentSource === "round_robin_fallback"
+          ? "Lead auto-assigned (round-robin fallback)"
+          : isAuto
+            ? "Lead auto-assigned based on rules"
+            : "Lead manually assigned";
     await LeadActivityModel.create({
       leadId: lead._id,
       type: assignmentType,
-      note: isAuto
-        ? "Lead auto-assigned based on rules"
-        : "Lead manually assigned",
+      note: assignmentNote,
       performedByUserId: input.createdByUserId,
       toUserId: assignment.assignedToUserId,
       assignedByUserId: isAuto ? undefined : input.createdByUserId,
@@ -780,6 +889,8 @@ export async function reassignLead(
   // Update the lead
   lead.assignedToUserId = finalAssigneeId;
   lead.leadAssignedAt = new Date();
+  lead.assignmentSource = "manual";
+  lead.assignmentRuleName = undefined; // Clear rule name on manual reassign
   await lead.save();
 
   // Increment workload for the new assignee (manual reassignment)
@@ -884,38 +995,38 @@ export async function validateStageMove(leadId: string, targetStageId: string, o
 
   // Check mandatory fields
   if (targetStage.mandatory_fields_json && targetStage.mandatory_fields_json.length > 0) {
-    const missingFields: { id: string, name: string, slug: string }[] = [];
+    const mandatoryFieldIds = targetStage.mandatory_fields_json;
 
-    const customFields = await CustomFieldModel.find({
-      _id: { $in: targetStage.mandatory_fields_json }
-    }).exec();
+    // Fetch fields by ID or slug
+    const fields = await CustomFieldModel.find({
+      $or: [
+        { _id: { $in: mandatoryFieldIds.filter((f: string) => {
+          try { new mongoose.Types.ObjectId(f); return true; } 
+          catch { return false; }
+        })}},
+        { slug: { $in: mandatoryFieldIds } }
+      ]
+    }).lean();
 
-    for (const field of customFields) {
-      // Check if the lead has this field
-      const slug = field.slug;
-      let hasValue = false;
-
-      // Check static fields (using slug)
-      const leadAny = lead as any;
-      if (leadAny[slug] !== undefined && leadAny[slug] !== null && leadAny[slug] !== '') {
-        hasValue = true;
-      }
-
-      // Check dynamic customData map if static field missing
-      if (!hasValue && lead.customData && lead.customData.has(slug)) {
-        const mapVal = lead.customData.get(slug);
-        if (mapVal !== undefined && mapVal !== null && mapVal !== '') {
-          hasValue = true;
-        }
-      }
-
-      if (!hasValue) {
-        missingFields.push({ id: field._id.toString(), name: field.label || field.name, slug });
+    // Check lead has value for each field
+    const missingFieldNames: string[] = [];
+    for (const field of fields) {
+      const value = (lead as any)[field.slug] 
+        ?? lead.customData?.get?.(field.slug)
+        ?? (lead.customData as any)?.[field.slug]
+        ?? lead.customData?.get?.(field.name);
+      
+      if (value === undefined || value === null || value === '') {
+        missingFieldNames.push(field.name || field.slug);
       }
     }
 
-    if (missingFields.length > 0) {
-      return { allowed: false, missingFields };
+    if (missingFieldNames.length > 0) {
+      return { 
+        allowed: false, 
+        missingFields: missingFieldNames.map(m => ({ id: '', name: m, slug: '' })),
+        reason: `Please fill: ${missingFieldNames.join(', ')}` as any
+      };
     }
   }
 

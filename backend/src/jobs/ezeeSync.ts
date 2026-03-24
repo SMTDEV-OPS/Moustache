@@ -56,8 +56,24 @@ export async function syncEzeeReservations(propertyId?: string): Promise<{
     const authCode = property.pmsConfig?.authCode;
     if (!hotelCode || !authCode) continue;
 
-    const pms = new EzeePMSService({ hotelCode, authCode });
-    const reservations = await pms.getReservations(hotelCode, authCode, fromDate, toDate);
+    let reservations: any[];
+    try {
+      const pms = new EzeePMSService({ hotelCode, authCode });
+      reservations = await pms.getReservations(hotelCode, authCode, fromDate, toDate);
+    } catch (err: any) {
+      const errCode = err?.ErrorCode ?? err?.errorCode;
+      const errMsg = err?.ErrorMessage ?? err?.message ?? "";
+      if (
+        errCode === 202 ||
+        String(errCode) === "202" ||
+        (typeof errMsg === "string" && errMsg.toLowerCase().includes("not active"))
+      ) {
+        logger.warn(`Property ${property.name}: Ezee hotel code not active — skipping`);
+      } else {
+        logger.error(`Property ${property.name}: Ezee sync error`, { err: err instanceof Error ? err.message : err });
+      }
+      continue;
+    }
 
     let created = 0;
     let updated = 0;

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const operatorSchema = z.enum([
-    "is", "is_not", "contains", "starts_with",
+    "is", "is_not", "in", "not_in", "contains", "starts_with",
     "greater_than", "less_than", "is_empty", "is_not_empty"
 ]);
 

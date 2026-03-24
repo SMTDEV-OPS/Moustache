@@ -40,6 +40,8 @@ interface SidebarProps {
   unreadCount: number;
   isAdmin?: boolean;
   permissions?: string[];
+  followupsBadgeCount?: number;
+  hasOverdueFollowups?: boolean;
 }
 
 export function Sidebar({
@@ -52,6 +54,8 @@ export function Sidebar({
   unreadCount,
   isAdmin,
   permissions = [],
+  followupsBadgeCount = 0,
+  hasOverdueFollowups = false,
 }: SidebarProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -224,6 +228,16 @@ export function Sidebar({
                 <span className={cn(isActive && "text-primary font-medium")}>
                   {item.title}
                 </span>
+                {item.url === "todays-followups" && followupsBadgeCount > 0 && (
+                  <span
+                    className={cn(
+                      "ml-auto text-xs px-1.5 py-0.5 rounded-sm font-medium tabular-nums",
+                      hasOverdueFollowups ? "bg-red-600 text-white" : "bg-gray-900 text-white"
+                    )}
+                  >
+                    {followupsBadgeCount}
+                  </span>
+                )}
               </button>
             );
           })}

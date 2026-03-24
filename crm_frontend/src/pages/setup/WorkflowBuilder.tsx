@@ -16,7 +16,6 @@ import { listTemplates } from "@/services/templates";
 import { listUsers } from "@/services/users";
 import { listGroups, type Group } from "@/services/groups";
 import { PageHeader, Button, Input, Select } from "@/components/shared";
-import { useAuth } from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -57,8 +56,6 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 export function WorkflowBuilder() {
-  const { user } = useAuth();
-  const orgId = user?.propertyId || user?.accountId || user?.organizationId || user?._id;
   const { toast } = useToast();
   const [workflows, setWorkflows] = useState<AdminWorkflow[]>([]);
   const [fields, setFields] = useState<AdminField[]>([]);
@@ -73,11 +70,10 @@ export function WorkflowBuilder() {
   const [testResult, setTestResult] = useState<any>(null);
 
   const load = useCallback(async () => {
-    if (!orgId) return;
     try {
       setLoading(true);
       const [wfList, fList, pipeline, groupList] = await Promise.all([
-        listAdminWorkflows(orgId as string),
+        listAdminWorkflows(),
         listAdminFields("lead"),
         PipelineService.getDefaultPipeline("leads").catch(() => ({ stages: [] })),
         listGroups().catch(() => []),
@@ -95,7 +91,7 @@ export function WorkflowBuilder() {
 
   useEffect(() => {
     void load();
-  }, [load, orgId]);
+  }, [load]);
 
   const handleNew = () => {
     setEditingWorkflow(null);
@@ -160,7 +156,6 @@ export function WorkflowBuilder() {
     }
     try {
       const payload = {
-        orgId: orgId as string,
         name: form.name!,
         description: form.description,
         trigger_event: form.trigger_event!,
@@ -183,12 +178,6 @@ export function WorkflowBuilder() {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     }
   };
-
-  if (!orgId) return (
-    <div style={{ padding: 32, textAlign: "center", color: "#6b7280", fontSize: 14 }}>
-      Unable to load workflows — no organization context found.
-    </div>
-  );
 
   return (
     <div style={{ padding: 24 }}>

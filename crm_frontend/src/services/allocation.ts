@@ -24,14 +24,8 @@ export interface WorkloadResponse {
 
 const BASE = `${API_BASE_URL}/api/admin/allocation`;
 
-function getOrgId(): string {
-  const org = (typeof window !== "undefined" && (window as any).__ORG_ID__) || "";
-  return org || "69ae144fae23030b62f901f5";
-}
-
-export async function getAllocationConfig(orgId?: string): Promise<Record<string, string>> {
-  const oid = orgId || getOrgId();
-  const response = await fetch(`${BASE}/config?orgId=${oid}`, { headers: withAuthHeaders() });
+export async function getAllocationConfig(): Promise<Record<string, string>> {
+  const response = await fetch(`${BASE}/config`, { headers: withAuthHeaders() });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data?.message || "Failed to fetch allocation config");
@@ -54,15 +48,11 @@ export async function getAllocationConfig(orgId?: string): Promise<Record<string
   return map;
 }
 
-export async function updateAllocationConfig(
-  keys: Record<string, string>,
-  orgId?: string
-): Promise<void> {
-  const oid = orgId || getOrgId();
+export async function updateAllocationConfig(keys: Record<string, string>): Promise<void> {
   const response = await fetch(`${BASE}/config`, {
     method: "PUT",
     headers: withAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ orgId: oid, keys }),
+    body: JSON.stringify({ keys }),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
@@ -70,10 +60,8 @@ export async function updateAllocationConfig(
   }
 }
 
-export async function getAllocationWorkload(orgId?: string, date?: string): Promise<WorkloadResponse> {
-  const oid = orgId || getOrgId();
-  let url = `${BASE}/workload?orgId=${oid}`;
-  if (date) url += `&date=${date}`;
+export async function getAllocationWorkload(date?: string): Promise<WorkloadResponse> {
+  const url = `${BASE}/workload${date ? `?date=${date}` : ""}`;
   const response = await fetch(url, { headers: withAuthHeaders() });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
@@ -89,12 +77,10 @@ export async function getAllocationWorkload(orgId?: string, date?: string): Prom
 export async function updateAgentAvailability(
   agentId: string,
   is_available: boolean,
-  orgId?: string,
   date?: string
 ): Promise<void> {
-  const oid = orgId || getOrgId();
-  let url = `${BASE}/workload/${agentId}/availability?orgId=${oid}`;
-  if (date) url += `&date=${date}`;
+  let url = `${BASE}/workload/${agentId}/availability`;
+  if (date) url += `?date=${date}`;
   const response = await fetch(url, {
     method: "PUT",
     headers: withAuthHeaders({ "Content-Type": "application/json" }),

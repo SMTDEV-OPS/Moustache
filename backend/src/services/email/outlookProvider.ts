@@ -123,6 +123,21 @@ export class OutlookProvider {
       ];
     }
 
+    if (options.threadId) {
+      message.message.conversationId = options.threadId;
+    }
+
+    const internetMessageHeaders: Array<{ name: string; value: string }> = [];
+    if (options.inReplyTo) {
+      internetMessageHeaders.push({ name: "In-Reply-To", value: options.inReplyTo });
+    }
+    if (options.references) {
+      internetMessageHeaders.push({ name: "References", value: options.references });
+    }
+    if (internetMessageHeaders.length > 0) {
+      message.message.internetMessageHeaders = internetMessageHeaders;
+    }
+
     const response = await this.graphClient.api("/me/messages").post(message);
     return response.id;
   }

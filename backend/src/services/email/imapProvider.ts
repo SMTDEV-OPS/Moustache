@@ -12,6 +12,9 @@ export interface SendEmailOptions {
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  threadId?: string;
+  inReplyTo?: string;
+  references?: string;
   replyTo?: string;
   attachments?: Array<{
     filename: string;
@@ -74,6 +77,8 @@ export class IMAPProvider {
       text: options.bodyText,
       html: options.bodyHtml,
       replyTo: options.replyTo,
+      inReplyTo: options.inReplyTo,
+      references: options.references,
       attachments: options.attachments,
     };
 

@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **Moustache** (2603 symbols, 8254 relationships, 192 execution flows).
+This project is indexed by GitNexus as **Moustache** (2673 symbols, 8491 relationships, 198 execution flows).
 
 GitNexus provides a knowledge graph over this codebase — call chains, blast radius, execution flows, and semantic search.
 

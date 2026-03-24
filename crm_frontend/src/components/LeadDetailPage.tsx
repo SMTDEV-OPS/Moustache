@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { io, type Socket } from "socket.io-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
@@ -30,29 +32,46 @@ import { Button, Badge, PageHeader } from "@/components/shared";
 import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
 import { listEmails, EmailMessage } from "@/services/email";
-import { EmailComposer } from "@/components/EmailComposer";
 import { ScheduleFollowUpDialog } from "@/components/ScheduleFollowUpDialog";
 import { SendQuotationDialog } from "@/components/SendQuotationDialog";
 import { listQuotations, Quotation } from "@/services/quotations";
 import { listUsers, User } from "@/services/users";
 import { formatDistanceToNow, format } from "date-fns";
 import { getPaymentLinksForLead, createPaymentLink, type PaymentLink } from "@/services/paymentLinks";
-import { getCommunicationTimeline, updateCallStatus, sendEmailFromLead, type CommunicationTimelineItem, type SendEmailPayload } from "@/services/communications";
+import { getCommunicationTimeline, updateCallStatus, type CommunicationTimelineItem } from "@/services/communications";
 import { Textarea } from "@/components/ui/textarea";
-import { API_BASE_URL, withAuthHeaders } from "@/services/api";
+import { API_BASE_URL, withAuthHeaders, getAuthToken } from "@/services/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EditContactDetailsDialog } from "@/components/EditContactDetailsDialog";
 import { EditLeadDetailsDialog, LeadTripDetails } from "@/components/EditLeadDetailsDialog";
 import { CreateBookingDialog } from "@/components/CreateBookingDialog";
 import { listAdminFields, AdminField } from "@/services/adminFields";
-import { listTasksForLead, Task } from "@/services/tasks";
+import { listTasksForLead, Task, updateTask } from "@/services/tasks";
 import { getCallQuality, submitCallQuality, getCallQualityDimensions, type CallQualityScore, type CallQualityDimension } from "@/services/callQuality";
 import { getWorkflowLogsForLead, type WorkflowExecutionLog } from "@/services/workflowLogs";
+import LeadEmailComposer from "@/components/email/EmailComposer";
+import { EmailThreadView } from "@/components/email/EmailThreadView";
 
 interface LeadDetailPageProps {
   leadId: string;
   onBack: () => void;
   permissions?: string[];
   isAdmin?: boolean;
+}
+
+function getField(lead: any, ...keys: string[]): any {
+  for (const key of keys) {
+    // Check top-level
+    const direct = lead?.[key]
+    if (direct !== undefined && direct !== null && direct !== '') 
+      return direct
+    // Check customData
+    const fromCustom = lead?.customData?.[key] 
+      ?? lead?.customData?.get?.(key)
+    if (fromCustom !== undefined && fromCustom !== null && fromCustom !== '') 
+      return fromCustom
+  }
+  return null
 }
 
 // Helper function to get user name from activity (handles both populated objects and string IDs)
@@ -206,12 +225,14 @@ const getCommunicationIcon = (channel: string) => {
 
 export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDetailPageProps) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [leadDetail, setLeadDetail] = useState<LeadDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [leadEmails, setLeadEmails] = useState<EmailMessage[]>([]);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
   const [isComposeEmailOpen, setIsComposeEmailOpen] = useState(false);
+  const [replyToEmailItem, setReplyToEmailItem] = useState<CommunicationTimelineItem | null>(null);
 
   // Custom fields state
   const [customFields, setCustomFields] = useState<AdminField[]>([]);
@@ -245,9 +266,13 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [workflowLogs, setWorkflowLogs] = useState<WorkflowExecutionLog[]>([]);
   const [callQualityScores, setCallQualityScores] = useState<CallQualityScore[]>([]);
   const [isScheduleFollowUpOpen, setIsScheduleFollowUpOpen] = useState(false);
+  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [completionOutcome, setCompletionOutcome] = useState("");
   const [isCallQualityModalOpen, setIsCallQualityModalOpen] = useState(false);
   const [callQualityDimensions, setCallQualityDimensions] = useState<CallQualityDimension[]>([]);
+  const [isLeadSocketConnected, setIsLeadSocketConnected] = useState(false);
   const leadInfoRef = useRef<HTMLDivElement>(null);
+  const leadSocketRef = useRef<Socket | null>(null);
 
   const canScoreCall = !!isAdmin || permissions?.includes("leads.manage") || permissions?.includes("settings.manage");
 
@@ -274,6 +299,54 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   useEffect(() => {
     void getCallQualityDimensions().then(setCallQualityDimensions).catch(() => setCallQualityDimensions([]));
   }, []);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token || !leadId) return;
+
+    const wsUrl = API_BASE_URL.replace(/^http/, "ws").replace(/\/api$/, "");
+    const socket = io(wsUrl, {
+      auth: { token },
+      transports: ["websocket", "polling"],
+      autoConnect: true,
+    });
+
+    leadSocketRef.current = socket;
+
+    socket.on("connect", () => {
+      setIsLeadSocketConnected(true);
+      socket.emit("lead:join", leadId);
+    });
+    socket.on("disconnect", () => {
+      setIsLeadSocketConnected(false);
+    });
+
+    const refreshTimeline = () => {
+      void queryClient.invalidateQueries({ queryKey: ["communication-timeline", leadId] });
+      void loadCommunicationTimeline();
+    };
+
+    socket.on("lead:email_received", refreshTimeline);
+    socket.on("lead:email_sent", refreshTimeline);
+
+    return () => {
+      socket.off("lead:email_received", refreshTimeline);
+      socket.off("lead:email_sent", refreshTimeline);
+      socket.disconnect();
+      leadSocketRef.current = null;
+      setIsLeadSocketConnected(false);
+    };
+  }, [leadId, queryClient]);
+
+  useEffect(() => {
+    if (isLeadSocketConnected) return;
+    const timer = window.setInterval(() => {
+      void loadCommunicationTimeline();
+    }, 30000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isLeadSocketConnected, leadId]);
 
   // Update local state when lead changes - must be before any early returns
   useEffect(() => {
@@ -322,6 +395,59 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       setUsers(allUsers);
     } catch (err) {
       console.error("Failed to load users:", err);
+    }
+  };
+
+  const handleCompleteTask = async (task: Task) => {
+    if (task.type === "followup") {
+      setCompletingTaskId(task.id);
+      setCompletionOutcome("");
+      return;
+    }
+
+    try {
+      await updateTask(task.id, { status: "COMPLETED" });
+      await queryClient.invalidateQueries({ queryKey: ["tasks-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["task-summary"] });
+      setFollowUps((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: "COMPLETED" } : t)));
+      toast({ title: "Success", description: "Task marked as completed" });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to complete task",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleConfirmFollowupComplete = async (taskId: string) => {
+    if (!completionOutcome.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter outcome before completing follow-up",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await updateTask(taskId, { status: "COMPLETED", outcome: completionOutcome.trim() });
+      await queryClient.invalidateQueries({ queryKey: ["tasks-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["task-summary"] });
+      setFollowUps((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, status: "COMPLETED", outcome: completionOutcome.trim() } : t
+        )
+      );
+      setCompletingTaskId(null);
+      setCompletionOutcome("");
+      toast({ title: "Success", description: "Follow-up marked as completed" });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to complete follow-up",
+        variant: "destructive",
+      });
     }
   };
 
@@ -407,6 +533,13 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         }))),
     ].sort((a, b) => b.timestamp - a.timestamp)
     : [];
+  const emailTimelineItems = (communicationTimeline.length > 0 ? communicationTimeline : [])
+    .filter((item) => (item.channel || "").toUpperCase() === "EMAIL");
+  const nonEmailTimelineItems = timelineItems.filter((item) => {
+    if (item.type === "activity") return true;
+    const comm = item.data as LeadCommunication & { channel?: string };
+    return (comm.channel || "").toUpperCase() !== "EMAIL";
+  });
 
   const statusBadgeVariant = (status: string) => {
     switch (status) {
@@ -594,11 +727,19 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             : `${details.roomsRequested || 1} Rooms`,
         }],
         occasion: details.occasion,
+        budget: details.budget ? Number(details.budget) : undefined,
+        customerType: details.customerType || undefined,
+        bookingWindow: details.bookingWindow || undefined,
+        notes: details.notes || undefined,
+        source: details.source || undefined,
+        heatLevel: details.heatLevel || undefined,
+        customData: {
+          ...(details.customData || {}),
+          ...(details.budget != null && details.budget !== "" && { budget: String(details.budget) }),
+          ...(details.customerType && { customer_type: details.customerType }),
+          ...(details.bookingWindow && { booking_window: details.bookingWindow }),
+        },
       };
-
-      if (details.customData) {
-        payload.customData = details.customData;
-      }
 
       await updateLead(lead.id, payload);
 
@@ -651,33 +792,24 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     el?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Get property name
-  const propertyName = typeof lead.propertyId === "object" && lead.propertyId !== null
-    ? (lead.propertyId as any).name
-    : lead.propertyId || "Not specified";
+  const propertyName = (lead?.propertyId as any)?.name ?? lead?.itineraries?.[0]?.hotelName ?? '—';
 
-  // Primary itinerary extraction
-  let primaryCheckIn = "";
-  let primaryCheckOut = "";
-  let primaryGuests = "";
-  if (lead.itineraries && lead.itineraries.length > 0) {
-    const sorted = [...lead.itineraries].sort((a: any, b: any) => {
-      if (!a.checkInDate) return 1;
-      if (!b.checkInDate) return -1;
-      return new Date(a.checkInDate).getTime() - new Date(b.checkInDate).getTime();
-    });
-    const first = sorted[0];
-    if (first.checkInDate) primaryCheckIn = first.checkInDate;
-    if (first.checkOutDate) primaryCheckOut = first.checkOutDate;
-    if (first.numberOfGuests) primaryGuests = first.numberOfGuests;
-  }
+  const checkIn = lead?.itineraries?.[0]?.checkInDate ?? getField(lead, 'checkInDate', 'travelDate', 'travel_date');
+  const travelDates = checkIn ? new Date(checkIn).toLocaleDateString('en-IN') : 'Not specified';
 
-  // Format travel dates
-  const travelDates = primaryCheckIn && primaryCheckOut
-    ? `${format(new Date(primaryCheckIn), "MMM d, yyyy")} - ${format(new Date(primaryCheckOut), "MMM d, yyyy")}`
-    : "Not specified";
+  const primaryCheckIn = checkIn;
+  const primaryCheckOut = lead?.itineraries?.[0]?.checkOutDate ?? getField(lead, 'checkOutDate', 'check_out_date');
 
-  // Format occupancy
+  const budget = getField(lead, 'budget', 'estimatedValue');
+  const budgetValue = budget ? `₹${Number(budget).toLocaleString('en-IN')}` : '—';
+
+  const customerType = getField(lead, 'customerType', 'customer_type', 'leadType');
+  const customerTypeValue = customerType || '—';
+
+  const bookingWindow = getField(lead, 'bookingWindow', 'booking_window');
+  const bookingWindowValue = bookingWindow || '—';
+
+  const primaryGuests = lead?.itineraries?.[0]?.numberOfGuests;
   const occupancy = primaryGuests
     ? primaryGuests
     : lead.guests
@@ -708,6 +840,25 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             <Button variant="secondary" icon={MessageSquare} size="sm">
               WhatsApp
             </Button>
+            <Button
+              variant="secondary"
+              icon={Mail}
+              size="sm"
+              onClick={() => {
+                setReplyToEmailItem(null);
+                setIsComposeEmailOpen(true);
+              }}
+            >
+              New Email
+            </Button>
+            <Button
+              variant="secondary"
+              icon={FileText}
+              size="sm"
+              onClick={() => setIsQuotationDialogOpen(true)}
+            >
+              Send Quotation
+            </Button>
             <Button variant="primary" icon={Edit2} size="sm" onClick={() => setIsEditLeadDetailsDialogOpen(true)}>
               Edit Lead
             </Button>
@@ -737,10 +888,10 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                 { label: "Email", value: guestEmail || "—" },
                 { label: "Source", value: lead.source || "—" },
                 { label: "Property/Hotel", value: propertyName },
-                { label: "Budget", value: lead.customData?.budget != null ? String(lead.customData.budget) : "—" },
+                { label: "Budget", value: budgetValue },
                 { label: "Travel Date", value: travelDates },
-                { label: "Booking Window", value: lead.customData?.booking_window || "—" },
-                { label: "Customer Type", value: lead.customData?.customer_type || "—" },
+                { label: "Booking Window", value: bookingWindowValue },
+                { label: "Customer Type", value: customerTypeValue },
                 { label: "Lead Score", value: lead.score != null ? `${lead.score}/10` : "—" },
                 { label: "Stage", value: getStageLabel(lead.stageId || "") },
               ].map(({ label, value }) => (
@@ -875,11 +1026,33 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             }}
           >
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Activity</div>
+            <div className="mb-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Email Threads</span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setReplyToEmailItem(null);
+                    setIsComposeEmailOpen(true);
+                  }}
+                >
+                  New Email
+                </Button>
+              </div>
+              <EmailThreadView
+                items={emailTimelineItems}
+                onReply={(message) => {
+                  setReplyToEmailItem(message);
+                  setIsComposeEmailOpen(true);
+                }}
+              />
+            </div>
             <div style={{ borderLeft: "2px solid var(--border-light)", paddingLeft: 16 }}>
-              {timelineItems.length === 0 ? (
+              {nonEmailTimelineItems.length === 0 ? (
                 <p style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 16 }}>No activity yet</p>
               ) : (
-                timelineItems.map((item, index) => {
+                nonEmailTimelineItems.map((item, index) => {
                   const isActivity = item.type === "activity";
                   const activity = isActivity ? (item.data as LeadActivity) : null;
                   const comm = !isActivity ? (item.data as LeadCommunication & { channel?: string }) : null;
@@ -990,16 +1163,15 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                 followUps.slice(0, 10).map((task) => {
                   const isOverdue = task.status === "OPEN" && task.dueAt && new Date(task.dueAt) < new Date();
                   return (
+                    <div key={task.id}>
                     <div
-                      key={task.id}
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
                         padding: "10px 0",
-                        borderBottom: "1px solid var(--border-light)",
-                        borderLeft: isOverdue ? "3px solid #ef4444" : undefined,
-                        background: isOverdue ? "#fef2f220" : undefined,
+                        borderBottom: "1px solid #f3f4f6",
+                        borderLeft: isOverdue ? "2px solid #f87171" : undefined,
                       }}
                     >
                       <div>
@@ -1007,7 +1179,15 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                           <Clock className="w-4 h-4" style={{ color: "var(--text-faint)" }} />
                           {task.dueAt && format(new Date(task.dueAt), "MMM d, h:mm a")}
                         </div>
-                        {task.title && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{task.title}</div>}
+                        {task.title && (
+                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                            {task.title}
+                            <span className="ml-2 text-xs text-gray-400">{task.type}</span>
+                            {task.isAutoGenerated && (
+                              <span className="text-xs text-gray-400 ml-2">auto</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <span
@@ -1021,10 +1201,52 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                         >
                           {task.status === "COMPLETED" ? "Done" : isOverdue ? "Overdue" : "Pending"}
                         </span>
+                        {task.status === "OPEN" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCompleteTask(task)}
+                            className="rounded-md border-gray-200"
+                          >
+                            Complete
+                          </Button>
+                        )}
                         <button type="button" className="opacity-0 hover:opacity-100 transition-opacity" aria-label="More">
                           <MoreVertical className="w-4 h-4" />
                         </button>
                       </div>
+                    </div>
+                    {completingTaskId === task.id && (
+                      <div className="py-2 border-b border-gray-100">
+                        <Textarea
+                          placeholder="What happened?"
+                          rows={2}
+                          value={completionOutcome}
+                          onChange={(e) => setCompletionOutcome(e.target.value)}
+                          className="text-sm border-gray-200"
+                        />
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleConfirmFollowupComplete(task.id)}
+                            className="rounded-md"
+                          >
+                            Confirm Complete
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setCompletingTaskId(null);
+                              setCompletionOutcome("");
+                            }}
+                            className="rounded-md border-gray-200"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     </div>
                   );
                 })
@@ -1161,30 +1383,37 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       </div>
 
       {/* Dialogs */}
-      <EmailComposer
-        open={isComposeEmailOpen}
-        onOpenChange={setIsComposeEmailOpen}
-        initialTo={guestEmail ? [{ email: guestEmail, name: guestName || undefined }] : undefined}
-        onSend={async (payload) => {
-          try {
-            await sendEmailFromLead(leadId, payload);
-            toast({
-              title: "Success",
-              description: "Email sent successfully",
-            });
-            setIsComposeEmailOpen(false);
-            // Reload both email list and communication timeline
-            void loadLeadEmails(leadId);
-            void loadCommunicationTimeline();
-          } catch (err) {
-            toast({
-              title: "Error",
-              description: err instanceof Error ? err.message : "Failed to send email",
-              variant: "destructive",
-            });
-          }
-        }}
-      />
+      <Dialog open={isComposeEmailOpen} onOpenChange={setIsComposeEmailOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{replyToEmailItem ? "Reply by Email" : "New Email"}</DialogTitle>
+          </DialogHeader>
+          <LeadEmailComposer
+            leadId={leadId}
+            guestEmail={guestEmail}
+            replyTo={replyToEmailItem ? {
+              messageId: replyToEmailItem.metadata?.messageId || "",
+              threadId: replyToEmailItem.metadata?.threadId || replyToEmailItem.threadId || "",
+              from:
+                (typeof replyToEmailItem.metadata?.from === "string"
+                  ? replyToEmailItem.metadata?.from
+                  : replyToEmailItem.metadata?.from?.email) ||
+                replyToEmailItem.from?.email ||
+                guestEmail,
+              subject: replyToEmailItem.summary || "",
+              bodyHtml: replyToEmailItem.messageContent,
+              sentAt: replyToEmailItem.createdAt || replyToEmailItem.receivedAt || replyToEmailItem.sentAt,
+            } : undefined}
+            onSent={() => {
+              toast({ title: "Success", description: "Email sent successfully" });
+              setIsComposeEmailOpen(false);
+              void queryClient.invalidateQueries({ queryKey: ["communication-timeline", leadId] });
+              void loadCommunicationTimeline();
+            }}
+            onClose={() => setIsComposeEmailOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Schedule Follow-up Dialog */}
       <ScheduleFollowUpDialog
@@ -1242,6 +1471,12 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
           guests: lead.guests,
           occasion: (lead as any).occasion,
           customData: lead.customData,
+          budget: lead.budget ?? getField(lead, "budget"),
+          customerType: lead.customerType ?? getField(lead, "customerType", "customer_type"),
+          bookingWindow: lead.bookingWindow ?? getField(lead, "bookingWindow", "booking_window"),
+          notes: lead.notes,
+          source: lead.source,
+          heatLevel: lead.heatLevel,
         }}
         onSave={handleSaveLeadDetails}
       />

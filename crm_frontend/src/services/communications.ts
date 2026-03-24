@@ -18,6 +18,13 @@ export interface CommunicationTimelineItem {
   cc?: Array<{ name?: string; email: string }>;
   inReplyTo?: string;
   threadId?: string;
+  metadata?: {
+    messageId?: string;
+    threadId?: string;
+    from?: { name?: string; email: string } | string;
+    to?: string;
+    subject?: string;
+  };
 }
 
 /**
@@ -49,19 +56,20 @@ export async function getCommunicationTimeline(
  * Send email from user's account
  */
 export interface SendEmailPayload {
-  to: Array<{ email: string; name?: string }>;
-  cc?: Array<{ email: string; name?: string }>;
-  bcc?: Array<{ email: string; name?: string }>;
+  to: string;
   subject: string;
-  bodyText?: string;
-  bodyHtml?: string;
+  bodyText: string;
+  bodyHtml: string;
+  threadId?: string;
+  replyToMessageId?: string;
+  references?: string;
 }
 
 export async function sendEmailFromLead(
   leadId: string,
   payload: SendEmailPayload
 ): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/leads/${leadId}/send-email`, {
+  const response = await fetch(`${API_BASE_URL}/leads/${leadId}/email/send`, {
     method: "POST",
     headers: withAuthHeaders({
       "Content-Type": "application/json",
@@ -71,13 +79,34 @@ export async function sendEmailFromLead(
 
   if (!response.ok) {
     let message = "Unable to send email";
+    let code: string | undefined;
     try {
       const data = await response.json();
       if (data?.message) message = data.message;
+      if (data?.code) code = data.code;
     } catch {
       // ignore
     }
-    throw new Error(message);
+    const error = new Error(message) as Error & { code?: string };
+    error.code = code;
+    throw error;
+  }
+
+  const data = await response.json();
+  return data.communication ?? data;
+}
+
+export async function getLeadEmailThread(
+  leadId: string,
+  threadId: string
+): Promise<CommunicationTimelineItem[]> {
+  const response = await fetch(`${API_BASE_URL}/leads/${leadId}/email/thread/${encodeURIComponent(threadId)}`, {
+    method: "GET",
+    headers: withAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to fetch email thread");
   }
 
   return response.json();

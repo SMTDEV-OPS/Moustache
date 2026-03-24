@@ -24,6 +24,13 @@ export interface LeadTripDetails {
     guests?: LeadGuests;
     occasion?: string;
     customData?: Record<string, any>;
+    budget?: number | string;
+    customerType?: string;
+    bookingWindow?: string;
+    notes?: string;
+    source?: string;
+    leadType?: string;
+    heatLevel?: string;
 }
 
 interface EditLeadDetailsDialogProps {
@@ -48,6 +55,12 @@ export function EditLeadDetailsDialog({
     const [children, setChildren] = useState("0");
     const [occasion, setOccasion] = useState("");
     const [customData, setCustomData] = useState<Record<string, any>>({});
+    const [budget, setBudget] = useState("");
+    const [customerType, setCustomerType] = useState("");
+    const [bookingWindow, setBookingWindow] = useState("");
+    const [notes, setNotes] = useState("");
+    const [source, setSource] = useState("");
+    const [heatLevel, setHeatLevel] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [errors, setErrors] = useState<{ dates?: string, custom?: string }>({});
 
@@ -71,6 +84,12 @@ export function EditLeadDetailsDialog({
             setChildren(String(currentDetails.guests?.children || 0));
             setOccasion(currentDetails.occasion || "");
             setCustomData(currentDetails.customData || {});
+            setBudget(currentDetails.budget != null ? String(currentDetails.budget) : "");
+            setCustomerType(currentDetails.customerType || "");
+            setBookingWindow(currentDetails.bookingWindow || "");
+            setNotes(currentDetails.notes || "");
+            setSource(currentDetails.source || "");
+            setHeatLevel(currentDetails.heatLevel || "");
             setErrors({});
         }
     }, [open, currentDetails]);
@@ -110,6 +129,12 @@ export function EditLeadDetailsDialog({
                     children: parseInt(children) || 0,
                 },
                 occasion: occasion || undefined,
+                budget: budget ? Number(budget) : undefined,
+                customerType: customerType || undefined,
+                bookingWindow: bookingWindow || undefined,
+                notes: notes || undefined,
+                source: source || undefined,
+                heatLevel: heatLevel || undefined,
                 customData: Object.keys(customData).length > 0 ? customData : undefined,
             });
             onOpenChange(false);
@@ -122,7 +147,7 @@ export function EditLeadDetailsDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Edit Trip Details</DialogTitle>
                     <DialogDescription>
@@ -188,6 +213,88 @@ export function EditLeadDetailsDialog({
                         </div>
                     </div>
 
+                    <div className="grid gap-2">
+                        <Label htmlFor="budget">Budget</Label>
+                        <Input
+                            id="budget"
+                            type="number"
+                            placeholder="e.g., 700000"
+                            value={budget}
+                            onChange={(e) => setBudget(e.target.value)}
+                        />
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="customerType">Customer Type</Label>
+                        <Select value={customerType} onValueChange={setCustomerType}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select customer type (optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="B2C">B2C</SelectItem>
+                                <SelectItem value="B2B">B2B</SelectItem>
+                                <SelectItem value="Corporate">Corporate</SelectItem>
+                                <SelectItem value="Influencer">Influencer</SelectItem>
+                                <SelectItem value="NRI">NRI</SelectItem>
+                                <SelectItem value="HNI">HNI</SelectItem>
+                                <SelectItem value="Reference">Reference</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="bookingWindow">Booking Window</Label>
+                        <Select value={bookingWindow} onValueChange={setBookingWindow}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select booking window (optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Within 5 hrs">Within 5 hrs</SelectItem>
+                                <SelectItem value="Within 24 hrs">Within 24 hrs</SelectItem>
+                                <SelectItem value="Yet to decide">Yet to decide</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="notes">Notes</Label>
+                        <Textarea
+                            id="notes"
+                            placeholder="Additional notes..."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            rows={3}
+                        />
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="source">Lead Source</Label>
+                        <Select value={source} onValueChange={setSource}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select source (optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="DIRECT_CALL">Direct Call</SelectItem>
+                                <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
+                                <SelectItem value="BRAND_WEBSITE">Website</SelectItem>
+                                <SelectItem value="EMAIL">Email</SelectItem>
+                                <SelectItem value="TRAVEL_AGENT">Travel Agent</SelectItem>
+                                <SelectItem value="OTA">OTA</SelectItem>
+                                <SelectItem value="REFERRAL">Referral</SelectItem>
+                                <SelectItem value="MANUAL">Manual</SelectItem>
+                                <SelectItem value="IVR">IVR</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="heatLevel">Heat Level</Label>
+                        <Select value={heatLevel} onValueChange={setHeatLevel}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select heat level (optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="HOT">Hot</SelectItem>
+                                <SelectItem value="WARM">Warm</SelectItem>
+                                <SelectItem value="COLD">Cold</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <div className="grid gap-2">
                         <Label htmlFor="occasion">Occasion</Label>
                         <Select value={occasion} onValueChange={setOccasion}>

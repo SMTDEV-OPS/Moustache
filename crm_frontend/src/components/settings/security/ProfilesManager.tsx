@@ -10,6 +10,45 @@ import { useToast } from "@/hooks/use-toast";
 import { PermissionsTable } from "./PermissionsTable";
 import { API_BASE_URL, withAuthHeaders } from "@/services/api";
 
+// Must match backend — used to fill in defaults when profile has empty arrays
+const ALL_MODULES = [
+  "leads", "users", "roles", "reports", "accounts", "contacts",
+  "properties", "tasks", "tickets", "guests", "reservations",
+  "communications", "quotations", "payment-links", "workflows",
+  "templates", "knowledge-base", "pms", "regions", "groups",
+  "assignment-rules", "notifications", "email", "buddies",
+];
+
+const ALL_SETUP_KEYS = [
+  "settings.manage", "users.manage", "roles.manage", "reports.manage",
+  "groups.manage", "regions.manage", "assignment-rules.manage",
+  "workflows.manage", "templates.manage", "knowledge-base.manage",
+  "pms.manage", "notifications.manage", "buddies.manage",
+  "conglomerates.manage", "account-potentials.manage", "hotel-brands.manage",
+];
+
+function mergeModulePermissions(saved: ModulePermission[] | undefined): ModulePermission[] {
+  return ALL_MODULES.map((module) => {
+    const existing = (saved || []).find((p) => p.module === module);
+    return (
+      existing || {
+        module,
+        view: false,
+        create: false,
+        edit: false,
+        delete: false,
+      }
+    );
+  });
+}
+
+function mergeSetupPermissions(saved: SetupPermission[] | undefined): SetupPermission[] {
+  return ALL_SETUP_KEYS.map((key) => {
+    const existing = (saved || []).find((p) => p.key === key);
+    return existing || { key, enabled: false };
+  });
+}
+
 interface ModulePermission {
     module: string;
     view: boolean;
@@ -77,10 +116,19 @@ export function ProfilesManager() {
         if (hasUnsavedChanges && !confirm("You have unsaved changes. Discard them?")) {
             return;
         }
+        // Debug: verify API data
+        console.log("[Profile debug] raw profile data:", JSON.stringify(profile, null, 2));
+        console.log("[Profile debug] modulePermissions count:", profile?.modulePermissions?.length);
+
         setSelectedProfile(profile);
         setIsEditing(false);
         setIsCloning(false);
-        setFormData(JSON.parse(JSON.stringify(profile))); // Deep copy
+        const merged = {
+            ...profile,
+            modulePermissions: mergeModulePermissions(profile.modulePermissions),
+            setupPermissions: mergeSetupPermissions(profile.setupPermissions),
+        };
+        setFormData(merged);
         setHasUnsavedChanges(false);
     };
 
@@ -144,7 +192,11 @@ export function ProfilesManager() {
 
             const updated = await res.json();
             setSelectedProfile(updated);
-            setFormData(JSON.parse(JSON.stringify(updated)));
+            setFormData({
+                ...updated,
+                modulePermissions: mergeModulePermissions(updated.modulePermissions),
+                setupPermissions: mergeSetupPermissions(updated.setupPermissions),
+            });
         } catch (error: any) {
             toast({ title: "Error", description: error.message, variant: "destructive" });
         }

@@ -6,8 +6,7 @@ import {
   getAllocationWorkload,
   updateAgentAvailability,
 } from "@/services/allocation";
-import { listUsers, type User } from "@/services/users";
-import { PageHeader, Button, Input, Select } from "@/components/shared";
+import { PageHeader, Input, Select } from "@/components/shared";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
@@ -16,7 +15,6 @@ export function AllocationRules() {
   const { toast } = useToast();
   const [config, setConfig] = useState<Record<string, string>>({});
   const [workloads, setWorkloads] = useState<any[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedFeedback, setSavedFeedback] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
@@ -24,14 +22,12 @@ export function AllocationRules() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [cfg, wl, usr] = await Promise.all([
+      const [cfg, wl] = await Promise.all([
         getAllocationConfig(),
         getAllocationWorkload(),
-        listUsers().catch(() => []),
       ]);
       setConfig(cfg);
       setWorkloads(wl.workloads ?? []);
-      setUsers(usr);
     } catch (e) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     } finally {
@@ -59,12 +55,12 @@ export function AllocationRules() {
     });
   };
 
-  const handleAvailabilityToggle = async (agentId: string, is_available: boolean) => {
+  const handleAvailabilityToggle = async (agentId: string, isAvailable: boolean) => {
     try {
-      await updateAgentAvailability(agentId, is_available);
+      await updateAgentAvailability(agentId, isAvailable);
       setWorkloads((prev) =>
         prev.map((w) =>
-          w.agentId === agentId ? { ...w, is_available } : w
+          w.agentId === agentId ? { ...w, isAvailable } : w
         )
       );
     } catch (e) {
@@ -72,18 +68,13 @@ export function AllocationRules() {
     }
   };
 
-  const dailyCap = parseInt(config.daily_lead_cap ?? "30", 10) || 30;
+  const dailyCap = Number(config.daily_lead_cap ?? "30") || 30;
 
   const getProgressColor = (count: number, cap: number) => {
     const pct = cap > 0 ? (count / cap) * 100 : 0;
     if (pct >= 90) return "#ef4444";
     if (pct >= 70) return "#f59e0b";
     return "#10b981";
-  };
-
-  const getUserName = (agentId: string) => {
-    const u = users.find((x) => x.id === agentId || x._id === agentId);
-    return u?.name ?? agentId;
   };
 
   return (
@@ -233,7 +224,8 @@ export function AllocationRules() {
                 <thead>
                   <tr style={{ background: "var(--border-light)" }}>
                     <th style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>AGENT</th>
-                    <th style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>LEADS TODAY</th>
+                    <th style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>OPEN LEADS</th>
+                    <th style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>TODAY&apos;S LEADS</th>
                     <th style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>CAP</th>
                     <th style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>AVAILABILITY</th>
                   </tr>
@@ -241,44 +233,72 @@ export function AllocationRules() {
                 <tbody>
                   {workloads.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
-                        No workload data
+                      <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
+                        No users found. Add team members first.
                       </td>
                     </tr>
                   ) : (
-                    workloads.map((w) => {
-                      const count = w.lead_count ?? 0;
-                      const cap = w.daily_cap ?? dailyCap;
+                    workloads.map((agent) => {
+                      const leadsToday = agent.leadsToday ?? 0;
+                      const openLeads = agent.openLeads ?? 0;
+                      const isAvailable = agent.isAvailable !== false;
+                      const initial = (agent.name ?? "?").slice(0, 1).toUpperCase();
+                      const avatarBg = agent.isOnline ? "#10b981" : "#9ca3af";
+
                       return (
-                        <tr key={w.agentId} style={{ borderTop: "1px solid var(--border)" }}>
+                        <tr key={agent.agentId} style={{ borderTop: "1px solid var(--border)" }}>
                           <td style={{ padding: "12px 16px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                               <div
                                 style={{
-                                  width: 24,
-                                  height: 24,
+                                  width: 32,
+                                  height: 32,
                                   borderRadius: "50%",
-                                  background: "var(--primary-light)",
-                                  color: "var(--primary)",
+                                  background: avatarBg,
+                                  color: "#fff",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
-                                  fontSize: 11,
+                                  fontSize: 13,
                                   fontWeight: 600,
                                 }}
                               >
-                                {(getUserName(w.agentId) ?? "?").slice(0, 1).toUpperCase()}
+                                {initial}
                               </div>
-                              <span style={{ fontSize: 14 }}>{getUserName(w.agentId)}</span>
+                              <div>
+                                <div style={{ fontSize: 14, fontWeight: 500 }}>{agent.name ?? "Unknown"}</div>
+                                {agent.email && (
+                                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{agent.email}</div>
+                                )}
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                                  <span
+                                    style={{
+                                      width: 8,
+                                      height: 8,
+                                      borderRadius: "50%",
+                                      background: agent.isOnline ? "#10b981" : "#9ca3af",
+                                    }}
+                                  />
+                                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                    {agent.isOnline ? "Online" : "Offline"}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </td>
+                          <td style={{ padding: "12px 16px", fontSize: 14, fontWeight: 500 }}>
+                            {openLeads}
+                          </td>
                           <td style={{ padding: "12px 16px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontSize: 14 }}>{count}</span>
+                            <div>
+                              <span style={{ fontSize: 14, fontWeight: 500 }}>
+                                {leadsToday}/{dailyCap}
+                              </span>
                               <div
                                 style={{
-                                  flex: 1,
-                                  maxWidth: 120,
+                                  marginTop: 6,
+                                  width: "100%",
+                                  maxWidth: 140,
                                   height: 4,
                                   background: "var(--border-light)",
                                   borderRadius: 2,
@@ -287,19 +307,19 @@ export function AllocationRules() {
                               >
                                 <div
                                   style={{
-                                    width: `${Math.min(100, (count / cap) * 100)}%`,
+                                    width: `${Math.min(100, dailyCap > 0 ? (leadsToday / dailyCap) * 100 : 0)}%`,
                                     height: "100%",
-                                    background: getProgressColor(count, cap),
+                                    background: getProgressColor(leadsToday, dailyCap),
                                   }}
                                 />
                               </div>
                             </div>
                           </td>
-                          <td style={{ padding: "12px 16px", fontSize: 14 }}>{cap}</td>
+                          <td style={{ padding: "12px 16px", fontSize: 14 }}>{dailyCap}</td>
                           <td style={{ padding: "12px 16px" }}>
                             <Switch
-                              checked={w.is_available !== false}
-                              onCheckedChange={(v) => handleAvailabilityToggle(w.agentId, v)}
+                              checked={isAvailable}
+                              onCheckedChange={(v) => handleAvailabilityToggle(agent.agentId, v)}
                             />
                           </td>
                         </tr>

@@ -85,7 +85,10 @@ router.get("/", async (req: Request, res: Response) => {
         const fields = await CustomFieldModel.find({ entity_type })
             .sort({ display_order: 1, order: 1 });
 
-        res.json(fields);
+        // Some records may use legacy `isActive` while others use the newer `is_active`.
+        // Treat a field as active only when BOTH flags are not explicitly false.
+        const activeFields = fields.filter((f: any) => f.is_active !== false && f.isActive !== false);
+        res.json(activeFields);
     } catch (error: any) {
         console.error("Error listing custom fields:", error);
         res.status(500).json({ message: "Server error", error: error.message });

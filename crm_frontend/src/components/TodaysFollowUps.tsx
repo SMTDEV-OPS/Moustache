@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ import {
   listTasks,
   updateTask,
   createTask,
+  getTaskSummary,
 } from "@/services/tasks";
 import { listLeads, Lead, getLeadContactInfo } from "@/services/leads";
 import {
@@ -58,11 +60,20 @@ export const TodaysFollowUps = ({
   onViewLead,
 }: TodaysFollowUpsProps) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [summary, setSummary] = useState({
+    overdue: 0,
+    dueToday: 0,
+    upcoming: 0,
+    completedToday: 0,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [completionOutcome, setCompletionOutcome] = useState("");
   const [newTask, setNewTask] = useState({
     title: "",
     description: "",
@@ -74,6 +85,7 @@ export const TodaysFollowUps = ({
   useEffect(() => {
     void loadTasks();
     void loadLeads();
+    void loadSummary();
   }, [backendUserId]);
 
   const loadTasks = async () => {
@@ -100,6 +112,15 @@ export const TodaysFollowUps = ({
       setLeads(allLeads);
     } catch (err) {
       console.error("Failed to load leads:", err);
+    }
+  };
+
+  const loadSummary = async () => {
+    try {
+      const data = await getTaskSummary();
+      setSummary(data);
+    } catch (err) {
+      console.error("Failed to load task summary:", err);
     }
   };
 
@@ -146,7 +167,10 @@ export const TodaysFollowUps = ({
         dueAt: "",
         dueTime: "",
       });
+      await queryClient.invalidateQueries({ queryKey: ["tasks-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["task-summary"] });
       void loadTasks();
+      void loadSummary();
     } catch (err) {
       toast({
         title: "Error",
@@ -158,10 +182,19 @@ export const TodaysFollowUps = ({
     }
   };
 
-  const handleComplete = async (taskId: string) => {
+  const handleComplete = async (task: Task) => {
+    if (task.type === "followup") {
+      setCompletingTaskId(task.id);
+      setCompletionOutcome("");
+      return;
+    }
+
     try {
-      await updateTask(taskId, { status: "COMPLETED" });
-      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      await updateTask(task.id, { status: "COMPLETED" });
+      setTasks((prev) => prev.filter((t) => t.id !== task.id));
+      await queryClient.invalidateQueries({ queryKey: ["tasks-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["task-summary"] });
+      void loadSummary();
       toast({
         title: "Success",
         description: "Follow-up marked as completed",
@@ -175,10 +208,48 @@ export const TodaysFollowUps = ({
     }
   };
 
+  const handleConfirmFollowupComplete = async (taskId: string) => {
+    if (!completionOutcome.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an outcome before completing follow-up",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await updateTask(taskId, {
+        status: "COMPLETED",
+        outcome: completionOutcome.trim(),
+      });
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      setCompletingTaskId(null);
+      setCompletionOutcome("");
+      await queryClient.invalidateQueries({ queryKey: ["tasks-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["task-summary"] });
+      void loadSummary();
+      toast({
+        title: "Success",
+        description: "Follow-up marked as completed",
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description:
+          err instanceof Error ? err.message : "Failed to complete follow-up",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleCancel = async (taskId: string) => {
     try {
       await updateTask(taskId, { status: "CANCELLED" });
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      await queryClient.invalidateQueries({ queryKey: ["tasks-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["task-summary"] });
+      void loadSummary();
       toast({
         title: "Success",
         description: "Follow-up cancelled",
@@ -317,6 +388,26 @@ export const TodaysFollowUps = ({
       {/* Tasks Table */}
       <Card className="border-slate-200 shadow-sm">
         <CardContent className="p-0">
+          <div className="flex gap-6 px-4 py-3 border-b border-gray-200 text-sm text-gray-600">
+            <span>
+              <span className="font-medium text-gray-900">{summary.overdue}</span>{" "}
+              overdue
+            </span>
+            <span>
+              <span className="font-medium text-gray-900">{summary.dueToday}</span>{" "}
+              due today
+            </span>
+            <span>
+              <span className="font-medium text-gray-900">{summary.upcoming}</span>{" "}
+              upcoming
+            </span>
+            <span>
+              <span className="font-medium text-gray-900">
+                {summary.completedToday}
+              </span>{" "}
+              completed today
+            </span>
+          </div>
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -340,6 +431,10 @@ export const TodaysFollowUps = ({
               <TableBody>
                 {tasks.map((task) => {
                   const dueDate = task.dueAt ? new Date(task.dueAt) : null;
+                  const isOverdue =
+                    task.status === "OPEN" &&
+                    !!dueDate &&
+                    dueDate.getTime() < Date.now();
                   // Check if task has a lead (either populated lead object or leadId)
                   const leadId = task.lead?.id || task.leadId;
                   const hasLead = !!leadId && !!onViewLead;
@@ -356,9 +451,10 @@ export const TodaysFollowUps = ({
                   };
 
                   return (
-                    <TableRow 
+                    <>
+                    <TableRow
                       key={task.id}
-                      className={hasLead ? "cursor-pointer hover:bg-slate-50" : ""}
+                      className={`${hasLead ? "cursor-pointer hover:bg-gray-50" : ""} ${isOverdue ? "border-l-2 border-red-400" : ""}`}
                       onClick={handleRowClick}
                     >
                       <TableCell className="font-medium">
@@ -386,7 +482,9 @@ export const TodaysFollowUps = ({
                       <TableCell className="text-slate-600">
                         {task.description || "-"}
                       </TableCell>
-                      <TableCell className="text-slate-600">
+                      <TableCell
+                        className={isOverdue ? "text-red-600 text-xs" : "text-slate-600"}
+                      >
                         {dueDate ? format(dueDate, "MMM d, yyyy 'at' h:mm a") : "-"}
                       </TableCell>
                       <TableCell>
@@ -401,7 +499,7 @@ export const TodaysFollowUps = ({
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleComplete(task.id)}
+                                onClick={() => handleComplete(task)}
                                 className="border-emerald-200 text-emerald-600 hover:bg-emerald-50"
                               >
                                 <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -436,6 +534,42 @@ export const TodaysFollowUps = ({
               </div>
                       </TableCell>
                     </TableRow>
+                    {completingTaskId === task.id && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="bg-white border-b border-gray-100">
+                          <div className="py-2">
+                            <Textarea
+                              placeholder="What happened?"
+                              rows={2}
+                              value={completionOutcome}
+                              onChange={(e) => setCompletionOutcome(e.target.value)}
+                              className="text-sm border-gray-200"
+                            />
+                            <div className="flex items-center gap-2 mt-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleConfirmFollowupComplete(task.id)}
+                                className="rounded-md"
+                              >
+                                Confirm Complete
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setCompletingTaskId(null);
+                                  setCompletionOutcome("");
+                                }}
+                                className="rounded-md border-gray-200"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </>
                   );
                 })}
               </TableBody>
