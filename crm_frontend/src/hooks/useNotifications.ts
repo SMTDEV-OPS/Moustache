@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { useToast } from "./use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { getAuthToken, API_BASE_URL } from "@/services/api";
 import {
   getNotifications,
@@ -112,10 +113,30 @@ export function useNotifications(): UseNotificationsResult {
       setNotifications((prev) => [notification, ...prev]);
       setUnreadCount((prev) => prev + 1);
 
+      const accountId = notification.metadata?.accountId as string | undefined;
+      const accountName = notification.metadata?.accountName as string | undefined;
+      const isAccountReminder = notification.type === "TASK_ASSIGNED" && !!accountId;
+
       // Show toast
       toast({
-        title: notification.title,
+        title: isAccountReminder
+          ? `Reminder: ${notification.title}${accountName ? ` - ${accountName}` : ""}`
+          : notification.title,
         description: notification.message,
+        action: isAccountReminder ? (
+          <ToastAction
+            altText="View account"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent("crm:navigate-account", {
+                  detail: { accountId },
+                })
+              )
+            }
+          >
+            View Account
+          </ToastAction>
+        ) : undefined,
       });
     });
 

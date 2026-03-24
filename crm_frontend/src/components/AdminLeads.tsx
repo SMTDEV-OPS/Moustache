@@ -20,7 +20,7 @@ import { listUsers, User } from "@/services/users";
 import { listAccounts, Account, AccountType } from "@/services/accounts";
 import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
-import { Search, Filter, User as UserIcon, Calendar, Flame, Users, Zap, Plus, Phone, Mail, MessageCircle, CalendarPlus, Video, Trash2, Hotel, MoreVertical, FileText, Edit, UserPlus, ChevronLeft, ChevronRight, Snowflake } from "lucide-react";
+import { Search, Filter, User as UserIcon, Calendar, Flame, Users, Zap, Plus, Phone, Mail, MessageCircle, CalendarPlus, Video, Trash2, Hotel, MoreVertical, FileText, Edit, UserPlus, ChevronLeft, ChevronRight, Snowflake, BedDouble } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
@@ -381,27 +381,33 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     }
   }, [canViewOwn, canViewTeam, canViewAll, activeScope]);
 
-  // Hotel entry type for multiple hotels
+  // Hotel entry type for multiple hotels; each hotel can have multiple rooms
+  interface RoomEntry {
+    roomCategory: string;
+    roomPreference: string;
+    adults: string;
+    children: string;
+  }
+
   interface HotelEntry {
     hotelName: string;
     checkInDate: string;
     checkOutDate: string;
-    roomCategory: string;
-    roomPreference: string;
-    rooms: string;
-    adults: string;
-    children: string;
+    rooms: RoomEntry[];
   }
+
+  const emptyRoom: RoomEntry = {
+    roomCategory: "",
+    roomPreference: "",
+    adults: "",
+    children: "",
+  };
 
   const emptyHotel: HotelEntry = {
     hotelName: "",
     checkInDate: "",
     checkOutDate: "",
-    roomCategory: "",
-    roomPreference: "",
-    rooms: "1",
-    adults: "",
-    children: "",
+    rooms: [{ ...emptyRoom }],
   };
 
   const [hotels, setHotels] = useState<HotelEntry[]>([{ ...emptyHotel }]);
@@ -416,9 +422,28 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     }
   };
 
-  const updateHotel = (index: number, field: keyof HotelEntry, value: string) => {
+  const updateHotel = (index: number, field: keyof HotelEntry, value: string | RoomEntry[]) => {
     const updated = [...hotels];
     updated[index] = { ...updated[index], [field]: value };
+    setHotels(updated);
+  };
+
+  const addRoom = (hotelIndex: number) => {
+    const updated = [...hotels];
+    updated[hotelIndex] = { ...updated[hotelIndex], rooms: [...updated[hotelIndex].rooms, { ...emptyRoom }] };
+    setHotels(updated);
+  };
+
+  const removeRoom = (hotelIndex: number, roomIndex: number) => {
+    const updated = [...hotels];
+    if (updated[hotelIndex].rooms.length <= 1) return;
+    updated[hotelIndex] = { ...updated[hotelIndex], rooms: updated[hotelIndex].rooms.filter((_, i) => i !== roomIndex) };
+    setHotels(updated);
+  };
+
+  const updateRoom = (hotelIndex: number, roomIndex: number, field: keyof RoomEntry, value: string) => {
+    const updated = [...hotels];
+    updated[hotelIndex].rooms[roomIndex] = { ...updated[hotelIndex].rooms[roomIndex], [field]: value };
     setHotels(updated);
   };
 
@@ -851,32 +876,37 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     try {
       setIsCreating(true);
 
+      // Build hotels array for itineraries (one per hotel, each with multiple rooms)
+      const hotelsPayload = hotels
+        .filter((h) => h.hotelName && h.checkInDate && h.checkOutDate)
+        .map((h) => {
+          const rooms = (h.rooms || []).map((r) => ({
+            roomCategory: r.roomCategory || undefined,
+            roomPreference: r.roomPreference || undefined,
+            numberOfGuests: r.adults || r.children
+              ? `${r.adults || 0} Adults${r.children ? `, ${r.children} Children` : ""}`
+              : undefined,
+          }));
+          return {
+            hotelName: h.hotelName || undefined,
+            checkInDate: h.checkInDate ? new Date(h.checkInDate) : undefined,
+            checkOutDate: h.checkOutDate ? new Date(h.checkOutDate) : undefined,
+            rooms: rooms.length > 0 ? rooms : [{ roomCategory: undefined, roomPreference: undefined, numberOfGuests: undefined }],
+          };
+        });
+
       const payload = {
         guestContact: {
           name: guestFullName,
           phone: form.guestPhone || undefined,
           email: form.guestEmail || undefined,
         },
-        propertyId: (form.propertyId || (primaryHotel?.hotelName && primaryHotel.hotelName !== "" ? primaryHotel.hotelName : undefined)) || undefined,
+        propertyId: form.propertyId || undefined,
         accountId: form.accountId || selectedAccountId || undefined,
         source: form.source,
         leadType: form.leadType,
-        checkInDate: primaryHotel?.checkInDate
-          ? new Date(primaryHotel.checkInDate).toISOString()
-          : undefined,
-        checkOutDate: primaryHotel?.checkOutDate
-          ? new Date(primaryHotel.checkOutDate).toISOString()
-          : undefined,
-        roomsRequested: primaryHotel?.rooms ? Number(primaryHotel.rooms) : (hotels.length || undefined),
-        guests: (primaryHotel?.adults || primaryHotel?.children)
-          ? {
-            adults: primaryHotel.adults ? Number(primaryHotel.adults) : undefined,
-            children: primaryHotel.children ? Number(primaryHotel.children) : undefined,
-          }
-          : undefined,
         occasion: form.occasion || undefined,
         heatLevel: form.heatLevel as any,
-        // Additional form fields - send separately
         alternateContact: form.alternateContact || undefined,
         occupation: form.occupation || undefined,
         specialRequests: form.specialRequests || undefined,
@@ -885,16 +915,13 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
         gstin: form.gstin || undefined,
         estimatedValue: form.estimatedValue || undefined,
         notes: form.notes || undefined,
-        roomCategory: primaryHotel?.roomCategory || undefined,
-        roomPreference: primaryHotel?.roomPreference || undefined,
         customerType: form.customerType || undefined,
         bookingWindow: form.bookingWindow || undefined,
         budget: form.budget ? Number(form.budget) : undefined,
-        // Assignment options
         assignmentMode: assignmentMode,
         assignedToUserId: assignmentMode === "manual" && manualAssigneeId ? manualAssigneeId : undefined,
-        // Custom dynamic fields
         customData: Object.keys(form.customData).length > 0 ? form.customData : undefined,
+        hotels: hotelsPayload.length > 0 ? hotelsPayload : undefined,
       };
 
       const newLead = await createLead(payload);
@@ -2123,66 +2150,87 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Number of Rooms *</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={hotel.rooms}
-                        onChange={(e) => updateHotel(index, "rooms", e.target.value)}
-                        placeholder="1"
-                      />
+                  {/* Multiple rooms per hotel */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-medium flex items-center gap-2">
+                        <BedDouble className="h-3 w-3" />
+                        Rooms
+                      </h4>
+                      <Button type="button" variant="outline" size="sm" onClick={() => addRoom(index)} className="h-7 text-xs">
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add Room
+                      </Button>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Room Category *</label>
-                      <Select
-                        value={hotel.roomCategory}
-                        onValueChange={(value) => updateHotel(index, "roomCategory", value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Room Category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Standard Room">Standard Room</SelectItem>
-                          <SelectItem value="Deluxe Room">Deluxe Room</SelectItem>
-                          <SelectItem value="Suite">Suite</SelectItem>
-                          <SelectItem value="Villa">Villa</SelectItem>
-                          <SelectItem value="Pool Villa">Pool Villa</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Room Preference</label>
-                      <Input
-                        value={hotel.roomPreference}
-                        onChange={(e) => updateHotel(index, "roomPreference", e.target.value)}
-                        placeholder="e.g., Sea view, Garden view"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Adults *</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={hotel.adults}
-                        onChange={(e) => updateHotel(index, "adults", e.target.value)}
-                        placeholder="0"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Children</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={hotel.children}
-                        onChange={(e) => updateHotel(index, "children", e.target.value)}
-                        placeholder="0"
-                      />
-                    </div>
+                    {hotel.rooms.map((room, roomIdx) => (
+                      <div key={roomIdx} className="pl-3 border-l-2 border-muted space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Room {roomIdx + 1}</span>
+                          {hotel.rooms.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeRoom(index, roomIdx)}
+                              className="h-6 text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-4">
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium">Room Category *</label>
+                            <Select
+                              value={room.roomCategory}
+                              onValueChange={(v) => updateRoom(index, roomIdx, "roomCategory", v)}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue placeholder="Select" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Standard Room">Standard Room</SelectItem>
+                                <SelectItem value="Deluxe Room">Deluxe Room</SelectItem>
+                                <SelectItem value="Suite">Suite</SelectItem>
+                                <SelectItem value="Villa">Villa</SelectItem>
+                                <SelectItem value="Pool Villa">Pool Villa</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium">Preference</label>
+                            <Input
+                              className="h-8"
+                              value={room.roomPreference}
+                              onChange={(e) => updateRoom(index, roomIdx, "roomPreference", e.target.value)}
+                              placeholder="e.g. Sea view"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium">Adults *</label>
+                            <Input
+                              type="number"
+                              min="0"
+                              className="h-8"
+                              value={room.adults}
+                              onChange={(e) => updateRoom(index, roomIdx, "adults", e.target.value)}
+                              placeholder="0"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium">Children</label>
+                            <Input
+                              type="number"
+                              min="0"
+                              className="h-8"
+                              value={room.children}
+                              onChange={(e) => updateRoom(index, roomIdx, "children", e.target.value)}
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}

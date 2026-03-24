@@ -155,24 +155,27 @@ export function Sidebar({
 
   return (
     <aside
-      className="w-[240px] shrink-0 flex flex-col bg-surface border-r border-border"
-      style={{ width: 240 }}
+      className="w-[240px] shrink-0 flex flex-col border-r"
+      style={{ width: 240, backgroundColor: "#222437", borderColor: "rgba(255,255,255,0.08)" }}
     >
       {/* Logo area */}
       <div
         className="flex items-center justify-between px-5 shrink-0"
-        style={{ height: 56 }}
+        style={{ height: 84 }}
       >
         <img
           src="/lovable-uploads/postcard-logo.png"
           alt={import.meta.env.VITE_HOTEL_BRAND || "CRM"}
-          className="h-6 w-auto"
+          className="h-12 w-auto"
         />
         <div className="flex items-center gap-0.5">
           <button
             type="button"
             onClick={() => setTheme(isDark ? "light" : "dark")}
-            className="p-1.5 text-text-muted hover:bg-hover rounded transition-colors duration-150"
+            className="p-1.5 rounded transition-colors duration-150"
+            style={{ color: "rgba(255,255,255,0.5)" }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)")}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
             aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
           >
@@ -181,7 +184,10 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => onViewChange("notifications")}
-            className="relative p-1.5 text-text-muted hover:bg-hover rounded transition-colors duration-150"
+            className="relative p-1.5 rounded transition-colors duration-150"
+            style={{ color: "rgba(255,255,255,0.5)" }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)")}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
             aria-label="Notifications"
           >
             <Bell size={18} strokeWidth={1.5} />
@@ -202,8 +208,8 @@ export function Sidebar({
         {/* Navigation */}
         <div>
           <div
-            className="text-[10px] font-medium uppercase tracking-[0.08em] text-text-faint px-5"
-            style={{ paddingTop: 16, paddingBottom: 6 }}
+            className="text-[10px] font-medium uppercase tracking-[0.08em] px-5"
+            style={{ paddingTop: 16, paddingBottom: 6, color: "rgba(255,255,255,0.35)" }}
           >
             NAVIGATION
           </div>
@@ -215,27 +221,29 @@ export function Sidebar({
                 key={item.url}
                 type="button"
                 onClick={() => onViewChange(item.url)}
-                className={cn(
-                  "w-full flex items-center gap-2.5 h-9 px-5 text-left text-sm transition-colors duration-150",
-                  isActive
-                    ? "bg-primary-light text-primary font-medium border-l-2 border-primary"
-                    : "text-text-muted hover:bg-hover [&>svg]:text-text-muted"
-                )}
-                style={{ paddingLeft: 20, paddingRight: 12 }}
+                className="w-full flex items-center gap-2.5 h-9 px-5 text-left text-sm transition-colors duration-150"
+                style={{
+                  paddingLeft: 20,
+                  paddingRight: 12,
+                  backgroundColor: isActive ? "rgba(255,255,255,0.1)" : "transparent",
+                  color: isActive ? "#ffffff" : "rgba(255,255,255,0.6)",
+                  borderLeft: isActive ? "2px solid #22c55e" : "2px solid transparent",
+                  fontWeight: isActive ? 500 : 400,
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)"; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; }}
               >
                 <Icon
                   size={16}
                   strokeWidth={1.5}
-                  className={cn(isActive ? "text-primary" : "text-text-muted")}
+                  style={{ color: isActive ? "#22c55e" : "rgba(255,255,255,0.45)", flexShrink: 0 }}
                 />
-                <span className={cn(isActive && "text-primary font-medium")}>
-                  {item.title}
-                </span>
+                <span>{item.title}</span>
                 {item.url === "todays-followups" && followupsBadgeCount > 0 && (
                   <span
                     className={cn(
                       "ml-auto text-xs px-1.5 py-0.5 rounded-sm font-medium tabular-nums",
-                      hasOverdueFollowups ? "bg-red-600 text-white" : "bg-gray-900 text-white"
+                      hasOverdueFollowups ? "bg-red-500 text-white" : "bg-white/20 text-white"
                     )}
                   >
                     {followupsBadgeCount}
@@ -250,30 +258,32 @@ export function Sidebar({
         {(isAdminLike || permissions.includes("settings.manage")) && (
           <div>
             <div
-              className="text-[10px] font-medium uppercase tracking-[0.08em] text-text-faint px-5"
-              style={{ paddingTop: 16, paddingBottom: 6 }}
+              className="text-[10px] font-medium uppercase tracking-[0.08em] px-5"
+              style={{ paddingTop: 16, paddingBottom: 6, color: "rgba(255,255,255,0.35)" }}
             >
               SETTINGS
             </div>
             <button
               type="button"
               onClick={() => onViewChange("settings")}
-              className={cn(
-                "w-full flex items-center gap-2.5 h-9 px-5 text-left text-sm transition-colors duration-150",
-                isSetupActive
-                  ? "bg-primary-light text-primary font-medium border-l-2 border-primary"
-                  : "text-text-muted hover:bg-hover"
-              )}
-              style={{ paddingLeft: 20, paddingRight: 12 }}
+              className="w-full flex items-center gap-2.5 h-9 text-left text-sm transition-colors duration-150"
+              style={{
+                paddingLeft: 20,
+                paddingRight: 12,
+                backgroundColor: isSetupActive ? "rgba(255,255,255,0.1)" : "transparent",
+                color: isSetupActive ? "#ffffff" : "rgba(255,255,255,0.6)",
+                borderLeft: isSetupActive ? "2px solid #22c55e" : "2px solid transparent",
+                fontWeight: isSetupActive ? 500 : 400,
+              }}
+              onMouseEnter={e => { if (!isSetupActive) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={e => { if (!isSetupActive) e.currentTarget.style.backgroundColor = "transparent"; }}
             >
               <Settings
                 size={16}
                 strokeWidth={1.5}
-                className={cn(isSetupActive ? "text-primary" : "text-text-muted")}
+                style={{ color: isSetupActive ? "#22c55e" : "rgba(255,255,255,0.45)", flexShrink: 0 }}
               />
-              <span className={cn(isSetupActive && "text-primary font-medium")}>
-                Setup
-              </span>
+              <span>Setup</span>
             </button>
           </div>
         )}
@@ -282,30 +292,32 @@ export function Sidebar({
         {hasKnowledgeAccess && (
           <div>
             <div
-              className="text-[10px] font-medium uppercase tracking-[0.08em] text-text-faint px-5"
-              style={{ paddingTop: 16, paddingBottom: 6 }}
+              className="text-[10px] font-medium uppercase tracking-[0.08em] px-5"
+              style={{ paddingTop: 16, paddingBottom: 6, color: "rgba(255,255,255,0.35)" }}
             >
               RESOURCES
             </div>
             <button
               type="button"
               onClick={() => onViewChange("knowledge-properties")}
-              className={cn(
-                "w-full flex items-center gap-2.5 h-9 px-5 text-left text-sm transition-colors duration-150",
-                isKnowledgeActive
-                  ? "bg-primary-light text-primary font-medium border-l-2 border-primary"
-                  : "text-text-muted hover:bg-hover"
-              )}
-              style={{ paddingLeft: 20, paddingRight: 12 }}
+              className="w-full flex items-center gap-2.5 h-9 text-left text-sm transition-colors duration-150"
+              style={{
+                paddingLeft: 20,
+                paddingRight: 12,
+                backgroundColor: isKnowledgeActive ? "rgba(255,255,255,0.1)" : "transparent",
+                color: isKnowledgeActive ? "#ffffff" : "rgba(255,255,255,0.6)",
+                borderLeft: isKnowledgeActive ? "2px solid #22c55e" : "2px solid transparent",
+                fontWeight: isKnowledgeActive ? 500 : 400,
+              }}
+              onMouseEnter={e => { if (!isKnowledgeActive) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={e => { if (!isKnowledgeActive) e.currentTarget.style.backgroundColor = "transparent"; }}
             >
               <BookOpen
                 size={16}
                 strokeWidth={1.5}
-                className={cn(isKnowledgeActive ? "text-primary" : "text-text-muted")}
+                style={{ color: isKnowledgeActive ? "#22c55e" : "rgba(255,255,255,0.45)", flexShrink: 0 }}
               />
-              <span className={cn(isKnowledgeActive && "text-primary font-medium")}>
-                Knowledge Base
-              </span>
+              <span>Knowledge Base</span>
             </button>
           </div>
         )}
@@ -313,8 +325,8 @@ export function Sidebar({
         {/* Email */}
         <div>
           <div
-            className="text-[10px] font-medium uppercase tracking-[0.08em] text-text-faint px-5"
-            style={{ paddingTop: 16, paddingBottom: 6 }}
+            className="text-[10px] font-medium uppercase tracking-[0.08em] px-5"
+            style={{ paddingTop: 16, paddingBottom: 6, color: "rgba(255,255,255,0.35)" }}
           >
             EMAIL
           </div>
@@ -330,22 +342,24 @@ export function Sidebar({
                 key={item.url}
                 type="button"
                 onClick={() => onViewChange(item.url)}
-                className={cn(
-                  "w-full flex items-center gap-2.5 h-9 px-5 text-left text-sm transition-colors duration-150",
-                  isActive
-                    ? "bg-primary-light text-primary font-medium border-l-2 border-primary"
-                    : "text-text-muted hover:bg-hover"
-                )}
-                style={{ paddingLeft: 20, paddingRight: 12 }}
+                className="w-full flex items-center gap-2.5 h-9 text-left text-sm transition-colors duration-150"
+                style={{
+                  paddingLeft: 20,
+                  paddingRight: 12,
+                  backgroundColor: isActive ? "rgba(255,255,255,0.1)" : "transparent",
+                  color: isActive ? "#ffffff" : "rgba(255,255,255,0.6)",
+                  borderLeft: isActive ? "2px solid #22c55e" : "2px solid transparent",
+                  fontWeight: isActive ? 500 : 400,
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)"; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; }}
               >
                 <Icon
                   size={16}
                   strokeWidth={1.5}
-                  className={cn(isActive ? "text-primary" : "text-text-muted")}
+                  style={{ color: isActive ? "#22c55e" : "rgba(255,255,255,0.45)", flexShrink: 0 }}
                 />
-                <span className={cn(isActive && "text-primary font-medium")}>
-                  {item.title}
-                </span>
+                <span>{item.title}</span>
               </button>
             );
           })}
@@ -355,37 +369,41 @@ export function Sidebar({
       {/* User section */}
       <div
         ref={userMenuRef}
-        className="shrink-0 border-t border-border relative"
-        style={{ height: 56 }}
+        className="shrink-0 relative"
+        style={{ height: 56, borderTop: "1px solid rgba(255,255,255,0.08)" }}
       >
         <button
           type="button"
           onClick={() => setUserMenuOpen((o) => !o)}
-          className="w-full h-full flex items-center gap-3 px-4 text-left hover:bg-hover transition-colors duration-150"
+          className="w-full h-full flex items-center gap-3 px-4 text-left transition-colors duration-150"
+          onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)")}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
         >
           <div
-            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-primary-light text-primary text-xs font-semibold"
-            style={{ fontSize: 12 }}
+            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold"
+            style={{ fontSize: 12, backgroundColor: "rgba(34,196,94,0.2)", color: "#22c55e" }}
           >
             {initials || "?"}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-medium text-text truncate" style={{ fontSize: 13 }}>
+            <div className="truncate font-medium" style={{ fontSize: 13, color: "rgba(255,255,255,0.9)" }}>
               {userName || "User"}
             </div>
-            <div className="text-[11px] text-text-muted truncate" style={{ fontSize: 11 }}>
+            <div className="truncate" style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
               {roleDisplay}
             </div>
           </div>
-          <ChevronDown size={14} className="shrink-0 text-text-muted" />
+          <ChevronDown size={14} className="shrink-0" style={{ color: "rgba(255,255,255,0.35)" }} />
         </button>
 
         {userMenuOpen && (
           <div
-            className="absolute bottom-full left-4 right-4 mb-1 bg-surface border border-border rounded-md shadow"
+            className="absolute bottom-full left-4 right-4 mb-1 rounded-md shadow-lg border"
             style={{
-              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              backgroundColor: "#2a2d47",
+              borderColor: "rgba(255,255,255,0.1)",
               borderRadius: "var(--radius-md)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
             }}
           >
             <button
@@ -394,7 +412,10 @@ export function Sidebar({
                 onViewChange("email-settings");
                 setUserMenuOpen(false);
               }}
-              className="w-full flex items-center gap-2 h-9 px-4 text-sm text-text hover:bg-hover transition-colors duration-150"
+              className="w-full flex items-center gap-2 h-9 px-4 text-sm transition-colors duration-150"
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)")}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
             >
               <User size={14} strokeWidth={1.5} />
               Profile
@@ -405,7 +426,10 @@ export function Sidebar({
                 onViewChange("settings");
                 setUserMenuOpen(false);
               }}
-              className="w-full flex items-center gap-2 h-9 px-4 text-sm text-text hover:bg-hover transition-colors duration-150"
+              className="w-full flex items-center gap-2 h-9 px-4 text-sm transition-colors duration-150"
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)")}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
             >
               <Settings size={14} strokeWidth={1.5} />
               Setup / Settings
@@ -416,7 +440,9 @@ export function Sidebar({
                 onLogout();
                 setUserMenuOpen(false);
               }}
-              className="w-full flex items-center gap-2 h-9 px-4 text-sm text-destructive hover:bg-hover transition-colors duration-150"
+              className="w-full flex items-center gap-2 h-9 px-4 text-sm text-destructive transition-colors duration-150"
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)")}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
             >
               <LogOut size={14} strokeWidth={1.5} />
               Log out

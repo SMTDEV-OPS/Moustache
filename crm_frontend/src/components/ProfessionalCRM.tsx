@@ -30,6 +30,7 @@ import { EmailClient } from "@/components/EmailClient";
 import { EmailProviderSettings } from "@/components/EmailProviderSettings";
 import { TodaysFollowUps } from "@/components/TodaysFollowUps";
 import { PersonalCalendar } from "@/components/PersonalCalendar";
+import { WeekPlanner } from "@/components/WeekPlanner";
 import { LeadDetailPage } from "@/components/LeadDetailPage";
 import NotificationsPage from "@/components/NotificationsPage";
 import { BuddyManagement } from "@/components/BuddyManagement";
@@ -103,6 +104,14 @@ export const ProfessionalCRM = ({
     console.log("ProfessionalCRM - activeView changed to:", activeView);
     console.log("ProfessionalCRM - selectedLeadId:", selectedLeadId);
   }, [activeView, selectedLeadId]);
+
+  useEffect(() => {
+    const handleNavigateAccount = () => {
+      setActiveView("account-management");
+    };
+    window.addEventListener("crm:navigate-account", handleNavigateAccount);
+    return () => window.removeEventListener("crm:navigate-account", handleNavigateAccount);
+  }, []);
 
   // Handle pending lead view navigation after state is set
   useEffect(() => {
@@ -221,6 +230,8 @@ export const ProfessionalCRM = ({
             }}
           />
         );
+      case "week-planner":
+        return <WeekPlanner />;
       case 'tickets':
         return <ProfessionalTicketManagement userRole={userRole} agentName={userName} />;
       case 'ticket-management': {

@@ -18,6 +18,7 @@ const createTaskSchema = z.object({
   description: z.string().optional(),
   ownerUserId: z.string(),
   leadId: z.string().optional(),
+  accountId: z.string().optional(),
   dueAt: z.string().datetime(),
   type: z
     .enum(["general", "followup", "call", "email", "whatsapp", "meeting"])
@@ -42,9 +43,10 @@ tasksRouter.post("/", async (req, res, next) => {
     const task = await TaskModel.create({
       title: parsed.data.title,
       description: parsed.data.description,
-      ownerUserId: parsed.data.ownerUserId,
+      ownerUserId: parsed.data.ownerUserId === "me" ? req.user?.id : parsed.data.ownerUserId,
       createdByUserId: req.user?.id,
       leadId: parsed.data.leadId,
+      accountId: parsed.data.accountId,
       orgId,
       dueAt: new Date(parsed.data.dueAt),
       type: parsed.data.type ?? "general",
@@ -90,7 +92,7 @@ tasksRouter.get("/", async (req, res, next) => {
       throw badRequest("Missing authenticated user");
     }
 
-    const { ownerUserId, status, fromDue, toDue, leadId } = req.query;
+    const { ownerUserId, status, fromDue, toDue, from, to, leadId, accountId } = req.query;
     const filter: Record<string, unknown> = {};
 
     const currentUserId = req.user.id;
@@ -117,17 +119,19 @@ tasksRouter.get("/", async (req, res, next) => {
     }
 
     if (status) filter.status = status;
+    if (accountId && typeof accountId === "string") filter.accountId = accountId;
 
-    if (fromDue || toDue) {
+    if (fromDue || toDue || from || to) {
       filter.dueAt = {};
-      if (fromDue)
-        (filter.dueAt as any).$gte = new Date(String(fromDue));
-      if (toDue)
-        (filter.dueAt as any).$lte = new Date(String(toDue));
+      const fromValue = from ?? fromDue;
+      const toValue = to ?? toDue;
+      if (fromValue) (filter.dueAt as any).$gte = new Date(String(fromValue));
+      if (toValue) (filter.dueAt as any).$lte = new Date(String(toValue));
     }
 
     const tasks = await TaskModel.find(filter)
       .populate("leadId", "leadNumber status")
+      .populate("accountId", "name")
       .sort({ dueAt: 1 })
       .lean();
     res.json(tasks);
@@ -382,22 +386,25 @@ tasksRouter.post("/:id/dismiss", async (req, res, next) => {
   }
 });
 
-// Get tasks that need popup reminders (due and not dismissed recently)
+// Get tasks that need popup reminders (due in next 30 minutes, not dismissed in last 24 hours)
 tasksRouter.get("/pending-reminders", async (req, res, next) => {
   try {
     const now = new Date();
-    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+    const inThirtyMinutes = new Date(now.getTime() + 30 * 60 * 1000);
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     const tasks = await TaskModel.find({
       ownerUserId: req.user?.id,
       status: "OPEN",
-      dueAt: { $lte: now },
+      dueAt: { $gte: now, $lte: inThirtyMinutes },
       $or: [
         { "popupState.dismissedAt": { $exists: false } },
-        { "popupState.dismissedAt": { $lt: fiveMinutesAgo } },
+        { "popupState.dismissedAt": null },
+        { "popupState.dismissedAt": { $lt: twentyFourHoursAgo } },
       ],
     })
       .populate("leadId", "leadNumber status")
+      .populate("accountId", "name")
       .sort({ dueAt: 1 })
       .limit(10)
       .lean();

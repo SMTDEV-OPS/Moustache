@@ -12,7 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Search, Filter, Plus, Phone, Mail, Calendar as CalendarIcon, Clock, User as UserIcon, TrendingUp, Eye, Users, MessageSquare, AlertTriangle, Trash2, Hotel, FileText } from "lucide-react";
+import { Search, Filter, Plus, Phone, Mail, Calendar as CalendarIcon, Clock, User as UserIcon, TrendingUp, Eye, Users, MessageSquare, AlertTriangle, Trash2, Hotel, FileText, BedDouble } from "lucide-react";
 import { toast } from "sonner";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,13 +36,17 @@ interface ProfessionalLeadManagementProps {
   permissions?: string[];
 }
 
+const roomEntrySchema = z.object({
+  roomCategory: z.string().min(1, "Room category is required"),
+  roomPreference: z.string().optional(),
+  numberOfGuests: z.string().min(1, "Guest count is required"),
+});
+
 const hotelEntrySchema = z.object({
   hotelName: z.string().min(1, "Hotel selection is required"),
   checkInDate: z.date({ message: "Check-in date is required" }),
   checkOutDate: z.date({ message: "Check-out date is required" }),
-  roomCategory: z.string().min(1, "Room category is required"),
-  roomPreference: z.string().optional(),
-  numberOfGuests: z.string().min(1, "Guest count is required"),
+  rooms: z.array(roomEntrySchema).min(1, "At least one room is required"),
 });
 
 const leadFormSchema = z.object({
@@ -241,9 +245,7 @@ const ProfessionalLeadManagement = ({
           hotelName: "",
           checkInDate: undefined as unknown as Date,
           checkOutDate: undefined as unknown as Date,
-          roomCategory: "",
-          roomPreference: "",
-          numberOfGuests: "",
+          rooms: [{ roomCategory: "", roomPreference: "", numberOfGuests: "" }],
         }
       ],
       bookingSource: "",
@@ -272,10 +274,19 @@ const ProfessionalLeadManagement = ({
       hotelName: "",
       checkInDate: undefined as unknown as Date,
       checkOutDate: undefined as unknown as Date,
-      roomCategory: "",
-      roomPreference: "",
-      numberOfGuests: ""
+      rooms: [{ roomCategory: "", roomPreference: "", numberOfGuests: "" }],
     });
+  };
+
+  const addRoom = (hotelIndex: number) => {
+    const rooms = form.getValues(`hotels.${hotelIndex}.rooms`) || [];
+    form.setValue(`hotels.${hotelIndex}.rooms`, [...rooms, { roomCategory: "", roomPreference: "", numberOfGuests: "" }]);
+  };
+
+  const removeRoom = (hotelIndex: number, roomIndex: number) => {
+    const rooms = form.getValues(`hotels.${hotelIndex}.rooms`) || [];
+    if (rooms.length <= 1) return;
+    form.setValue(`hotels.${hotelIndex}.rooms`, rooms.filter((_, i) => i !== roomIndex));
   };
 
   // Helper functions
@@ -549,17 +560,17 @@ const ProfessionalLeadManagement = ({
 
       const hotels = (data.hotels || []).map((hotel: any) => {
         const selectedProperty = hotelOptions.find((property) => property.name === hotel.hotelName);
+        const rooms = (hotel.rooms || []).map((r: any) => ({
+          roomCategory: r.roomCategory || undefined,
+          roomPreference: r.roomPreference || undefined,
+          numberOfGuests: r.numberOfGuests ? String(r.numberOfGuests) : undefined,
+        }));
         return {
           hotelName: hotel.hotelName,
           propertyId: selectedProperty?._id || undefined,
           checkInDate: hotel.checkInDate ? new Date(hotel.checkInDate) : undefined,
           checkOutDate: hotel.checkOutDate ? new Date(hotel.checkOutDate) : undefined,
-          roomCategory: hotel.roomCategory || undefined,
-          roomPreference: hotel.roomPreference || undefined,
-          numberOfGuests: hotel.numberOfGuests ? String(hotel.numberOfGuests) : undefined,
-          numberOfRooms: 1,
-          adults: 1,
-          children: 0,
+          rooms: rooms.length > 0 ? rooms : [{ roomCategory: undefined, roomPreference: undefined, numberOfGuests: undefined }],
         };
       });
 
@@ -848,71 +859,107 @@ const ProfessionalLeadManagement = ({
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={form.control}
-                          name={`hotels.${index}.roomCategory`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Room Category *</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select Room Category" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="standard">Standard Room</SelectItem>
-                                  <SelectItem value="deluxe">Deluxe Room</SelectItem>
-                                  <SelectItem value="suite">Suite</SelectItem>
-                                  <SelectItem value="villa">Villa</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`hotels.${index}.roomPreference`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Room Preference</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., Sea view, Garden view" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                      {/* Multiple rooms per hotel */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-medium flex items-center gap-2">
+                            <BedDouble className="h-4 w-4" />
+                            Rooms
+                          </h4>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addRoom(index)}
+                            className="h-8"
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add Room
+                          </Button>
+                        </div>
+                        {(form.watch(`hotels.${index}.rooms`) || []).map((_, roomIdx) => (
+                          <div key={roomIdx} className="pl-4 border-l-2 border-slate-200 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-muted-foreground">Room {roomIdx + 1}</span>
+                              {(form.watch(`hotels.${index}.rooms`) || []).length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeRoom(index, roomIdx)}
+                                  className="h-7 text-red-500 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                              <FormField
+                                control={form.control}
+                                name={`hotels.${index}.rooms.${roomIdx}.roomCategory`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs">Room Category *</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                      <FormControl>
+                                        <SelectTrigger className="h-9">
+                                          <SelectValue placeholder="Select" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        <SelectItem value="standard">Standard Room</SelectItem>
+                                        <SelectItem value="deluxe">Deluxe Room</SelectItem>
+                                        <SelectItem value="suite">Suite</SelectItem>
+                                        <SelectItem value="villa">Villa</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name={`hotels.${index}.rooms.${roomIdx}.roomPreference`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs">Preference</FormLabel>
+                                    <FormControl>
+                                      <Input placeholder="e.g. Sea view" {...field} className="h-9" />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name={`hotels.${index}.rooms.${roomIdx}.numberOfGuests`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs">Guests *</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                      <FormControl>
+                                        <SelectTrigger className="h-9">
+                                          <SelectValue placeholder="Select" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        <SelectItem value="1">1 Guest</SelectItem>
+                                        <SelectItem value="2">2 Guests</SelectItem>
+                                        <SelectItem value="3">3 Guests</SelectItem>
+                                        <SelectItem value="4">4 Guests</SelectItem>
+                                        <SelectItem value="5">5 Guests</SelectItem>
+                                        <SelectItem value="6">6 Guests</SelectItem>
+                                        <SelectItem value="7+">7+ Guests</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                          </div>
+                        ))}
                       </div>
-
-                      <FormField
-                        control={form.control}
-                        name={`hotels.${index}.numberOfGuests`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Number of Guests *</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select Guest Count" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="1">1 Guest</SelectItem>
-                                <SelectItem value="2">2 Guests</SelectItem>
-                                <SelectItem value="3">3 Guests</SelectItem>
-                                <SelectItem value="4">4 Guests</SelectItem>
-                                <SelectItem value="5">5 Guests</SelectItem>
-                                <SelectItem value="6">6 Guests</SelectItem>
-                                <SelectItem value="7+">7+ Guests</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
                     </div>
                   ))}
                 </div>

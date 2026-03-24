@@ -27,7 +27,7 @@ import { listProperties, Property } from "@/services/properties";
 import { ContactManagement } from "./ContactManagement";
 import { PotentialTracking } from "./PotentialTracking";
 import { AccountTimeline } from "./AccountTimeline";
-import { AccountDeals } from "./AccountDeals";
+import { AccountLeads } from "@/components/AccountLeads";
 import { AccountDocuments } from "./AccountDocuments";
 import { AccountContracts } from "./AccountContracts";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -43,7 +43,7 @@ interface AccountDetailProps {
     permissions?: string[];
     currentUserId?: string;
     /** Initial tab to show (e.g. when opening from "Add Contact" in list view) */
-    initialTab?: "overview" | "contacts" | "deals" | "contracts" | "potential" | "activities" | "documents";
+    initialTab?: "overview" | "contacts" | "leads" | "contracts" | "potential" | "activities" | "documents";
     /** When true, opens the add-contact dialog in the Contacts tab */
     openAddContactOnMount?: boolean;
     /** Called when the add-contact dialog has been opened (used to clear parent state) */
@@ -165,9 +165,7 @@ export const AccountDetail = ({ account, onBack, onEdit, isAdmin, isSystemAdmin,
 
     return (
         <PageShell
-            breadcrumbs={[{ label: "Accounts", onClick: onBack }, { label: account.name }]}
-            title={account.name}
-            description={`${account.city || ""} ${account.state || ""}`.trim() || undefined}
+            breadcrumbs={[{ label: "← Back to Accounts", onClick: () => onBack?.() }, { label: account.name }]}
             actions={canUpdateAccounts ? <Button onClick={onEdit}>Edit Account Profile</Button> : undefined}
         >
             {/* Profile Summary */}
@@ -252,7 +250,7 @@ export const AccountDetail = ({ account, onBack, onEdit, isAdmin, isSystemAdmin,
             </div>
 
             {/* Tabbed Content */}
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "overview" | "contacts" | "deals" | "contracts" | "potential" | "activities" | "documents")} className="w-full">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "overview" | "contacts" | "leads" | "contracts" | "potential" | "activities" | "documents")} className="w-full">
                 <TabsList className="bg-transparent border-b border-border rounded-none w-full justify-start h-12 p-0 gap-6">
                     <TabsTrigger
                         value="overview"
@@ -268,10 +266,10 @@ export const AccountDetail = ({ account, onBack, onEdit, isAdmin, isSystemAdmin,
                     </TabsTrigger>
                     {canViewDeals && (
                         <TabsTrigger
-                            value="deals"
+                            value="leads"
                             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none h-full px-1"
                         >
-                            Deals
+                            Leads
                         </TabsTrigger>
                     )}
                     {canViewContracts && (
@@ -553,8 +551,8 @@ export const AccountDetail = ({ account, onBack, onEdit, isAdmin, isSystemAdmin,
                 </TabsContent>
 
                 {canViewDeals && (
-                    <TabsContent value="deals" className="pt-6">
-                        <AccountDeals accountId={account.id} isSystemAdmin={isSystemAdmin} />
+                    <TabsContent value="leads" className="pt-6">
+                        <AccountLeads accountId={account.id} isSystemAdmin={isSystemAdmin} />
                     </TabsContent>
                 )}
                 {canViewContracts && (

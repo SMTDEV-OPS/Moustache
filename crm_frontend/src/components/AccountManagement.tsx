@@ -56,6 +56,7 @@ import {
   AccountStatus
 } from "@/services/accounts";
 import { AccountCreationWizard } from "./AccountCreationWizard";
+import { WeekPlanner } from "./WeekPlanner";
 import { ORGANIZATION_TYPES } from "@/constants/accountData";
 import { AccountDetail } from "./AccountDetail";
 
@@ -248,6 +249,7 @@ export const AccountManagement = ({ permissions = [], isAdmin, isSystemAdmin }: 
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [tagsFilter, setTagsFilter] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "hierarchy">("list");
+  const [managementView, setManagementView] = useState<"accounts" | "week-planner">("accounts");
   const [accountScope, setAccountScope] = useState<"my" | "all">(canUpdateAccounts ? "my" : "all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -676,6 +678,22 @@ export const AccountManagement = ({ permissions = [], isAdmin, isSystemAdmin }: 
       description="Manage travel agents, corporates, and event planners"
       actions={
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 border border-border rounded-md p-1">
+            <Button
+              variant={managementView === "accounts" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setManagementView("accounts")}
+            >
+              Accounts
+            </Button>
+            <Button
+              variant={managementView === "week-planner" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setManagementView("week-planner")}
+            >
+              Week Planner
+            </Button>
+          </div>
           {canUpdateAccounts && (
             <div className="flex items-center gap-2 border border-border rounded-md p-1">
               <Button
@@ -739,6 +757,10 @@ export const AccountManagement = ({ permissions = [], isAdmin, isSystemAdmin }: 
         </div>
       }
     >
+      {managementView === "week-planner" ? (
+        <WeekPlanner />
+      ) : (
+      <>
       {/* Filters */}
       <Card className="border-border shadow-sm">
         <CardContent className="p-4">
@@ -1138,6 +1160,8 @@ export const AccountManagement = ({ permissions = [], isAdmin, isSystemAdmin }: 
           )}
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </PageShell>
   );
 };

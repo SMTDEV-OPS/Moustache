@@ -286,11 +286,11 @@ export function AppSidebar({
       {/* Sidebar Header: Logo & Search */}
       <SidebarHeader className="bg-sidebar border-b border-sidebar-border p-4">
         <div className="flex items-center gap-3 px-1">
-          <div className="flex items-center justify-center h-8 w-8 rounded-md bg-primary/10">
+          <div className="flex items-center justify-center h-24 w-24 rounded-md bg-primary/10">
             <img
               src="/lovable-uploads/postcard-logo.png"
               alt="Logo"
-              className="h-6 w-auto"
+              className="h-20 w-auto"
             />
           </div>
           {state === "expanded" && (

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import * as XLSX from "xlsx";
+import { startOfWeek, endOfWeek } from "date-fns";
 import { AccountModel } from "../models/account";
 import { ApprovalRequestModel } from "../models/approvalRequest";
 import { ContactActivityModel } from "../models/contactActivity";
@@ -9,6 +10,7 @@ import { LeadActivityModel } from "../models/leadActivity";
 import { CommunicationModel } from "../models/communication";
 import { AccountNoteModel } from "../models/accountNote";
 import { ActivityLogModel } from "../models/activityLog";
+import { TaskModel } from "../models/task";
 import { requireAuth, requirePermissions, requireAnyPermission, hasPermission } from "../middleware/auth";
 import { PERMISSIONS } from "../constants/permissions";
 import { badRequest, notFound, forbidden } from "../utils/httpError";
@@ -476,6 +478,64 @@ accountsRouter.get("/roots", async (req, res, next) => {
       parentAccountId: null
     }).lean();
     res.json(rootAccounts);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Week planner payload for current salesperson
+accountsRouter.get("/week-planner", async (req, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const from = req.query.from
+      ? new Date(req.query.from as string)
+      : startOfWeek(new Date(), { weekStartsOn: 1 });
+    const to = req.query.to
+      ? new Date(req.query.to as string)
+      : endOfWeek(new Date(), { weekStartsOn: 1 });
+
+    const myAccounts = await AccountModel.find({
+      $or: [
+        { "primaryAccountManager.userId": userId },
+        { "secondaryAccountManagers.userId": userId },
+      ],
+      profileStatus: "ACTIVE",
+    })
+      .select("_id name followUpDate followUpNote")
+      .lean();
+
+    const accountIds = myAccounts.map((a: any) => a._id);
+
+    const activities = await ContactActivityModel.find({
+      accountId: { $in: accountIds },
+      startsAt: { $gte: from, $lte: to },
+    })
+      .populate("contactId", "name")
+      .populate("accountId", "name")
+      .lean();
+
+    const tasks = await TaskModel.find({
+      ownerUserId: userId,
+      dueAt: { $gte: from, $lte: to },
+      status: { $ne: "CANCELLED" },
+      accountId: { $in: accountIds },
+    })
+      .populate("accountId", "name")
+      .lean();
+
+    const followUps = myAccounts.filter((a: any) => {
+      if (!a.followUpDate) return false;
+      const d = new Date(a.followUpDate);
+      return d >= from && d <= to;
+    });
+
+    res.json({
+      accounts: myAccounts,
+      activities,
+      tasks,
+      followUps,
+      range: { from: from.toISOString(), to: to.toISOString() },
+    });
   } catch (err) {
     next(err);
   }

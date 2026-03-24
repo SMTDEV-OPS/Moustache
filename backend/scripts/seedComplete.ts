@@ -28,6 +28,7 @@ async function main() {
 
   execSync("npm run seed:admin", { cwd: backendRoot, stdio: "inherit", env: process.env });
   execSync("npm run seed:everything", { cwd: backendRoot, stdio: "inherit", env: process.env });
+  execSync("npm run seed:kb:fixtures", { cwd: backendRoot, stdio: "inherit", env: process.env });
 
   await mongoose.connect(config.mongoUri);
   try {

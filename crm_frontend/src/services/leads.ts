@@ -102,6 +102,12 @@ export interface AccountInfo {
   city?: string;
 }
 
+export interface LeadItineraryRoom {
+  roomCategory?: string;
+  roomPreference?: string;
+  numberOfGuests?: string;
+}
+
 export interface LeadItinerary {
   id?: string;
   _id?: string;
@@ -112,6 +118,8 @@ export interface LeadItinerary {
   roomCategory?: string;
   roomPreference?: string;
   numberOfGuests?: string;
+  /** Multiple rooms per hotel stay */
+  rooms?: LeadItineraryRoom[];
 }
 
 export interface Lead {
@@ -178,7 +186,7 @@ export interface CreateLeadPayload {
   budget?: number;
   bookingWindow?: string;
   customerType?: string;
-  hotels?: Omit<LeadItinerary, 'id' | '_id'>[]; // Payload for creating line items
+  hotels?: (Omit<LeadItinerary, 'id' | '_id'> & { rooms?: LeadItineraryRoom[] })[];
   occasion?: string;
   isFirstTimeGuest?: boolean;
   heatLevel?: HeatLevel;

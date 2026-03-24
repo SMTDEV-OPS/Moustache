@@ -581,8 +581,8 @@ video {
   --input: 214.3 31.8% 91.4%;
   --ring: 160 84% 39%;
   --radius: 0.125rem;
-  /* Sidebar colors - slate-900 */
-  --sidebar-background: 222.2 47.4% 11.2%;
+  /* Sidebar colors - deep blue-gray (#222437) */
+  --sidebar-background: 234.3 23.6% 17.5%;
   --sidebar-foreground: 210 40% 96%;
   --sidebar-primary: 160 84% 39%;
   --sidebar-primary-foreground: 0 0% 100%;
@@ -655,7 +655,7 @@ video {
   --border: 214.3 31.8% 20%;
   --input: 214.3 31.8% 20%;
   --ring: 160 84% 39%;
-  --sidebar-background: 222.2 47.4% 8%;
+  --sidebar-background: 234.3 23.6% 17.5%;
   --sidebar-foreground: 210 40% 96%;
   --sidebar-primary: 160 84% 39%;
   --sidebar-primary-foreground: 0 0% 100%;

@@ -51,6 +51,8 @@ import {
   MessageSquare,
   ChevronDown,
 } from "lucide-react";
+import { WeekPlannerGrid, type WeekPlannerEvent } from "@/components/WeekPlannerGrid";
+import { DatePicker } from "@/components/ui/date-picker";
 import { getAccountTimeline, type TimelineItem } from "@/services/accounts";
 import { createAccountNote } from "@/services/accountNotes";
 import { getAccountContacts } from "@/services/contacts";
@@ -367,117 +369,119 @@ export function AccountTimeline({ accountId, useUnifiedTimeline = true, canAddNo
             </Button>
           ))}
         </div>
-        {useUnifiedTimeline && canAddNote && (
+        {canAddNote && (
           <Button onClick={() => setIsNoteDialogOpen(true)} variant="outline" size="sm">
             <FileText className="h-4 w-4 mr-2" /> Add Note
           </Button>
         )}
         {canAddActivity && (
           <Button onClick={() => setIsActivityDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" /> Add Activity
+            <Plus className="h-4 w-4 mr-2" /> + Add Activity
           </Button>
         )}
       </div>
 
-      {items.length === 0 ? (
-        <Card className="border-border">
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>No activity yet. Log an activity to build your timeline.</p>
-            {canAddActivity && (
-              <div className="flex justify-center gap-2 mt-4">
-                {useUnifiedTimeline && canAddNote && (
-                  <Button variant="outline" onClick={() => setIsNoteDialogOpen(true)}>
-                    Add Note
-                  </Button>
-                )}
-                <Button onClick={() => setIsActivityDialogOpen(true)}>Add Activity</Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : viewMode === "agenda" ? (
-        <div className="space-y-2">
-          {items.map((item) => (
-            <Collapsible key={`${item.source}-${item.id}`} defaultOpen={false}>
-              <Card className="border-border">
-                <CollapsibleTrigger asChild>
-                  <div className="flex items-start gap-3 p-4 cursor-pointer hover:bg-muted/50 rounded-lg transition-colors">
-                    <div className="mt-0.5">{getIconForSource(item.source)}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {getSourceLabel(item.source)}
-                        </Badge>
-                        {item.source === "contact_activity" && item.detail?.category && (
-                          <Badge variant="outline" className={`text-xs ${getCategoryBadgeClass(item.detail.category)}`}>
-                            {item.detail.category}
+      {viewMode === "agenda" ? (
+        items.length === 0 ? (
+          <Card className="border-border">
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>No activity yet. Log an activity to build your timeline.</p>
+              {canAddActivity && (
+                <div className="flex justify-center gap-2 mt-4">
+                  {canAddNote && (
+                    <Button variant="outline" onClick={() => setIsNoteDialogOpen(true)}>
+                      Add Note
+                    </Button>
+                  )}
+                  <Button onClick={() => setIsActivityDialogOpen(true)}>+ Add Activity</Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {items.map((item) => (
+              <Collapsible key={`${item.source}-${item.id}`} defaultOpen={false}>
+                <Card className="border-border">
+                  <CollapsibleTrigger asChild>
+                    <div className="flex items-start gap-3 p-4 cursor-pointer hover:bg-muted/50 rounded-lg transition-colors">
+                      <div className="mt-0.5">{getIconForSource(item.source)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {getSourceLabel(item.source)}
                           </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(item.date)}
-                        </span>
+                          {item.source === "contact_activity" && item.detail?.category && (
+                            <Badge variant="outline" className={`text-xs ${getCategoryBadgeClass(item.detail.category)}`}>
+                              {item.detail.category}
+                            </Badge>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(item.date)}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium mt-1 truncate">{item.summary}</p>
                       </div>
-                      <p className="text-sm font-medium mt-1 truncate">{item.summary}</p>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
                     </div>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="px-4 pb-4 pt-0 border-t border-border">
-                    {item.source === "contact_activity" && item.detail && (
-                      <div className="pt-3 space-y-2 text-sm">
-                        {(item.detail.startsAt || item.detail.endsAt) && (
-                          <div>
-                            <span className="font-medium text-muted-foreground">When: </span>
-                            <span>
-                              {item.detail.startsAt ? formatDate(item.detail.startsAt) : "—"}{" "}
-                              {item.detail.endsAt ? `→ ${formatDate(item.detail.endsAt)}` : ""}
-                            </span>
-                          </div>
-                        )}
-                        {item.detail.purpose && (
-                          <div>
-                            <span className="font-medium text-muted-foreground">Purpose: </span>
-                            <span>{item.detail.purpose}</span>
-                          </div>
-                        )}
-                        {item.detail.discussion && (
-                          <div>
-                            <span className="font-medium text-muted-foreground">Discussion: </span>
-                            <span>{item.detail.discussion}</span>
-                          </div>
-                        )}
-                        {item.detail.output && (
-                          <div>
-                            <span className="font-medium text-muted-foreground">Output: </span>
-                            <span>{item.detail.output}</span>
-                          </div>
-                        )}
-                        {item.detail.followUp && (
-                          <div>
-                            <span className="font-medium text-muted-foreground">Follow-up: </span>
-                            <span>{item.detail.followUp}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {item.source === "note" && item.detail?.content && (
-                      <div className="pt-3 text-sm whitespace-pre-wrap">{item.detail.content}</div>
-                    )}
-                    {item.source === "communication" && item.detail?.summary && (
-                      <div className="pt-3 text-sm">{item.detail.summary}</div>
-                    )}
-                    {item.source === "lead_activity" && item.detail?.note && (
-                      <div className="pt-3 text-sm">{item.detail.note}</div>
-                    )}
-                  </div>
-                </CollapsibleContent>
-              </Card>
-            </Collapsible>
-          ))}
-        </div>
-      ) : (
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-4 pb-4 pt-0 border-t border-border">
+                      {item.source === "contact_activity" && item.detail && (
+                        <div className="pt-3 space-y-2 text-sm">
+                          {(item.detail.startsAt || item.detail.endsAt) && (
+                            <div>
+                              <span className="font-medium text-muted-foreground">When: </span>
+                              <span>
+                                {item.detail.startsAt ? formatDate(item.detail.startsAt) : "—"}{" "}
+                                {item.detail.endsAt ? `→ ${formatDate(item.detail.endsAt)}` : ""}
+                              </span>
+                            </div>
+                          )}
+                          {item.detail.purpose && (
+                            <div>
+                              <span className="font-medium text-muted-foreground">Purpose: </span>
+                              <span>{item.detail.purpose}</span>
+                            </div>
+                          )}
+                          {item.detail.discussion && (
+                            <div>
+                              <span className="font-medium text-muted-foreground">Discussion: </span>
+                              <span>{item.detail.discussion}</span>
+                            </div>
+                          )}
+                          {item.detail.output && (
+                            <div>
+                              <span className="font-medium text-muted-foreground">Output: </span>
+                              <span>{item.detail.output}</span>
+                            </div>
+                          )}
+                          {item.detail.followUp && (
+                            <div>
+                              <span className="font-medium text-muted-foreground">Follow-up: </span>
+                              <span>{item.detail.followUp}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {item.source === "note" && item.detail?.content && (
+                        <div className="pt-3 text-sm whitespace-pre-wrap">{item.detail.content}</div>
+                      )}
+                      {item.source === "communication" && item.detail?.summary && (
+                        <div className="pt-3 text-sm">{item.detail.summary}</div>
+                      )}
+                      {item.source === "lead_activity" && item.detail?.note && (
+                        <div className="pt-3 text-sm">{item.detail.note}</div>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+            ))}
+          </div>
+        )
+      ) : viewMode === "month" ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Calendar */}
           <Card className="lg:col-span-1 border-border">
@@ -714,6 +718,49 @@ export function AccountTimeline({ accountId, useUnifiedTimeline = true, canAddNo
             )}
           </div>
         </div>
+      ) : (
+        <WeekPlannerGrid
+          events={items
+            .filter((item) => {
+              const d = new Date(item.date);
+              if (viewMode === "day") {
+                return isSameDay(d, selectedDate);
+              }
+              const ws = startOfWeek(selectedDate, { weekStartsOn: 1 });
+              const we = endOfWeek(selectedDate, { weekStartsOn: 1 });
+              if (viewMode === "workweek") {
+                const day = d.getDay();
+                return d >= ws && d <= we && day >= 1 && day <= 5;
+              }
+              return d >= ws && d <= we;
+            })
+            .map((item) => ({
+              id: item.id,
+              title: item.summary || "Activity",
+              subtitle:
+                item.source === "contact_activity"
+                  ? item.detail?.contactId?.name || item.detail?.accountId?.name
+                  : item.detail?.accountId?.name,
+              startTime: new Date(item.date),
+              endTime: item.detail?.endsAt ? new Date(item.detail.endsAt) : undefined,
+              type:
+                item.source === "note"
+                  ? "task"
+                  : item.source === "contact_activity"
+                    ? "activity"
+                    : "followup",
+            })) as WeekPlannerEvent[]}
+          weekStart={viewMode === "day" ? startOfWeek(selectedDate, { weekStartsOn: 1 }) : startOfWeek(selectedDate, { weekStartsOn: 1 })}
+          workWeekOnly={viewMode === "workweek"}
+          onWeekStartChange={(nextWeekStart) => setSelectedDate(nextWeekStart)}
+          onSlotClick={(date) => {
+            setActivityForm((p) => ({
+              ...p,
+              startsAtDate: format(date, "yyyy-MM-dd"),
+            }));
+            setIsActivityDialogOpen(true);
+          }}
+        />
       )}
 
       {/* Add Note Dialog */}
@@ -746,11 +793,11 @@ export function AccountTimeline({ accountId, useUnifiedTimeline = true, canAddNo
 
       {/* Add Activity Dialog */}
       <Dialog open={isActivityDialogOpen} onOpenChange={setIsActivityDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-md max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>Add Activity</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-3 py-2 overflow-y-auto pr-1 max-h-[calc(85vh-10rem)]">
             <div className="space-y-2">
               <Label>Contact</Label>
               <Select
@@ -806,10 +853,13 @@ export function AccountTimeline({ accountId, useUnifiedTimeline = true, canAddNo
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label>Date</Label>
-                <Input
-                  type="date"
-                  value={activityForm.startsAtDate}
-                  onChange={(e) => setActivityForm({ ...activityForm, startsAtDate: e.target.value })}
+                <DatePicker
+                  value={activityForm.startsAtDate ? new Date(activityForm.startsAtDate) : undefined}
+                  onChange={(d) =>
+                    setActivityForm({ ...activityForm, startsAtDate: d ? format(d, "yyyy-MM-dd") : "" })
+                  }
+                  placeholder="Pick a date"
+                  className="w-full"
                 />
               </div>
               <div className="space-y-2">

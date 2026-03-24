@@ -16,6 +16,7 @@ export interface ITask extends Document {
   ownerUserId: any;
   createdByUserId: any;
   leadId?: any;
+  accountId?: any;
   orgId?: Types.ObjectId | any;
   dueAt: Date;
   status: TaskStatus;
@@ -39,6 +40,12 @@ const taskSchema = new Schema<ITask>(
     ownerUserId: UserRef,
     createdByUserId: UserRef,
     leadId: LeadRef,
+    accountId: {
+      type: Schema.Types.ObjectId,
+      ref: "Account",
+      default: null,
+      index: true,
+    },
     orgId: { type: Schema.Types.ObjectId, required: false, default: null, index: true },
     dueAt: { type: Date, required: true, index: true },
     status: {

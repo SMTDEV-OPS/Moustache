@@ -60,6 +60,7 @@ export interface CreateLeadInput {
     roomCategory?: string;
     roomPreference?: string;
     numberOfGuests?: string;
+    rooms?: { roomCategory?: string; roomPreference?: string; numberOfGuests?: string }[];
   }[];
   heatLevel?: HeatLevel;
   // Additional form fields
@@ -667,19 +668,31 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     customData: input.customData && Object.keys(input.customData).length > 0 ? customDataMap : undefined,
   });
 
-  // Create Itineraries (Line Items)
+  // Create Itineraries (Line Items) - one per hotel; each hotel can have multiple rooms
   if (input.hotels && input.hotels.length > 0) {
     const { LeadItineraryModel } = await import("../models/leadItinerary");
-    const itinerariesToInsert = input.hotels.map(hotel => ({
-      leadId: lead._id,
-      hotelName: hotel.hotelName,
-      propertyId: hotel.propertyId && Types.ObjectId.isValid(hotel.propertyId) ? new Types.ObjectId(hotel.propertyId) : undefined,
-      checkInDate: hotel.checkInDate,
-      checkOutDate: hotel.checkOutDate,
-      roomCategory: hotel.roomCategory,
-      roomPreference: hotel.roomPreference,
-      numberOfGuests: hotel.numberOfGuests,
-    }));
+    const itinerariesToInsert = input.hotels.map((hotel) => {
+      const rooms = hotel.rooms && hotel.rooms.length > 0
+        ? hotel.rooms.map((r) => ({
+            roomCategory: r.roomCategory,
+            roomPreference: r.roomPreference,
+            numberOfGuests: r.numberOfGuests,
+          }))
+        : hotel.roomCategory || hotel.roomPreference || hotel.numberOfGuests
+          ? [{ roomCategory: hotel.roomCategory, roomPreference: hotel.roomPreference, numberOfGuests: hotel.numberOfGuests }]
+          : [];
+      return {
+        leadId: lead._id,
+        hotelName: hotel.hotelName,
+        propertyId: hotel.propertyId && Types.ObjectId.isValid(hotel.propertyId) ? new Types.ObjectId(hotel.propertyId) : undefined,
+        checkInDate: hotel.checkInDate,
+        checkOutDate: hotel.checkOutDate,
+        roomCategory: rooms[0]?.roomCategory ?? hotel.roomCategory,
+        roomPreference: rooms[0]?.roomPreference ?? hotel.roomPreference,
+        numberOfGuests: rooms[0]?.numberOfGuests ?? hotel.numberOfGuests,
+        rooms,
+      };
+    });
     await LeadItineraryModel.insertMany(itinerariesToInsert);
   }
 

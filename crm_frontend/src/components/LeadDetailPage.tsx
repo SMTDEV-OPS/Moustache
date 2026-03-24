@@ -809,9 +809,12 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const bookingWindow = getField(lead, 'bookingWindow', 'booking_window');
   const bookingWindowValue = bookingWindow || '—';
 
-  const primaryGuests = lead?.itineraries?.[0]?.numberOfGuests;
+  const firstItinerary = lead?.itineraries?.[0];
+  const primaryGuests = firstItinerary?.numberOfGuests;
+  const roomLines = (firstItinerary as { rooms?: { roomCategory?: string; numberOfGuests?: string }[] })?.rooms;
+  const roomCount = roomLines?.length ?? 0;
   const occupancy = primaryGuests
-    ? primaryGuests
+    ? primaryGuests + (roomCount > 1 ? ` (${roomCount} rooms)` : "")
     : lead.guests
       ? `${lead.guests.adults || 0} Adults, ${lead.guests.children || 0} Children`
       : "Not specified";

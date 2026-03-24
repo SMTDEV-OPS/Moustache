@@ -71,6 +71,12 @@ async function getTeamMemberIdsForRoleOwner(userId: string): Promise<string[]> {
   }
 }
 
+const roomSchema = z.object({
+  roomCategory: z.string().optional(),
+  roomPreference: z.string().optional(),
+  numberOfGuests: z.string().optional(),
+});
+
 const hotelSchema = z.object({
   hotelName: z.string().optional(),
   propertyId: z.string().optional(),
@@ -79,6 +85,7 @@ const hotelSchema = z.object({
   roomCategory: z.string().optional(),
   roomPreference: z.string().optional(),
   numberOfGuests: z.string().optional(),
+  rooms: z.array(roomSchema).optional(),
 });
 
 const leadCreateSchema = z.object({
@@ -772,20 +779,31 @@ leadsRouter.patch("/:id", async (req, res, next) => {
 
     if (parsed.data.hotels !== undefined) {
       const { LeadItineraryModel } = await import("../models/leadItinerary");
-      // For simplicity, replace all itineraries for this lead
+      const { Types } = await import("mongoose");
       await LeadItineraryModel.deleteMany({ leadId: existing._id });
       if (parsed.data.hotels.length > 0) {
-        const { Types } = await import("mongoose");
-        const itinerariesToInsert = parsed.data.hotels.map((hotel: any) => ({
-          leadId: existing._id,
-          hotelName: hotel.hotelName,
-          propertyId: hotel.propertyId && Types.ObjectId.isValid(hotel.propertyId) ? new Types.ObjectId(hotel.propertyId) : undefined,
-          checkInDate: hotel.checkInDate,
-          checkOutDate: hotel.checkOutDate,
-          roomCategory: hotel.roomCategory,
-          roomPreference: hotel.roomPreference,
-          numberOfGuests: hotel.numberOfGuests,
-        }));
+        const itinerariesToInsert = parsed.data.hotels.map((hotel: any) => {
+          const rooms = hotel.rooms && hotel.rooms.length > 0
+            ? hotel.rooms.map((r: any) => ({
+                roomCategory: r.roomCategory,
+                roomPreference: r.roomPreference,
+                numberOfGuests: r.numberOfGuests,
+              }))
+            : hotel.roomCategory || hotel.roomPreference || hotel.numberOfGuests
+              ? [{ roomCategory: hotel.roomCategory, roomPreference: hotel.roomPreference, numberOfGuests: hotel.numberOfGuests }]
+              : [];
+          return {
+            leadId: existing._id,
+            hotelName: hotel.hotelName,
+            propertyId: hotel.propertyId && Types.ObjectId.isValid(hotel.propertyId) ? new Types.ObjectId(hotel.propertyId) : undefined,
+            checkInDate: hotel.checkInDate ? new Date(hotel.checkInDate) : undefined,
+            checkOutDate: hotel.checkOutDate ? new Date(hotel.checkOutDate) : undefined,
+            roomCategory: rooms[0]?.roomCategory ?? hotel.roomCategory,
+            roomPreference: rooms[0]?.roomPreference ?? hotel.roomPreference,
+            numberOfGuests: rooms[0]?.numberOfGuests ?? hotel.numberOfGuests,
+            rooms,
+          };
+        });
         await LeadItineraryModel.insertMany(itinerariesToInsert);
       }
     }
