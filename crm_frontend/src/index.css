@@ -73,18 +73,18 @@
 
 /* Dark mode — design token overrides */
 .dark {
-  --bg: #111827;
-  --surface: #1f2937;
+  --bg: #181818;
+  --surface: #212121;
   --primary: #6366f1;
   --primary-light: #312e81;
   --secondary: #7c3aed;
   --accent: #ec4899;
-  --text: #f9fafb;
-  --text-muted: #d1d5db;
-  --text-faint: #9ca3af;
-  --border: #374151;
-  --border-light: #4b5563;
-  --hover: #1f2937;
+  --text: #f0f0f0;
+  --text-muted: #b3b3b3;
+  --text-faint: #8c8c8c;
+  --border: #2a2a2a;
+  --border-light: #303030;
+  --hover: #202020;
 
   --hot-bg: #450a0a;
   --hot-text: #fca5a5;

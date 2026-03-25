@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Search, Filter, Plus, Phone, Mail, Calendar as CalendarIcon, Clock, User as UserIcon, TrendingUp, Eye, Users, MessageSquare, AlertTriangle, Trash2, Hotel, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
@@ -28,6 +28,16 @@ import { API_BASE_URL, withAuthHeaders } from "@/services/api";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SendQuotationDialog } from "@/components/SendQuotationDialog";
+import { HotelBookingSection } from "./leads/HotelBookingSection";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import {
+  COUNTRY_PHONE_OPTIONS,
+  parsePhoneForForm,
+  buildE164FromIso,
+  isValidE164Phone,
+} from "@/lib/phoneCountry";
+import type { CountryCode } from "libphonenumber-js";
 
 interface ProfessionalLeadManagementProps {
   userRole: string;
@@ -36,13 +46,21 @@ interface ProfessionalLeadManagementProps {
   permissions?: string[];
 }
 
+const hotelRoomRequestSchema = z.object({
+  roomTypeId: z.string().min(1, "Room type is required"),
+  roomTypeName: z.string().optional(),
+  quantity: z.number().int().min(1).default(1),
+  adults: z.number().int().min(1).default(1),
+  children: z.number().int().min(0).default(0),
+  notes: z.string().optional(),
+});
+
 const hotelEntrySchema = z.object({
-  hotelName: z.string().min(1, "Hotel selection is required"),
+  propertyId: z.string().min(1, "Hotel selection is required"),
+  hotelName: z.string().optional(),
   checkInDate: z.date({ message: "Check-in date is required" }),
   checkOutDate: z.date({ message: "Check-out date is required" }),
-  roomCategory: z.string().min(1, "Room category is required"),
-  roomPreference: z.string().optional(),
-  numberOfGuests: z.string().min(1, "Guest count is required"),
+  roomsRequested: z.array(hotelRoomRequestSchema).min(1, "Add at least one room type"),
 });
 
 const leadFormSchema = z.object({
@@ -52,21 +70,362 @@ const leadFormSchema = z.object({
   // Multiple hotels support
   hotels: z.array(hotelEntrySchema).min(1, "At least one hotel is required"),
   bookingSource: z.string().min(1, "Booking source is required"),
-  guestContactNumber: z.string().min(10, "Valid contact number is required"),
-  guestEmail: z.string().email("Valid email is required"),
-  alternateContact: z.string().optional(),
+  guestContactNumber: z
+    .string()
+    .min(1, "Guest contact number is required")
+    .refine(
+      (v) => isValidE164Phone(v),
+      "Enter a valid international phone number with country code (e.g. +919876543210)"
+    ),
+  guestEmail: z.string().email("Please enter a valid email address"),
+  alternateContact: z
+    .string()
+    .optional()
+    .refine((v) => {
+      if (!v) return true;
+      return isValidE164Phone(v);
+    }, "Enter a valid alternate contact number with country code"),
   occupation: z.string().optional(),
   specialRequests: z.string().optional(),
-  corporateBooking: z.string(),
-  companyName: z.string().optional(),
-  gstin: z.string().optional(),
   leadType: z.string().optional(),
   source: z.string().optional(),
   value: z.string().optional(),
   notes: z.string().optional(),
+  // PMS Booking fields
+  propertyId: z.string().optional(),
+  checkIn: z.string().optional(),
+  checkOut: z.string().optional(),
+  roomTypeId: z.string().optional(),
+  roomTypeName: z.string().optional(),
+  ratePlanId: z.string().optional(),
+  ratePlanName: z.string().optional(),
+  adults: z.number().optional(),
+  children: z.number().optional(),
+  estimatedRate: z.number().optional(),
+  estimatedRoomNights: z.number().optional(),
+  estimatedRevenue: z.number().optional(),
 });
 
 type LeadFormData = z.infer<typeof leadFormSchema>;
+
+const defaultRoomRequest = () => ({
+  roomTypeId: "",
+  roomTypeName: "",
+  quantity: 1,
+  adults: 1,
+  children: 0,
+});
+
+function HotelItineraryCard({
+  index,
+  control,
+  hotelOptions,
+  setValue,
+  getCatalogueForProperty,
+  syncCatalogueForProperty,
+}: {
+  index: number;
+  control: any;
+  hotelOptions: Property[];
+  setValue: (name: any, value: any) => void;
+  getCatalogueForProperty: (propertyId: string) => RoomCatalogue | undefined;
+  syncCatalogueForProperty: (propertyId: string) => Promise<void>;
+}) {
+  const propertyId: string = useWatch({ control, name: `hotels.${index}.propertyId` }) || "";
+  const roomsRequested = useFieldArray({
+    control,
+    name: `hotels.${index}.roomsRequested`,
+  });
+
+  const catalogue = propertyId ? getCatalogueForProperty(propertyId) : undefined;
+  const roomTypes = catalogue?.roomTypes || [];
+  const [syncingCatalogue, setSyncingCatalogue] = useState(false);
+  const roomsReqWatch = useWatch({
+    control,
+    name: `hotels.${index}.roomsRequested`,
+  }) as { roomTypeId?: string; roomTypeName?: string }[] | undefined;
+
+  return (
+    <div className="relative p-4 border rounded-lg bg-gray-50/50 space-y-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <FormField
+          control={control}
+          name={`hotels.${index}.propertyId`}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Hotel Name *</FormLabel>
+              <SearchableSelect
+                options={
+                  hotelOptions.length
+                    ? hotelOptions.map((p) => ({
+                        value: p._id,
+                        label: p.name,
+                      }))
+                    : [
+                        { value: "", label: "No PMS hotels available", disabled: true },
+                      ]
+                }
+                value={field.value}
+                disabled={!hotelOptions.length}
+                placeholder="Select Hotel"
+                onValueChange={(val) => {
+                  field.onChange(val);
+                  const selectedProperty = hotelOptions.find((p) => p._id === val);
+                  setValue(`hotels.${index}.hotelName`, selectedProperty?.name || "");
+                  // Reset rooms when hotel changes
+                  setValue(`hotels.${index}.roomsRequested`, [defaultRoomRequest()]);
+                }}
+              />
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={control}
+            name={`hotels.${index}.checkInDate`}
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Check In Date *</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full pl-3 text-left font-normal",
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value || undefined}
+                      onSelect={field.onChange}
+                      disabled={(date) => date < new Date()}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name={`hotels.${index}.checkOutDate`}
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Check Out Date *</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full pl-3 text-left font-normal",
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value || undefined}
+                      onSelect={field.onChange}
+                      disabled={(date) => date < new Date()}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium">Room Types *</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => roomsRequested.append(defaultRoomRequest())}
+            disabled={!propertyId}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Room Type
+          </Button>
+        </div>
+
+        {!propertyId ? (
+          <div className="text-sm text-muted-foreground">Select a hotel to load room types.</div>
+        ) : roomTypes.length === 0 ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>No room types found for this hotel.</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={syncingCatalogue}
+              onClick={async () => {
+                setSyncingCatalogue(true);
+                try {
+                  await syncCatalogueForProperty(propertyId);
+                } finally {
+                  setSyncingCatalogue(false);
+                }
+              }}
+            >
+              Sync PMS catalogue
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="space-y-3">
+          {roomsRequested.fields.map((rf, roomIndex) => (
+            <div key={rf.id} className="grid grid-cols-12 gap-3 items-end">
+              <div className="col-span-12 md:col-span-5">
+                <FormField
+                  control={control}
+                  name={`hotels.${index}.roomsRequested.${roomIndex}.roomTypeId`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Room Type</FormLabel>
+                      <Select
+                        onValueChange={(val) => {
+                          field.onChange(val);
+                          const rt = roomTypes.find((r) => r.roomTypeId === val);
+                          setValue(
+                            `hotels.${index}.roomsRequested.${roomIndex}.roomTypeName`,
+                            rt?.roomTypeName || ""
+                          );
+                        }}
+                        value={field.value}
+                        disabled={!propertyId}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select room type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {field.value &&
+                            !roomTypes.some((r) => r.roomTypeId === field.value) && (
+                              <SelectItem value={field.value}>
+                                {resolveRoomTypeDisplayName(
+                                  field.value,
+                                  roomsReqWatch?.[roomIndex]?.roomTypeName,
+                                  roomTypes
+                                )}
+                              </SelectItem>
+                            )}
+                          {roomTypes.map((rt) => (
+                            <SelectItem key={rt.roomTypeId} value={rt.roomTypeId}>
+                              {resolveRoomTypeDisplayName(rt.roomTypeId, rt.roomTypeName, roomTypes)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="col-span-4 md:col-span-2">
+                <FormField
+                  control={control}
+                  name={`hotels.${index}.roomsRequested.${roomIndex}.quantity`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Qty</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={field.value ?? 1}
+                          onChange={(e) => field.onChange(Number(e.target.value) || 1)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="col-span-4 md:col-span-2">
+                <FormField
+                  control={control}
+                  name={`hotels.${index}.roomsRequested.${roomIndex}.adults`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Adults</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={field.value ?? 1}
+                          onChange={(e) => field.onChange(Number(e.target.value) || 1)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="col-span-4 md:col-span-2">
+                <FormField
+                  control={control}
+                  name={`hotels.${index}.roomsRequested.${roomIndex}.children`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Children</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={field.value ?? 0}
+                          onChange={(e) => field.onChange(Number(e.target.value) || 0)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="col-span-12 md:col-span-1 flex md:justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => roomsRequested.remove(roomIndex)}
+                  disabled={roomsRequested.fields.length <= 1}
+                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const ProfessionalLeadManagement = ({
   userRole,
@@ -99,6 +458,7 @@ const ProfessionalLeadManagement = ({
   const [customFields, setCustomFields] = useState<any[]>([]);
   const [customData, setCustomData] = useState<Record<string, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [catalogueByPropertyId, setCatalogueByPropertyId] = useState<Record<string, RoomCatalogue>>({});
 
   const canViewTeamLeads =
     !!permissions?.includes("leads.view.team") ||
@@ -201,10 +561,10 @@ const ProfessionalLeadManagement = ({
     const fetchPmsHotels = async () => {
       try {
         const properties = await listProperties();
-        const pmsEnabledHotels = properties.filter(
-          (property) => property.status === "ACTIVE" && property.pmsProvider && property.pmsProvider !== "NONE"
+        const activeHotels = properties.filter(
+          (property) => property.status === "ACTIVE"
         );
-        setHotelOptions(pmsEnabledHotels);
+        setHotelOptions(activeHotels);
       } catch (err) {
         console.error("Failed to fetch PMS hotels", err);
         setHotelOptions([]);
@@ -238,12 +598,13 @@ const ProfessionalLeadManagement = ({
       lastName: "",
       hotels: [
         {
+          propertyId: "",
           hotelName: "",
           checkInDate: undefined as unknown as Date,
           checkOutDate: undefined as unknown as Date,
-          roomCategory: "",
-          roomPreference: "",
-          numberOfGuests: "",
+          roomsRequested: [
+            { roomTypeId: "", roomTypeName: "", quantity: 1, adults: 1, children: 0 }
+          ],
         }
       ],
       bookingSource: "",
@@ -252,15 +613,66 @@ const ProfessionalLeadManagement = ({
       alternateContact: "",
       occupation: "",
       specialRequests: "",
-      corporateBooking: "no",
-      companyName: "",
-      gstin: "",
       leadType: "",
       source: "",
       value: "",
       notes: "",
+      propertyId: "",
+      checkIn: "",
+      checkOut: "",
+      roomTypeId: "",
+      roomTypeName: "",
+      ratePlanId: "",
+      ratePlanName: "",
+      adults: 1,
+      children: 0,
+      estimatedRate: 0,
+      estimatedRoomNights: 0,
+      estimatedRevenue: 0,
     },
   });
+
+  const syncCatalogueForProperty = useCallback(async (propertyId: string) => {
+    try {
+      const cat = await syncRoomCatalogue(propertyId);
+      setCatalogueByPropertyId((prev) => ({ ...prev, [propertyId]: cat }));
+      toast.success("PMS room catalogue updated");
+    } catch (e) {
+      console.error(e);
+      toast.error("Could not sync PMS catalogue");
+    }
+  }, []);
+
+  // PMS room types per selected hotel + primary availability property (cached by propertyId)
+  const watchedHotels = useWatch({ control: form.control, name: "hotels" }) as any[] | undefined;
+  const watchedPrimaryPropertyId = useWatch({ control: form.control, name: "propertyId" }) as string | undefined;
+  useEffect(() => {
+    const fromHotels = (watchedHotels || [])
+      .map((h) => h?.propertyId)
+      .filter((v): v is string => typeof v === "string" && v.length > 0);
+    const primary =
+      typeof watchedPrimaryPropertyId === "string" && watchedPrimaryPropertyId.length > 0
+        ? watchedPrimaryPropertyId
+        : null;
+    const ids = new Set<string>(fromHotels);
+    if (primary) ids.add(primary);
+
+    for (const propertyId of ids) {
+      if (catalogueByPropertyId[propertyId]) continue;
+      getRoomCatalogue(propertyId)
+        .then((cat) => {
+          setCatalogueByPropertyId((prev) => (prev[propertyId] ? prev : { ...prev, [propertyId]: cat }));
+        })
+        .catch(() => {
+          setCatalogueByPropertyId((prev) =>
+            prev[propertyId] ? prev : { ...prev, [propertyId]: { roomTypes: [], ratePlans: [] } }
+          );
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedHotels, watchedPrimaryPropertyId]);
+
+  const getCatalogueForProperty = (propertyId: string) => catalogueByPropertyId[propertyId];
 
   const { fields: hotelFields, append: appendHotel, remove: removeHotel } = useFieldArray({
     control: form.control,
@@ -269,12 +681,13 @@ const ProfessionalLeadManagement = ({
 
   const addNewHotel = () => {
     appendHotel({
+      propertyId: "",
       hotelName: "",
       checkInDate: undefined as unknown as Date,
       checkOutDate: undefined as unknown as Date,
-      roomCategory: "",
-      roomPreference: "",
-      numberOfGuests: ""
+      roomsRequested: [
+        { roomTypeId: "", roomTypeName: "", quantity: 1, adults: 1, children: 0 }
+      ],
     });
   };
 
@@ -518,16 +931,16 @@ const ProfessionalLeadManagement = ({
   };
 
   const bookingSourceToLeadSource: Record<string, string> = {
-    Website: "BRAND_WEBSITE",
-    Email: "EMAIL",
-    Phone: "DIRECT_CALL",
-    "Walk-in": "WALK_IN",
-    "Travel Agent": "TRAVEL_AGENT",
-    Corporate: "CORPORATE_OFFICE",
-    "OTA (Online Travel Agency)": "OTA",
-    "Social Media": "SOCIAL",
-    Referral: "REFERRAL",
-    Other: "MANUAL",
+    DIRECT_CALL: "DIRECT_CALL",
+    WHATSAPP: "WHATSAPP",
+    BRAND_WEBSITE: "BRAND_WEBSITE",
+    EMAIL: "EMAIL",
+    TRAVEL_AGENT: "TRAVEL_AGENT",
+    // Backend doesn't have a separate OTA enum. We persist it as BRAND_WEBSITE.
+    OTA: "BRAND_WEBSITE",
+    REFERRAL: "REFERRAL",
+    MANUAL: "MANUAL",
+    IVR: "IVR",
   };
 
   const leadTypeToEnum: Record<string, string> = {
@@ -548,18 +961,20 @@ const ProfessionalLeadManagement = ({
         .trim();
 
       const hotels = (data.hotels || []).map((hotel: any) => {
-        const selectedProperty = hotelOptions.find((property) => property.name === hotel.hotelName);
+        const selectedProperty = hotelOptions.find((property) => property._id === hotel.propertyId);
         return {
-          hotelName: hotel.hotelName,
-          propertyId: selectedProperty?._id || undefined,
-          checkInDate: hotel.checkInDate ? new Date(hotel.checkInDate) : undefined,
-          checkOutDate: hotel.checkOutDate ? new Date(hotel.checkOutDate) : undefined,
-          roomCategory: hotel.roomCategory || undefined,
-          roomPreference: hotel.roomPreference || undefined,
-          numberOfGuests: hotel.numberOfGuests ? String(hotel.numberOfGuests) : undefined,
-          numberOfRooms: 1,
-          adults: 1,
-          children: 0,
+          hotelName: selectedProperty?.name || hotel.hotelName || undefined,
+          propertyId: hotel.propertyId || undefined,
+          checkInDate: hotel.checkInDate ? new Date(hotel.checkInDate).toISOString() : undefined,
+          checkOutDate: hotel.checkOutDate ? new Date(hotel.checkOutDate).toISOString() : undefined,
+          roomsRequested: (hotel.roomsRequested || []).map((r: any) => ({
+            roomTypeId: r.roomTypeId,
+            roomTypeName: r.roomTypeName,
+            quantity: Number(r.quantity) || 1,
+            adults: Number(r.adults) || 1,
+            children: Number(r.children) || 0,
+            notes: r.notes || undefined,
+          })),
         };
       });
 
@@ -584,12 +999,22 @@ const ProfessionalLeadManagement = ({
         alternateContact: data.alternateContact || undefined,
         occupation: data.occupation || undefined,
         specialRequests: data.specialRequests || undefined,
-        isCorporateBooking: data.corporateBooking === "yes",
-        companyName: data.companyName || undefined,
-        gstin: data.gstin || undefined,
         heatLevel: undefined,
         hotels: hotels.length > 0 ? hotels : undefined,
         customData,
+        propertyId: data.propertyId || undefined,
+        checkIn: data.checkIn ? new Date(data.checkIn).toISOString() : undefined,
+        checkOut: data.checkOut ? new Date(data.checkOut).toISOString() : undefined,
+        roomTypeId: data.roomTypeId || undefined,
+        roomTypeName: data.roomTypeName || undefined,
+        ratePlanId: data.ratePlanId || undefined,
+        ratePlanName: data.ratePlanName || undefined,
+        roomCategory: data.roomTypeName || undefined, // fallback
+        adults: data.adults,
+        children: data.children,
+        estimatedRate: data.estimatedRate,
+        estimatedRoomNights: data.estimatedRoomNights,
+        estimatedRevenue: data.estimatedRevenue,
       };
 
       await createLead(payload);
@@ -700,8 +1125,57 @@ const ProfessionalLeadManagement = ({
                   />
                 </div>
 
+                {/* Primary PMS: live availability check (separate from itinerary hotels below) */}
+                <div className="space-y-4 pt-4 border-t border-gray-100 mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Hotel className="h-5 w-5" />
+                    PMS availability check
+                  </h3>
+                  <div className="mb-4">
+                    <Label>Property for availability check</Label>
+                    <SearchableSelect
+                      options={[
+                        { value: "", label: "None", disabled: false },
+                        ...hotelOptions.map((property) => ({
+                          value: property._id,
+                          label: property.name,
+                        })),
+                      ]}
+                      value={form.watch("propertyId") || ""}
+                      placeholder="Select a Property..."
+                      onValueChange={(val) =>
+                        form.setValue("propertyId", val ? val : "")
+                      }
+                    />
+                  </div>
+
+                  {form.watch("propertyId") && (
+                    <HotelBookingSection
+                      propertyId={form.watch("propertyId")!}
+                      value={{
+                        checkIn: form.watch("checkIn"),
+                        checkOut: form.watch("checkOut"),
+                        roomTypeId: form.watch("roomTypeId"),
+                        roomTypeName: form.watch("roomTypeName"),
+                        ratePlanId: form.watch("ratePlanId"),
+                        ratePlanName: form.watch("ratePlanName"),
+                        adults: form.watch("adults"),
+                        children: form.watch("children"),
+                        estimatedRate: form.watch("estimatedRate"),
+                        estimatedRoomNights: form.watch("estimatedRoomNights"),
+                        estimatedRevenue: form.watch("estimatedRevenue"),
+                      }}
+                      onChange={(patch) => {
+                        Object.entries(patch).forEach(([key, value]) => {
+                          form.setValue(key as any, value);
+                        });
+                      }}
+                    />
+                  )}
+                </div>
+
                 {/* Multiple Hotels Section */}
-                <div className="space-y-4">
+                <div className="space-y-4 pt-4 border-t border-gray-100">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                       <Hotel className="h-5 w-5" />
@@ -720,7 +1194,7 @@ const ProfessionalLeadManagement = ({
                   </div>
 
                   {hotelFields.map((hotel, index) => (
-                    <div key={hotel.id} className="relative p-4 border rounded-lg bg-gray-50/50 space-y-4">
+                    <div key={hotel.id} className="relative space-y-4">
                       {hotelFields.length > 1 && (
                         <div className="absolute top-2 right-2 flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">Hotel {index + 1}</Badge>
@@ -735,183 +1209,13 @@ const ProfessionalLeadManagement = ({
                           </Button>
                         </div>
                       )}
-
-                      <FormField
+                      <HotelItineraryCard
+                        index={index}
                         control={form.control}
-                        name={`hotels.${index}.hotelName`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Hotel Name *</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select Hotel" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {hotelOptions.length > 0 ? (
-                                  hotelOptions.map((property) => (
-                                    <SelectItem key={property._id} value={property.name}>
-                                      {property.name}
-                                    </SelectItem>
-                                  ))
-                                ) : (
-                                  <SelectItem value="no-hotels-available" disabled>
-                                    No PMS hotels available
-                                  </SelectItem>
-                                )}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={form.control}
-                          name={`hotels.${index}.checkInDate`}
-                          render={({ field }) => (
-                            <FormItem className="flex flex-col">
-                              <FormLabel>Check In Date *</FormLabel>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <FormControl>
-                                    <Button
-                                      variant={"outline"}
-                                      className={cn(
-                                        "w-full pl-3 text-left font-normal",
-                                        !field.value && "text-muted-foreground"
-                                      )}
-                                    >
-                                      {field.value ? (
-                                        format(field.value, "PPP")
-                                      ) : (
-                                        <span>Pick a date</span>
-                                      )}
-                                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                    </Button>
-                                  </FormControl>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="start">
-                                  <Calendar
-                                    mode="single"
-                                    selected={field.value || undefined}
-                                    onSelect={field.onChange}
-                                    disabled={(date) => date < new Date()}
-                                    initialFocus
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`hotels.${index}.checkOutDate`}
-                          render={({ field }) => (
-                            <FormItem className="flex flex-col">
-                              <FormLabel>Check Out Date *</FormLabel>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <FormControl>
-                                    <Button
-                                      variant={"outline"}
-                                      className={cn(
-                                        "w-full pl-3 text-left font-normal",
-                                        !field.value && "text-muted-foreground"
-                                      )}
-                                    >
-                                      {field.value ? (
-                                        format(field.value, "PPP")
-                                      ) : (
-                                        <span>Pick a date</span>
-                                      )}
-                                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                    </Button>
-                                  </FormControl>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="start">
-                                  <Calendar
-                                    mode="single"
-                                    selected={field.value || undefined}
-                                    onSelect={field.onChange}
-                                    disabled={(date) => date < new Date()}
-                                    initialFocus
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={form.control}
-                          name={`hotels.${index}.roomCategory`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Room Category *</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select Room Category" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="standard">Standard Room</SelectItem>
-                                  <SelectItem value="deluxe">Deluxe Room</SelectItem>
-                                  <SelectItem value="suite">Suite</SelectItem>
-                                  <SelectItem value="villa">Villa</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`hotels.${index}.roomPreference`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Room Preference</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., Sea view, Garden view" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <FormField
-                        control={form.control}
-                        name={`hotels.${index}.numberOfGuests`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Number of Guests *</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select Guest Count" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="1">1 Guest</SelectItem>
-                                <SelectItem value="2">2 Guests</SelectItem>
-                                <SelectItem value="3">3 Guests</SelectItem>
-                                <SelectItem value="4">4 Guests</SelectItem>
-                                <SelectItem value="5">5 Guests</SelectItem>
-                                <SelectItem value="6">6 Guests</SelectItem>
-                                <SelectItem value="7+">7+ Guests</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
+                        hotelOptions={hotelOptions}
+                        setValue={form.setValue}
+                        getCatalogueForProperty={getCatalogueForProperty}
+                        syncCatalogueForProperty={syncCatalogueForProperty}
                       />
                     </div>
                   ))}
@@ -923,7 +1227,7 @@ const ProfessionalLeadManagement = ({
                   name="bookingSource"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Booking Source *</FormLabel>
+                      <FormLabel>Lead Source *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -931,16 +1235,15 @@ const ProfessionalLeadManagement = ({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="Website">Website</SelectItem>
-                          <SelectItem value="Email">Email</SelectItem>
-                          <SelectItem value="Phone">Phone</SelectItem>
-                          <SelectItem value="Walk-in">Walk-in</SelectItem>
-                          <SelectItem value="Travel Agent">Travel Agent</SelectItem>
-                          <SelectItem value="Corporate">Corporate</SelectItem>
-                          <SelectItem value="OTA">OTA (Online Travel Agency)</SelectItem>
-                          <SelectItem value="Social Media">Social Media</SelectItem>
-                          <SelectItem value="Referral">Referral</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
+                          <SelectItem value="DIRECT_CALL">Direct Call</SelectItem>
+                          <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
+                          <SelectItem value="BRAND_WEBSITE">Website</SelectItem>
+                          <SelectItem value="EMAIL">Email</SelectItem>
+                          <SelectItem value="TRAVEL_AGENT">Travel Agent</SelectItem>
+                          <SelectItem value="OTA">OTA</SelectItem>
+                          <SelectItem value="REFERRAL">Referral</SelectItem>
+                          <SelectItem value="MANUAL">Manual</SelectItem>
+                          <SelectItem value="IVR">IVR</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -952,28 +1255,77 @@ const ProfessionalLeadManagement = ({
                   <FormField
                     control={form.control}
                     name="guestContactNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Guest Contact Number *</FormLabel>
-                        <FormControl>
-                          <Input placeholder="+91 XXXXX XXXXX" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      const parsed = parsePhoneForForm(field.value);
+                      return (
+                        <FormItem>
+                          <FormLabel>Guest Contact Number *</FormLabel>
+                          <div className="flex gap-2">
+                            <SearchableSelect
+                              options={COUNTRY_PHONE_OPTIONS}
+                              value={parsed.iso}
+                              placeholder="Country / code"
+                              triggerClassName="w-[min(260px,42vw)] shrink-0"
+                              contentClassName="w-[min(360px,calc(100vw-2rem))]"
+                              onValueChange={(iso) => {
+                                field.onChange(
+                                  buildE164FromIso(iso as CountryCode, parsed.nationalDigits)
+                                );
+                              }}
+                            />
+                            <Input
+                              className="min-w-0 flex-1"
+                              value={parsed.nationalDigits}
+                              inputMode="tel"
+                              autoComplete="tel-national"
+                              placeholder="National number"
+                              onChange={(e) => {
+                                const local = e.target.value.replace(/\D/g, "").slice(0, 18);
+                                field.onChange(buildE164FromIso(parsed.iso, local));
+                              }}
+                            />
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
                   />
                   <FormField
                     control={form.control}
                     name="alternateContact"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Alternate Contact</FormLabel>
-                        <FormControl>
-                          <Input placeholder="+91 XXXXX XXXXX" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      const parsed = parsePhoneForForm(field.value);
+                      return (
+                        <FormItem>
+                          <FormLabel>Alternate Contact</FormLabel>
+                          <div className="flex gap-2">
+                            <SearchableSelect
+                              options={COUNTRY_PHONE_OPTIONS}
+                              value={parsed.iso}
+                              placeholder="Country / code"
+                              triggerClassName="w-[min(260px,42vw)] shrink-0"
+                              contentClassName="w-[min(360px,calc(100vw-2rem))]"
+                              onValueChange={(iso) => {
+                                const next = buildE164FromIso(iso as CountryCode, parsed.nationalDigits);
+                                field.onChange(next || "");
+                              }}
+                            />
+                            <Input
+                              className="min-w-0 flex-1"
+                              value={parsed.nationalDigits}
+                              inputMode="tel"
+                              autoComplete="tel-national"
+                              placeholder="National number"
+                              onChange={(e) => {
+                                const local = e.target.value.replace(/\D/g, "").slice(0, 18);
+                                field.onChange(buildE164FromIso(parsed.iso, local) || "");
+                              }}
+                            />
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
                   />
                 </div>
 
@@ -1022,64 +1374,6 @@ const ProfessionalLeadManagement = ({
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="corporateBooking"
-                  render={({ field }) => (
-                    <FormItem className="space-y-3">
-                      <FormLabel>Is this a Corporate Booking?</FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                          className="flex flex-row space-x-6"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="yes" id="yes" />
-                            <Label htmlFor="yes">Yes</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="no" id="no" />
-                            <Label htmlFor="no">No</Label>
-                          </div>
-                        </RadioGroup>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {form.watch("corporateBooking") === "yes" && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="companyName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Company Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Company Name" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="gstin"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>GSTIN</FormLabel>
-                          <FormControl>
-                            <Input placeholder="GSTIN Number" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
 
                 {/* Lead Type and Source */}
                 <div className="grid grid-cols-2 gap-4">

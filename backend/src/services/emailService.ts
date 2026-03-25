@@ -11,6 +11,8 @@ import { CommunicationModel } from "../models/communication";
 import { CommunicationChannel, CommunicationDirection } from "../models/common";
 import { handleClientResponse } from "./clientResponseService";
 import { processInboundEmailForLeads } from "./emailLeadParser";
+import { normalizeEmail } from "../utils/phoneUtils";
+import { emitToUser, getIO } from "../websocket";
 
 /**
  * Get email provider instance based on account type
@@ -37,13 +39,18 @@ export async function linkEmailToCRM(email: Partial<IEmailMessage>) {
     email.from?.email,
     ...(email.to?.map((t) => t.email) || []),
     ...(email.cc?.map((c) => c.email) || []),
-  ].filter((e): e is string => !!e);
+  ]
+    .filter((e): e is string => !!e)
+    .map((e) => normalizeEmail(e))
+    .filter((e): e is string => !!e);
 
   let linkedLeadId: Types.ObjectId | undefined;
   let linkedGuestId: Types.ObjectId | undefined;
 
   for (const emailAddr of guestEmails) {
-    const guest = await GuestModel.findOne({ email: emailAddr }).lean();
+    const guest = await GuestModel.findOne({
+      $or: [{ email: emailAddr }, { secondaryEmails: emailAddr }],
+    }).lean();
     if (guest) {
       linkedGuestId = guest._id as Types.ObjectId;
       email.linkedGuestId = linkedGuestId;
@@ -82,7 +89,7 @@ export async function linkEmailToCRM(email: Partial<IEmailMessage>) {
         // Check if this is a reply to a sent email by looking at inReplyTo
         const isReply = !!email.inReplyTo;
 
-        await CommunicationModel.create({
+        const created = await CommunicationModel.create({
           leadId: linkedLeadId,
           guestId: linkedGuestId,
           channel: CommunicationChannel.EMAIL,
@@ -91,6 +98,11 @@ export async function linkEmailToCRM(email: Partial<IEmailMessage>) {
           messageContent: email.bodyText || email.bodyHtml,
           emailMessageId: email._id as Types.ObjectId,
         });
+
+        const io = getIO();
+        if (io) {
+          io.to(`lead:${linkedLeadId.toString()}`).emit("lead:email_received", created.toObject());
+        }
 
         logger.info("Created communication record for inbound email", {
           emailMessageId: email.messageId,
@@ -385,6 +397,20 @@ export async function syncEmails(accountId: string): Promise<{ syncedCount: numb
                 { _id: savedEmail._id },
                 { $set: { linkedLeadId: emailData.linkedLeadId, linkedGuestId: emailData.linkedGuestId } }
               );
+            }
+
+            // Notify the owning user (EmailClient listens for this)
+            if (savedEmail.folder === "INBOX") {
+              emitToUser(account.userId.toString(), "EMAIL_RECEIVED", { emailId: savedEmail._id.toString() });
+            }
+
+            // Notify lead room listeners (LeadDetailPage refreshes timeline)
+            if (savedEmail.folder !== "SENT" && (emailData.linkedLeadId || savedEmail.linkedLeadId)) {
+              const leadId = (emailData.linkedLeadId || savedEmail.linkedLeadId) as any;
+              const io = getIO();
+              if (io) {
+                io.to(`lead:${String(leadId)}`).emit("lead:email_received");
+              }
             }
 
             // Check if this is a client response and handle it

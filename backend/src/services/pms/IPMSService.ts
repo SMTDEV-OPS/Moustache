@@ -49,6 +49,23 @@ export interface BookingResponse {
     message?: string;
 }
 
+/** Room / rate plan master data (e.g. eZee RoomInfo) — used to enrich catalogue with human-readable names. */
+export interface RoomMasterRoomType {
+    roomTypeId: string;
+    roomTypeName: string;
+}
+
+export interface RoomMasterRatePlan {
+    ratePlanId: string;
+    ratePlanName: string;
+    roomTypeId?: string;
+}
+
+export interface RoomMasterCatalog {
+    roomTypes: RoomMasterRoomType[];
+    ratePlans: RoomMasterRatePlan[];
+}
+
 export interface IPMSService {
     getInventory(
         startDate: string,
@@ -59,6 +76,12 @@ export interface IPMSService {
         startDate: string,
         endDate: string
     ): Promise<RoomRate[]>;
+
+    /**
+     * Optional: room type names and rate plan names from PMS master data.
+     * eZee Inventory/Rate XML often omits room names; RoomInfo JSON provides ID + Name.
+     */
+    getRoomMasterCatalog?(): Promise<RoomMasterCatalog | null>;
 
     createBooking(
         bookingDetails: BookingRequest

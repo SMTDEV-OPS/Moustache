@@ -138,7 +138,7 @@ function SortableRow({
       style={{
         ...style,
         background: "var(--surface)",
-        opacity: isDragging ? 0.6 : 1,
+        opacity: isDragging ? 0.6 : field.is_active ? 1 : 0.72,
       }}
       className="group"
     >
@@ -154,7 +154,25 @@ function SortableRow({
         </button>
       </td>
       <td style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>{field.label || field.name}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>{field.label || field.name}</span>
+          {!field.is_active && (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "#6b7280",
+                background: "#f3f4f6",
+                padding: "2px 6px",
+                borderRadius: 4,
+              }}
+            >
+              Inactive
+            </span>
+          )}
+        </div>
         <div style={{ fontSize: 11, fontFamily: "monospace", color: "#6b7280", marginTop: 2 }}>{field.slug}</div>
       </td>
       <td style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
@@ -241,9 +259,9 @@ function SortableRow({
             <Pencil size={14} strokeWidth={1.5} />
           </button>
           <div
-            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            className={field.is_active ? "opacity-0 group-hover:opacity-100 transition-opacity" : "opacity-100"}
             style={{ display: "flex", alignItems: "center", padding: "0 4px", transform: "scale(0.85)" }}
-            title={field.is_active ? "Deactivate field" : "Activate field"}
+            title={field.is_active ? "Deactivate field (hidden from add-lead and other forms)" : "Activate field"}
           >
             <Toggle checked={field.is_active} onChange={(v) => onToggleActive(field, v)} />
           </div>

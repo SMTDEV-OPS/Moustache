@@ -16,6 +16,7 @@ export interface IProperty extends Document {
     authCode?: string;
     username?: string;
   };
+  roomCategories?: string[];
   lastSyncedAt?: Date;
 }
 
@@ -40,6 +41,7 @@ const propertySchema = new Schema<IProperty>(
       authCode: String,
       username: String,
     },
+    roomCategories: [{ type: String }],
     lastSyncedAt: Date,
   },
   { timestamps: true }

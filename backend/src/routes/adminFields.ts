@@ -74,21 +74,35 @@ const validateFieldPayload = async (req: Request, res: Response, next: NextFunct
     next();
 };
 
+/** Maps entity_type to legacy `module` values stored on older CustomField documents */
+function legacyModuleForEntity(entity: string): string | undefined {
+    if (entity === "lead") return "leads";
+    if (entity === "contact") return "contacts";
+    if (entity === "deal") return "accounts";
+    return undefined;
+}
+
 /**
  * GET /api/admin/fields
- * List all fields for a given entity type, sorted by display_order
+ * List all fields for a given entity (including inactive) — Field Builder must show every definition.
+ * Older rows may only have `module` set (e.g. "leads") without `entity_type`; include those via $or.
  */
 router.get("/", async (req: Request, res: Response) => {
     try {
-        const entity_type = (req.query.entity as string) || "lead";
+        const raw = (req.query.entity as string) || "lead";
+        const valid: EntityType[] = ["lead", "contact", "deal"];
+        const entity_type = (valid.includes(raw as EntityType) ? raw : "lead") as EntityType;
+        const legacyModule = legacyModuleForEntity(entity_type);
 
-        const fields = await CustomFieldModel.find({ entity_type })
+        const orClause: Record<string, unknown>[] = [{ entity_type }];
+        if (legacyModule) {
+            orClause.push({ module: legacyModule });
+        }
+
+        const fields = await CustomFieldModel.find({ $or: orClause })
             .sort({ display_order: 1, order: 1 });
 
-        // Some records may use legacy `isActive` while others use the newer `is_active`.
-        // Treat a field as active only when BOTH flags are not explicitly false.
-        const activeFields = fields.filter((f: any) => f.is_active !== false && f.isActive !== false);
-        res.json(activeFields);
+        res.json(fields);
     } catch (error: any) {
         console.error("Error listing custom fields:", error);
         res.status(500).json({ message: "Server error", error: error.message });
@@ -177,6 +191,14 @@ router.put("/:id", validateFieldPayload, async (req: Request, res: Response) => 
         // Prevent changing slug during update to avoid data loss on Leads
         delete req.body.slug;
         delete req.body.entity_type; // Prevent moving entities
+
+        // Keep legacy `isActive` in sync with `is_active` (add-lead uses /custom-fields which filters on isActive)
+        if (typeof req.body.is_active === "boolean") {
+            req.body.isActive = req.body.is_active;
+        }
+        if (typeof req.body.isActive === "boolean" && typeof req.body.is_active !== "boolean") {
+            req.body.is_active = req.body.isActive;
+        }
 
         const existingField = await CustomFieldModel.findById(id).lean();
         const updatedField = await CustomFieldModel.findByIdAndUpdate(

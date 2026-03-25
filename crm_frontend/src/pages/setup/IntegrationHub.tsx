@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Plug, Trash2, Eye, EyeOff } from "lucide-react";
 import {
   listIntegrations,
@@ -52,6 +52,11 @@ export function IntegrationHub() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [mappings, setMappings] = useState<any[]>([]);
   const [newMapping, setNewMapping] = useState({ source: "", target: "" });
+
+  const activeCrmFields = useMemo(
+    () => fields.filter((f) => f.is_active),
+    [fields]
+  );
 
   const load = useCallback(async () => {
     try {
@@ -349,7 +354,7 @@ export function IntegrationHub() {
                     style={{ flex: 1 }}
                   >
                     <option value="">Select CRM field</option>
-                    {fields.map((f) => (
+                    {activeCrmFields.map((f) => (
                       <option key={f._id} value={f.slug}>{f.label || f.name}</option>
                     ))}
                   </Select>

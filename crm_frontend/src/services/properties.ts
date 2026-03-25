@@ -16,6 +16,7 @@ export interface Property {
     hotelCode?: string;
     authCode?: string;
   };
+  roomCategories?: string[];
   lastSyncedAt?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -36,6 +37,7 @@ export interface CreatePropertyInput {
     hotelCode?: string;
     authCode?: string;
   };
+  roomCategories?: string[];
 }
 
 export interface UpdatePropertyInput {
@@ -53,6 +55,7 @@ export interface UpdatePropertyInput {
     hotelCode?: string;
     authCode?: string;
   };
+  roomCategories?: string[];
 }
 
 export type ReservationStatus =

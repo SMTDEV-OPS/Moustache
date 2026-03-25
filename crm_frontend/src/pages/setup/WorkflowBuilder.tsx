@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Play } from "lucide-react";
 import {
   listAdminWorkflows,
@@ -68,6 +68,11 @@ export function WorkflowBuilder() {
   const [form, setForm] = useState<Partial<AdminWorkflow>>({});
   const [testLeadId, setTestLeadId] = useState("");
   const [testResult, setTestResult] = useState<any>(null);
+
+  const activeLeadFields = useMemo(
+    () => fields.filter((f) => f.is_active),
+    [fields]
+  );
 
   const load = useCallback(async () => {
     try {
@@ -428,7 +433,7 @@ export function WorkflowBuilder() {
                     }
                     style={{ flex: 1 }}
                   >
-                    {fields.map((f) => (
+                    {activeLeadFields.map((f) => (
                       <option key={f._id} value={f.slug}>{f.label || f.name}</option>
                     ))}
                   </Select>
@@ -685,7 +690,7 @@ export function WorkflowBuilder() {
                           style={{ border: "1px solid #e5e7eb", borderRadius: 6, height: 34, fontSize: 14, padding: "0 10px" }}
                         >
                           <option value="">Select Field...</option>
-                          {fields.map(f => <option key={f._id} value={f.slug}>{f.name}</option>)}
+                          {activeLeadFields.map(f => <option key={f._id} value={f.slug}>{f.name}</option>)}
                         </Select>
                         <Input
                           placeholder="Value"

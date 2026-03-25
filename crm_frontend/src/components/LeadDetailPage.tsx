@@ -483,7 +483,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     try {
       setIsLoadingFields(true);
       const fields = await listAdminFields("lead");
-      setCustomFields(fields.sort((a, b) => a.display_order - b.display_order));
+      const activeOnly = fields.filter((f) => f.is_active);
+      setCustomFields(activeOnly.sort((a, b) => a.display_order - b.display_order));
     } catch (error) {
       console.error("Failed to load custom fields:", error);
       setCustomFields([]);
@@ -1203,7 +1204,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                         </span>
                         {task.status === "OPEN" && (
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="sm"
                             onClick={() => handleCompleteTask(task)}
                             className="rounded-md border-gray-200"
@@ -1234,7 +1235,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                             Confirm Complete
                           </Button>
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="sm"
                             onClick={() => {
                               setCompletingTaskId(null);
@@ -1465,8 +1466,16 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         onOpenChange={setIsEditLeadDetailsDialogOpen}
         customFields={customFields}
         currentDetails={{
+          propertyId: lead.propertyId,
           checkInDate: primaryCheckIn,
           checkOutDate: primaryCheckOut,
+          roomTypeId: lead.roomTypeId,
+          roomTypeName: lead.roomTypeName,
+          ratePlanId: lead.ratePlanId,
+          ratePlanName: lead.ratePlanName,
+          estimatedRate: lead.estimatedRate,
+          estimatedRoomNights: lead.estimatedRoomNights,
+          estimatedRevenue: lead.estimatedRevenue,
           roomsRequested: (lead as any).roomsRequested,
           guests: lead.guests,
           occasion: (lead as any).occasion,

@@ -19,7 +19,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Calendar as CalendarIcon, Hotel } from "lucide-react";
 import { format } from "date-fns";
-import { checkAvailability, getRates, createBooking, RoomAvailability, RoomRate } from "@/services/pms";
+import { checkAvailability, getRates, createBooking, RoomAvailability, RoomRate, resolveRoomTypeDisplayName } from "@/services/pms";
 import { LeadDetail } from "@/services/leads";
 
 interface CreateBookingDialogProps {
@@ -182,7 +182,7 @@ export function CreateBookingDialog({
                             <SelectContent>
                                 {availableRooms.map((room, idx) => (
                                     <SelectItem key={`${room.roomTypeId}-${idx}`} value={room.roomTypeId}>
-                                        {room.roomTypeName || room.roomTypeId} ({room.availableCount} available)
+                                        {resolveRoomTypeDisplayName(room.roomTypeId, room.roomTypeName, undefined)} ({room.availableCount} available)
                                     </SelectItem>
                                 ))}
                             </SelectContent>

@@ -634,12 +634,12 @@ video {
 }
 
 .dark {
-  --background: 222.2 47.4% 11.2%;
-  --foreground: 210 40% 96%;
-  --card: 222.2 47.4% 11.2%;
-  --card-foreground: 210 40% 96%;
-  --popover: 222.2 47.4% 11.2%;
-  --popover-foreground: 210 40% 96%;
+  --background: 0 0% 9.4%;
+  --foreground: 0 0% 90%;
+  --card: 0 0% 9.4%;
+  --card-foreground: 0 0% 90%;
+  --popover: 0 0% 9.4%;
+  --popover-foreground: 0 0% 90%;
   --primary: 160 84% 39%;
   --primary-foreground: 0 0% 100%;
   --primary-glow: 160 84% 45%;
@@ -655,14 +655,14 @@ video {
   --border: 214.3 31.8% 20%;
   --input: 214.3 31.8% 20%;
   --ring: 160 84% 39%;
-  --sidebar-background: 222.2 47.4% 8%;
-  --sidebar-foreground: 210 40% 96%;
-  --sidebar-primary: 160 84% 39%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 160 84% 39%;
-  --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-border: 214.3 31.8% 20%;
-  --sidebar-ring: 160 84% 39%;
+  --sidebar-background: 0 0% 9.4%;
+  --sidebar-foreground: 0 0% 70%;
+  --sidebar-primary: 0 0% 16.5%;
+  --sidebar-primary-foreground: 0 0% 90%;
+  --sidebar-accent: 0 0% 12.9%;
+  --sidebar-accent-foreground: 0 0% 90%;
+  --sidebar-border: 0 0% 16.5%;
+  --sidebar-ring: 0 0% 20%;
   /* Semantic colors for dark mode */
   --success: 142 71% 55%;
   --success-foreground: 0 0% 100%;

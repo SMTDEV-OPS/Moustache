@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, GripVertical } from "lucide-react";
 import {
   PipelineService,
@@ -169,6 +169,11 @@ export function PipelineBuilder() {
   const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
   const [form, setForm] = useState<Partial<PipelineStage>>({});
   const [saving, setSaving] = useState(false);
+
+  const activeFieldDefinitions = useMemo(
+    () => fields.filter((f) => f.is_active),
+    [fields]
+  );
 
   const loadPipelines = useCallback(async () => {
     try {
@@ -458,7 +463,7 @@ export function PipelineBuilder() {
                   overflowY: "auto",
                 }}
               >
-                {fields.map((f) => {
+                {activeFieldDefinitions.map((f) => {
                   const selected = (form.mandatory_fields_json ?? []).includes(f.slug);
                   return (
                     <button

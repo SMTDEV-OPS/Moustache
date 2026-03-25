@@ -31,6 +31,7 @@ const propertySchema = z.object({
       username: z.string().optional(),
     })
     .optional(),
+  roomCategories: z.array(z.string()).optional(),
 });
 
 propertiesRouter.get("/", async (_req, res, next) => {

@@ -27,6 +27,8 @@ export function errorHandler(
     if (err.status === 401 || err.status === 403) {
       // For expected auth errors, a warning without a stack trace is sufficient
       logger.warn("HTTP auth error occurred", logDetails);
+    } else if (err.status === 409) {
+      logger.warn("HTTP conflict", logDetails);
     } else {
       // For other client/server errors, log as error with stack trace if appropriate
       logger.error("HTTP error occurred", logDetails, err);
@@ -36,12 +38,13 @@ export function errorHandler(
       error: {
         message: err.message,
         code: err.code,
+        ...(err.details && Object.keys(err.details).length > 0
+          ? { details: err.details }
+          : {}),
       },
     });
   }
 
-  const message =
-    err instanceof Error ? err.message : "Unexpected error occurred";
   const error = err instanceof Error ? err : new Error(String(err));
 
   logger.error("Unhandled error occurred", {
@@ -54,9 +57,16 @@ export function errorHandler(
     params: req.params,
   }, error);
 
+  // Expose Error.message so API clients (CRM UI) can show validation / business failures.
+  // Unexpected errors should still throw Error with a safe, user-facing message.
+  const clientMessage =
+    err instanceof Error && typeof err.message === "string" && err.message.trim() !== ""
+      ? err.message
+      : "Internal server error";
+
   return res.status(500).json({
     error: {
-      message: "Internal server error",
+      message: clientMessage,
       code: "INTERNAL_ERROR",
     },
   });

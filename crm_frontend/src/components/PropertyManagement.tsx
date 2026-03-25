@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -31,6 +31,7 @@ import {
   type ReservationStatus,
   type UpdatePropertyInput,
 } from "@/services/properties";
+import { syncRoomCatalogue } from "@/services/pms";
 
 type ReservationTab = "ALL" | "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED";
 type DateRangePreset = "LAST_30" | "NEXT_30" | "THIS_MONTH" | "CUSTOM";
@@ -167,6 +168,7 @@ export const PropertyManagement = () => {
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingCatalogue, setIsSyncingCatalogue] = useState(false);
 
   const [showAuthKey, setShowAuthKey] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -343,12 +345,26 @@ export const PropertyManagement = () => {
       setIsSyncing(true);
       await syncPropertyPms(selectedPropertyId);
       await Promise.all([loadSelectedProperty(selectedPropertyId), loadReservations(selectedPropertyId), loadProperties()]);
-      toast.success("Sync started and data refreshed");
+      toast.success("Res Sync started and data refreshed");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to sync PMS";
       toast.error(message);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const onSyncCatalogue = async () => {
+    if (!selectedPropertyId) return;
+    try {
+      setIsSyncingCatalogue(true);
+      const res = await syncRoomCatalogue(selectedPropertyId);
+      toast.success(`Catalogue synced: ${res.roomTypes.length} rooms, ${res.ratePlans.length} rates`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to sync catalogue";
+      toast.error(message);
+    } finally {
+      setIsSyncingCatalogue(false);
     }
   };
 
@@ -568,13 +584,21 @@ export const PropertyManagement = () => {
                       {syncBadge.ok ? `${syncBadge.label}${syncBadge.ago ? ` ${syncBadge.ago}` : ""}` : syncBadge.label}
                     </div>
                   </div>
+                  <Button variant="outline" size="sm" onClick={onSyncCatalogue} disabled={isSyncingCatalogue}>
+                    {isSyncingCatalogue ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Sync Catalogue
+                  </Button>
                   <Button variant="outline" size="sm" onClick={onSyncNow} disabled={isSyncing}>
                     {isSyncing ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <RefreshCw className="mr-2 h-4 w-4" />
                     )}
-                    Sync Now
+                    Sync Res
                   </Button>
                 </div>
               </div>
@@ -717,9 +741,8 @@ export const PropertyManagement = () => {
                               const source = sourceBadgeStyle(isPmsReservation(r) ? "PMS" : "MANUAL");
                               const isOpen = !!expanded[r._id];
                               return (
-                                <>
+                                <Fragment key={r._id}>
                                   <tr
-                                    key={r._id}
                                     onClick={() => toggleExpanded(r._id)}
                                     style={{
                                       borderBottom: "1px solid var(--border-light)",
@@ -867,7 +890,7 @@ export const PropertyManagement = () => {
                                       </td>
                                     </tr>
                                   )}
-                                </>
+                                </Fragment>
                               );
                             })
                           )}

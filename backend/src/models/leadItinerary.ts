@@ -7,11 +7,31 @@ export interface ILeadItinerary extends Document {
     checkInDate?: Date;
     checkOutDate?: Date;
     roomCategory?: string;
+    roomsRequested?: {
+        roomTypeId?: string;
+        roomTypeName?: string;
+        quantity?: number;
+        adults?: number;
+        children?: number;
+        notes?: string;
+    }[];
     roomPreference?: string;
     numberOfGuests?: string;
     createdAt: Date;
     updatedAt: Date;
 }
+
+const roomRequestSchema = new Schema(
+    {
+        roomTypeId: { type: String },
+        roomTypeName: { type: String },
+        quantity: { type: Number, min: 1 },
+        adults: { type: Number, min: 1 },
+        children: { type: Number, min: 0 },
+        notes: { type: String },
+    },
+    { _id: false }
+);
 
 const leadItinerarySchema = new Schema<ILeadItinerary>(
     {
@@ -29,6 +49,7 @@ const leadItinerarySchema = new Schema<ILeadItinerary>(
         checkInDate: Date,
         checkOutDate: Date,
         roomCategory: String,
+        roomsRequested: { type: [roomRequestSchema], default: undefined },
         roomPreference: String,
         numberOfGuests: String,
     },

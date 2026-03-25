@@ -6,6 +6,7 @@ import {
     RoomRate,
     BookingRequest,
     BookingResponse,
+    RoomMasterCatalog,
 } from "../IPMSService";
 
 export interface EzeeReservationRoom {
@@ -143,6 +144,98 @@ export class EzeePMSService implements IPMSService {
         } catch (error) {
             console.error("Error fetching rates from eZee:", error);
             throw new Error("Failed to fetch rates");
+        }
+    }
+
+    /**
+     * eZee PMS Connectivity JSON — Request_Type "RoomInfo" returns room type names and rate plan names.
+     * Inventory XML does not include room names; we merge this into the cached catalogue on sync.
+     */
+    async getRoomMasterCatalog(): Promise<RoomMasterCatalog | null> {
+        const payload = {
+            RES_Request: {
+                Request_Type: "RoomInfo",
+                NeedPhysicalRooms: 1,
+                Authentication: {
+                    HotelCode: this.hotelCode,
+                    AuthCode: this.authCode,
+                },
+            },
+        };
+
+        const normalizeArray = <T,>(x: T | T[] | undefined | null): T[] => {
+            if (x == null) return [];
+            return Array.isArray(x) ? x : [x];
+        };
+
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/pms_connectivity.php`,
+                payload,
+                { headers: { "Content-Type": "application/json" } }
+            );
+
+            let data: any = response.data;
+            if (typeof data === "string") {
+                try {
+                    data = JSON.parse(data);
+                } catch {
+                    return null;
+                }
+            }
+
+            let roomInfo: any =
+                data?.RoomInfo ??
+                data?.RES_Response?.RoomInfo;
+            if (Array.isArray(roomInfo) && roomInfo.length) {
+                roomInfo = roomInfo[0];
+            }
+            if (!roomInfo || typeof roomInfo !== "object") {
+                return null;
+            }
+
+            const roomTypeNodes = normalizeArray(
+                roomInfo.RoomTypes?.RoomType ?? roomInfo.RoomTypes
+            );
+
+            const roomTypes: RoomMasterCatalog["roomTypes"] = [];
+            for (const rt of roomTypeNodes) {
+                if (!rt || typeof rt !== "object") continue;
+                const id = String((rt as any).ID ?? (rt as any).RoomTypeID ?? "").trim();
+                const name = String((rt as any).Name ?? (rt as any).RoomTypeName ?? "").trim();
+                if (id) {
+                    roomTypes.push({
+                        roomTypeId: id,
+                        roomTypeName: name || `Room ${id}`,
+                    });
+                }
+            }
+
+            const ratePlanNodes = normalizeArray(
+                roomInfo.RatePlans?.RatePlan ?? roomInfo.RatePlans
+            );
+
+            const ratePlans: RoomMasterCatalog["ratePlans"] = [];
+            for (const rp of ratePlanNodes) {
+                if (!rp || typeof rp !== "object") continue;
+                const id = String((rp as any).RatePlanID ?? (rp as any).RatePlanId ?? (rp as any).ID ?? "").trim();
+                const name = String((rp as any).Name ?? (rp as any).RatePlanName ?? "").trim();
+                const roomTypeId = (rp as any).RoomTypeID
+                    ? String((rp as any).RoomTypeID).trim()
+                    : undefined;
+                if (id) {
+                    ratePlans.push({
+                        ratePlanId: id,
+                        ratePlanName: name || `Plan ${id}`,
+                        roomTypeId,
+                    });
+                }
+            }
+
+            return { roomTypes, ratePlans };
+        } catch (error) {
+            console.error("eZee getRoomMasterCatalog error:", error);
+            return null;
         }
     }
 

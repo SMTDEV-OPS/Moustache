@@ -307,7 +307,7 @@ export function AppSidebar({
               <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <SidebarInput
                 placeholder="Search..."
-                className="pl-8 h-9 bg-sidebar-accent/30 border-sidebar-border/50 focus:bg-sidebar-accent focus:border-primary/50 transition-colors"
+                className="pl-8 h-9 bg-sidebar-accent/30 border-sidebar-border/50 focus:bg-sidebar-accent focus:border-sidebar-accent/50 transition-colors"
               />
             </div>
           </div>
@@ -325,13 +325,13 @@ export function AppSidebar({
                   className={`
                     group w-full justify-between px-3 py-2.5 rounded-md transition-all duration-200
                     ${activeView === "notifications"
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                     }
                   `}
                 >
                   <div className="flex items-center flex-1">
-                    <Bell className={`mr-3 h-4 w-4 ${activeView === "notifications" ? 'text-primary' : ''}`} />
+                    <Bell className="mr-3 h-4 w-4" />
                     <span className="text-sm flex-1">Notifications</span>
                     <ModuleInfoButton description={moduleDescriptions["notifications"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                   </div>
@@ -361,12 +361,12 @@ export function AppSidebar({
                     className={`
                       group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
                       ${activeView === item.url
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                       }
                     `}
                   >
-                    <item.icon className={`mr-3 h-4 w-4 ${activeView === item.url ? 'text-primary' : ''}`} />
+                    <item.icon className="mr-3 h-4 w-4" />
                     <span className="flex-1 text-sm">{item.title}</span>
                     <div className="flex items-center gap-1 ml-2">
                       <ModuleInfoButton description={moduleDescriptions[item.url] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
@@ -404,15 +404,12 @@ export function AppSidebar({
                         activeView === "knowledge-factsheets" ||
                         activeView === "knowledge-templates" ||
                         activeView === "knowledge-resources")
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                       }
                       `}
                   >
-                    <BookOpen className={`mr-3 h-4 w-4 ${(activeView === "knowledge-properties" ||
-                      activeView === "knowledge-factsheets" ||
-                      activeView === "knowledge-templates" ||
-                      activeView === "knowledge-resources") ? 'text-primary' : ''}`} />
+                    <BookOpen className="mr-3 h-4 w-4" />
                     <span className="text-sm flex-1">Knowledge Base</span>
                     <ModuleInfoButton description={moduleDescriptions["knowledge-properties"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                   </SidebarMenuButton>
@@ -437,12 +434,12 @@ export function AppSidebar({
                   className={`
                       w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
                       ${activeView === "email-client"
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                     }
                     `}
                 >
-                  <Mail className={`mr-3 h-4 w-4 ${activeView === "email-client" ? 'text-primary' : ''}`} />
+                  <Mail className="mr-3 h-4 w-4" />
                   <span className="text-sm flex-1">Email Client</span>
                   <ModuleInfoButton description={moduleDescriptions["email-client"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                 </SidebarMenuButton>
@@ -454,12 +451,12 @@ export function AppSidebar({
                   className={`
                       w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
                       ${activeView === "email-settings"
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                     }
                     `}
                 >
-                  <Settings2 className={`mr-3 h-4 w-4 ${activeView === "email-settings" ? 'text-primary' : ''}`} />
+                  <Settings2 className="mr-3 h-4 w-4" />
                   <span className="text-sm flex-1">Email Settings</span>
                   <ModuleInfoButton description={moduleDescriptions["email-settings"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                 </SidebarMenuButton>
@@ -471,12 +468,12 @@ export function AppSidebar({
                   className={`
                       w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
                       ${activeView === "email-health"
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-primary'
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                     }
                     `}
                 >
-                  <Activity className={`mr-3 h-4 w-4 ${activeView === "email-health" ? 'text-primary' : ''}`} />
+                  <Activity className="mr-3 h-4 w-4" />
                   <span className="text-sm flex-1">Email Health</span>
                   <ModuleInfoButton description={moduleDescriptions["email-health"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                 </SidebarMenuButton>

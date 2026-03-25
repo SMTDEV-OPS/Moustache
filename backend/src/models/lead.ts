@@ -68,6 +68,21 @@ export interface ILead extends Document {
   closedReason?: ClosedReason;
   closedReasonNote?: string;
   pmsReservationId?: string;
+  // Hotel booking fields
+  checkIn?: Date;
+  checkOut?: Date;
+  roomTypeId?: string;
+  roomTypeName?: string;
+  ratePlanId?: string;
+  ratePlanName?: string;
+  roomCategory?: string;    // e.g. "Luxury", "Upper Upscale"
+  adults?: number;
+  children?: number;
+  estimatedRoomNights?: number;  // auto-calculated from checkIn/checkOut
+  estimatedRate?: number;
+  estimatedRevenue?: number;     // auto-calculated: rate × roomNights
+  pmsBookingId?: string;         // set after booking is pushed to PMS
+  pmsBookingStatus?: "NOT_PUSHED" | "PENDING" | "CONFIRMED" | "FAILED";
   // Additional form fields
   alternateContact?: string;
   occupation?: string;
@@ -139,6 +154,25 @@ const leadSchema = new Schema<ILead>(
     },
     closedReasonNote: String,
     pmsReservationId: String,
+    // Hotel booking fields
+    checkIn: { type: Date, index: true },
+    checkOut: { type: Date },
+    roomTypeId: { type: String },
+    roomTypeName: { type: String },
+    ratePlanId: { type: String },
+    ratePlanName: { type: String },
+    roomCategory: { type: String },
+    adults: { type: Number, default: 1 },
+    children: { type: Number, default: 0 },
+    estimatedRoomNights: { type: Number },
+    estimatedRate: { type: Number },
+    estimatedRevenue: { type: Number },
+    pmsBookingId: { type: String },
+    pmsBookingStatus: { 
+      type: String, 
+      enum: ["NOT_PUSHED", "PENDING", "CONFIRMED", "FAILED"],
+      default: "NOT_PUSHED"
+    },
     // Additional form fields
     alternateContact: String,
     occupation: String,

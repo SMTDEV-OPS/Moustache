@@ -19,6 +19,17 @@ import { listProperties } from "@/services/properties";
 import { listUsers, User } from "@/services/users";
 import { listAccounts, Account, AccountType } from "@/services/accounts";
 import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
+import { HotelBookingSection } from "@/components/leads/HotelBookingSection";
+import { getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import {
+  COUNTRY_PHONE_OPTIONS,
+  parsePhoneForForm,
+  buildE164FromIso,
+  isValidE164Phone,
+} from "@/lib/phoneCountry";
+import type { CountryCode } from "libphonenumber-js";
+import { Property } from "@/services/properties";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
 import { Search, Filter, User as UserIcon, Calendar, Flame, Users, Zap, Plus, Phone, Mail, MessageCircle, CalendarPlus, Video, Trash2, Hotel, MoreVertical, FileText, Edit, UserPlus, ChevronLeft, ChevronRight, Snowflake } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -383,25 +394,28 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
   // Hotel entry type for multiple hotels
   interface HotelEntry {
-    hotelName: string;
+    propertyId: string;
+    hotelName: string; // display name snapshot
     checkInDate: string;
     checkOutDate: string;
-    roomCategory: string;
-    roomPreference: string;
-    rooms: string;
-    adults: string;
-    children: string;
+    roomsRequested: {
+      roomTypeId: string;
+      roomTypeName?: string;
+      quantity: string;
+      adults: string;
+      children: string;
+      notes?: string;
+    }[];
   }
 
   const emptyHotel: HotelEntry = {
+    propertyId: "",
     hotelName: "",
     checkInDate: "",
     checkOutDate: "",
-    roomCategory: "",
-    roomPreference: "",
-    rooms: "1",
-    adults: "",
-    children: "",
+    roomsRequested: [
+      { roomTypeId: "", roomTypeName: "", quantity: "1", adults: "1", children: "0" },
+    ],
   };
 
   const [hotels, setHotels] = useState<HotelEntry[]>([{ ...emptyHotel }]);
@@ -422,6 +436,65 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     setHotels(updated);
   };
 
+  const [catalogueByPropertyId, setCatalogueByPropertyId] = useState<Record<string, RoomCatalogue>>({});
+
+  useEffect(() => {
+    const ids = hotels.map((h) => h.propertyId).filter((id) => !!id);
+    for (const propertyId of ids) {
+      if (catalogueByPropertyId[propertyId]) continue;
+      getRoomCatalogue(propertyId)
+        .then((cat) =>
+          setCatalogueByPropertyId((prev) => (prev[propertyId] ? prev : { ...prev, [propertyId]: cat }))
+        )
+        .catch(() =>
+          setCatalogueByPropertyId((prev) =>
+            prev[propertyId] ? prev : { ...prev, [propertyId]: { roomTypes: [], ratePlans: [] } }
+          )
+        );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hotels]);
+
+  const updateRoomRequest = (
+    hotelIndex: number,
+    roomIndex: number,
+    patch: Partial<HotelEntry["roomsRequested"][number]>
+  ) => {
+    setHotels((prev) => {
+      const copy = [...prev];
+      const hotel = copy[hotelIndex];
+      const rooms = [...(hotel.roomsRequested || [])];
+      rooms[roomIndex] = { ...rooms[roomIndex], ...patch };
+      copy[hotelIndex] = { ...hotel, roomsRequested: rooms };
+      return copy;
+    });
+  };
+
+  const addRoomRequest = (hotelIndex: number) => {
+    setHotels((prev) => {
+      const copy = [...prev];
+      const hotel = copy[hotelIndex];
+      copy[hotelIndex] = {
+        ...hotel,
+        roomsRequested: [
+          ...(hotel.roomsRequested || []),
+          { roomTypeId: "", roomTypeName: "", quantity: "1", adults: "1", children: "0" },
+        ],
+      };
+      return copy;
+    });
+  };
+
+  const removeRoomRequest = (hotelIndex: number, roomIndex: number) => {
+    setHotels((prev) => {
+      const copy = [...prev];
+      const hotel = copy[hotelIndex];
+      const rooms = [...(hotel.roomsRequested || [])].filter((_, i) => i !== roomIndex);
+      copy[hotelIndex] = { ...hotel, roomsRequested: rooms.length ? rooms : hotel.roomsRequested };
+      return copy;
+    });
+  };
+
   const [form, setForm] = useState({
     firstName: "",
     middleName: "",
@@ -431,9 +504,6 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     guestEmail: "",
     occupation: "",
     specialRequests: "",
-    isCorporateBooking: "no",
-    companyName: "",
-    gstin: "",
     propertyId: "",
     source: "BRAND_WEBSITE",
     leadType: "STAY",
@@ -442,9 +512,6 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     occasion: "",
     heatLevel: "WARM",
     accountId: "",
-    customerType: "",
-    bookingWindow: "",
-    budget: "",
     customData: {} as Record<string, any>,
   });
 
@@ -458,6 +525,57 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
 
+  // Properties for PMS booking dropdown
+  const [allProperties, setAllProperties] = useState<Property[]>([]);
+
+  // Primary PMS booking state
+  const [pmsBooking, setPmsBooking] = useState<{
+    propertyId: string;
+    checkIn?: string;
+    checkOut?: string;
+    roomTypeId?: string;
+    roomTypeName?: string;
+    ratePlanId?: string;
+    ratePlanName?: string;
+    adults?: number;
+    children?: number;
+    estimatedRate?: number;
+    estimatedRoomNights?: number;
+    estimatedRevenue?: number;
+  }>({ propertyId: "" });
+
+  const syncCatalogueForProperty = useCallback(
+    async (propertyId: string) => {
+      try {
+        const cat = await syncRoomCatalogue(propertyId);
+        setCatalogueByPropertyId((prev) => ({ ...prev, [propertyId]: cat }));
+        toast({ title: "PMS room catalogue updated" });
+      } catch (e) {
+        console.error(e);
+        toast({
+          title: "Could not sync PMS catalogue",
+          variant: "destructive",
+        });
+      }
+    },
+    [toast]
+  );
+
+  useEffect(() => {
+    const pid = pmsBooking.propertyId;
+    if (!pid || catalogueByPropertyId[pid]) return;
+    getRoomCatalogue(pid)
+      .then((cat) =>
+        setCatalogueByPropertyId((prev) => (prev[pid] ? prev : { ...prev, [pid]: cat }))
+      )
+      .catch(() =>
+        setCatalogueByPropertyId((prev) =>
+          prev[pid] ? prev : { ...prev, [pid]: { roomTypes: [], ratePlans: [] } }
+        )
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pmsBooking.propertyId]);
+
   // Lead types for dropdown
   const LEAD_TYPES = [
     { value: "STAY", label: "Stay" },
@@ -470,17 +588,15 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   // Lead sources for dropdown - all sources from requirements
   const LEAD_SOURCES = [
     { value: "DIRECT_CALL", label: "Direct Call" },
-    { value: "UNIT", label: "Unit" },
+    { value: "WHATSAPP", label: "WhatsApp" },
+    { value: "BRAND_WEBSITE", label: "Website" },
     { value: "EMAIL", label: "Email" },
-    { value: "REPEAT_GUEST", label: "Repeat Guest" },
+    { value: "TRAVEL_AGENT", label: "Travel Agent" },
+    // Backend doesn't have a separate OTA enum. Persist as BRAND_WEBSITE.
+    { value: "OTA", label: "OTA" },
     { value: "REFERRAL", label: "Referral" },
-    { value: "CORPORATE_OFFICE", label: "Corporate Office" },
-    { value: "BRAND_WEBSITE", label: "Brand Website" },
-    { value: "SOCIAL", label: "Social Media (Instagram, WhatsApp)" },
-    { value: "VIP_MR_CHOPRA", label: "Mr. Chopra (VIP Guest)" },
-    { value: "TRAVEL_AGENT", label: "Travel Agents & Corporates" },
-    { value: "WALK_IN", label: "Walk-ins" },
-    { value: "EVENT_MICE", label: "Events & MICE" },
+    { value: "MANUAL", label: "Manual" },
+    { value: "IVR", label: "IVR" },
   ];
 
   // Load eligible assignees when lead type changes and manual mode is selected
@@ -517,6 +633,8 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       setAccounts([]);
     });
     void loadCustomFields();
+    // Load properties for PMS booking dropdown
+    listProperties().then(setAllProperties).catch(() => setAllProperties([]));
   }, [canManageUsers, activeScope]);
 
   // Derive orgId for saved filters: from first lead or first property
@@ -586,8 +704,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     const showAccountSection =
       form.source === "TRAVEL_AGENT" ||
       form.source === "CORPORATE_OFFICE" ||
-      form.source === "EVENT_MICE" ||
-      form.isCorporateBooking === "yes";
+      form.source === "EVENT_MICE";
 
     if (!showAccountSection || !Array.isArray(accounts) || accounts.length === 0) {
       return [];
@@ -598,7 +715,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
         if (!acc || !acc.type) return false;
         if (form.source === "TRAVEL_AGENT") {
           return acc.type === "TRAVEL_AGENT";
-        } else if (form.source === "CORPORATE_OFFICE" || form.isCorporateBooking === "yes") {
+        } else if (form.source === "CORPORATE_OFFICE") {
           return acc.type === "CORPORATE";
         } else if (form.source === "EVENT_MICE") {
           return acc.type === "EVENT_PLANNER";
@@ -609,7 +726,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       console.error("Error filtering accounts:", err);
       return [];
     }
-  }, [accounts, form.source, form.isCorporateBooking]);
+  }, [accounts, form.source]);
 
   const loadLeads = async () => {
     try {
@@ -828,6 +945,35 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!form.guestPhone || !isValidE164Phone(form.guestPhone)) {
+      toast({
+        title: "Invalid contact number",
+        description:
+          "Please enter a valid international number with country code (e.g. +919876543210 or +447911123456).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (form.alternateContact?.trim() && !isValidE164Phone(form.alternateContact)) {
+      toast({
+        title: "Invalid alternate contact",
+        description: "Please enter a valid international number with country code, or leave blank.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!form.guestEmail || !emailRegex.test(form.guestEmail.trim())) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address for the guest.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Validate custom required fields
     const missingCustomRequired = customFields.filter(f => f.isRequired && !form.customData[f.fieldName]);
     if (missingCustomRequired.length > 0) {
@@ -845,45 +991,54 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     try {
       setIsCreating(true);
 
-      const payload = {
+    const payload = {
         guestContact: {
           name: guestFullName,
           phone: form.guestPhone || undefined,
           email: form.guestEmail || undefined,
         },
-        propertyId: (form.propertyId || (primaryHotel?.hotelName && primaryHotel.hotelName !== "" ? primaryHotel.hotelName : undefined)) || undefined,
+      propertyId: form.propertyId || undefined,
         accountId: form.accountId || selectedAccountId || undefined,
-        source: form.source,
+        // Backend doesn't have a separate OTA enum. Persist it as BRAND_WEBSITE.
+        source: form.source === "OTA" ? "BRAND_WEBSITE" : form.source,
         leadType: form.leadType,
-        checkInDate: primaryHotel?.checkInDate
-          ? new Date(primaryHotel.checkInDate).toISOString()
-          : undefined,
-        checkOutDate: primaryHotel?.checkOutDate
-          ? new Date(primaryHotel.checkOutDate).toISOString()
-          : undefined,
-        roomsRequested: primaryHotel?.rooms ? Number(primaryHotel.rooms) : (hotels.length || undefined),
-        guests: (primaryHotel?.adults || primaryHotel?.children)
-          ? {
-            adults: primaryHotel.adults ? Number(primaryHotel.adults) : undefined,
-            children: primaryHotel.children ? Number(primaryHotel.children) : undefined,
-          }
-          : undefined,
         occasion: form.occasion || undefined,
         heatLevel: form.heatLevel as any,
         // Additional form fields - send separately
         alternateContact: form.alternateContact || undefined,
         occupation: form.occupation || undefined,
         specialRequests: form.specialRequests || undefined,
-        isCorporateBooking: form.isCorporateBooking === "yes" ? true : undefined,
-        companyName: form.companyName || undefined,
-        gstin: form.gstin || undefined,
         estimatedValue: form.estimatedValue || undefined,
         notes: form.notes || undefined,
-        roomCategory: primaryHotel?.roomCategory || undefined,
-        roomPreference: primaryHotel?.roomPreference || undefined,
-        customerType: form.customerType || undefined,
-        bookingWindow: form.bookingWindow || undefined,
-        budget: form.budget ? Number(form.budget) : undefined,
+      hotels: hotels.map((h) => ({
+        propertyId: h.propertyId || undefined,
+        hotelName: h.hotelName || undefined,
+        checkInDate: h.checkInDate ? new Date(h.checkInDate).toISOString() : undefined,
+        checkOutDate: h.checkOutDate ? new Date(h.checkOutDate).toISOString() : undefined,
+        roomsRequested: (h.roomsRequested || []).map((r) => ({
+          roomTypeId: r.roomTypeId,
+          roomTypeName: r.roomTypeName || undefined,
+          quantity: Number(r.quantity) || 1,
+          adults: Number(r.adults) || 1,
+          children: Number(r.children) || 0,
+          notes: r.notes || undefined,
+        })),
+      })),
+        // PMS Booking fields from live availability
+        ...(pmsBooking.propertyId ? {
+          propertyId: pmsBooking.propertyId,
+        checkIn: pmsBooking.checkIn ? new Date(pmsBooking.checkIn).toISOString() : undefined,
+        checkOut: pmsBooking.checkOut ? new Date(pmsBooking.checkOut).toISOString() : undefined,
+        roomTypeId: pmsBooking.roomTypeId,
+        roomTypeName: pmsBooking.roomTypeName,
+        ratePlanId: pmsBooking.ratePlanId,
+        ratePlanName: pmsBooking.ratePlanName,
+        adults: pmsBooking.adults,
+        children: pmsBooking.children,
+        estimatedRate: pmsBooking.estimatedRate,
+        estimatedRoomNights: pmsBooking.estimatedRoomNights,
+        estimatedRevenue: pmsBooking.estimatedRevenue,
+        } : {}),
         // Assignment options
         assignmentMode: assignmentMode,
         assignedToUserId: assignmentMode === "manual" && manualAssigneeId ? manualAssigneeId : undefined,
@@ -909,14 +1064,8 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
         guestEmail: "",
         occupation: "",
         specialRequests: "",
-        isCorporateBooking: "no",
-        companyName: "",
-        gstin: "",
         estimatedValue: "",
         notes: "",
-        customerType: "",
-        bookingWindow: "",
-        budget: "",
         customData: {},
       }));
       // Reset hotels
@@ -2043,8 +2192,44 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
               </div>
             </div>
 
+            {/* Primary PMS: live availability check */}
+            <div className="space-y-4 pt-4 border-t border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <Hotel className="h-4 w-4" />
+                PMS availability check
+              </h3>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Property for availability check</label>
+                <SearchableSelect
+                  options={[
+                    { value: "none", label: "None" },
+                    ...allProperties
+                      .filter((p) => p.status === "ACTIVE")
+                      .map((p) => ({ value: p._id, label: p.name })),
+                  ]}
+                  value={pmsBooking.propertyId || "none"}
+                  placeholder="Select a Property..."
+                  onValueChange={(val) =>
+                    setPmsBooking((prev) => ({
+                      ...prev,
+                      propertyId: val === "none" ? "" : val,
+                    }))
+                  }
+                />
+              </div>
+              {pmsBooking.propertyId && (
+                <HotelBookingSection
+                  propertyId={pmsBooking.propertyId}
+                  value={pmsBooking}
+                  onChange={(patch) =>
+                    setPmsBooking((prev) => ({ ...prev, ...patch }))
+                  }
+                />
+              )}
+            </div>
+
             {/* Multiple Hotels Section */}
-            <div className="space-y-4">
+            <div className="space-y-4 pt-4 border-t border-gray-100">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                   <Hotel className="h-4 w-4" />
@@ -2080,22 +2265,33 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                   )}
 
                   <div className="space-y-2">
-                    <label className="text-xs font-medium">Hotel Name</label>
-                    <Select
-                      value={hotel.hotelName || undefined}
-                      onValueChange={(value) => updateHotel(index, "hotelName", value === "NONE" ? "" : value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Hotel (Optional)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="NONE">None</SelectItem>
-                        <SelectItem value="Moustache Goa">Moustache Goa</SelectItem>
-                        <SelectItem value="Moustache Kerala">Moustache Kerala</SelectItem>
-                        <SelectItem value="Moustache Rajasthan">Moustache Rajasthan</SelectItem>
-                        <SelectItem value="Moustache Mumbai">Moustache Mumbai</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <label className="text-xs font-medium">Hotel Name *</label>
+                    <SearchableSelect
+                      options={[
+                        { value: "NONE", label: "None" },
+                        ...allProperties
+                          .filter((p) => p.status === "ACTIVE")
+                          .map((p) => ({ value: p._id, label: p.name })),
+                      ]}
+                      value={hotel.propertyId || "NONE"}
+                      placeholder="Select Hotel"
+                      onValueChange={(value) => {
+                        const v = value === "NONE" ? "" : value;
+                        const prop = allProperties.find((p) => p._id === v);
+                        setHotels((prev) => {
+                          const copy = [...prev];
+                          copy[index] = {
+                            ...copy[index],
+                            propertyId: v,
+                            hotelName: prop?.name || "",
+                            roomsRequested: [
+                              { roomTypeId: "", roomTypeName: "", quantity: "1", adults: "1", children: "0" },
+                            ],
+                          };
+                          return copy;
+                        });
+                      }}
+                    />
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
@@ -2117,67 +2313,129 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Number of Rooms *</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={hotel.rooms}
-                        onChange={(e) => updateHotel(index, "rooms", e.target.value)}
-                        placeholder="1"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Room Category *</label>
-                      <Select
-                        value={hotel.roomCategory}
-                        onValueChange={(value) => updateHotel(index, "roomCategory", value)}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium">Room Types *</label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addRoomRequest(index)}
+                        disabled={!hotel.propertyId}
+                        className="flex items-center gap-2"
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Room Category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Standard Room">Standard Room</SelectItem>
-                          <SelectItem value="Deluxe Room">Deluxe Room</SelectItem>
-                          <SelectItem value="Suite">Suite</SelectItem>
-                          <SelectItem value="Villa">Villa</SelectItem>
-                          <SelectItem value="Pool Villa">Pool Villa</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        <Plus className="h-4 w-4" />
+                        Add Room Type
+                      </Button>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Room Preference</label>
-                      <Input
-                        value={hotel.roomPreference}
-                        onChange={(e) => updateHotel(index, "roomPreference", e.target.value)}
-                        placeholder="e.g., Sea view, Garden view"
-                      />
+
+                    {!hotel.propertyId ? (
+                      <div className="text-xs text-muted-foreground">Select a hotel to load room types.</div>
+                    ) : (catalogueByPropertyId[hotel.propertyId]?.roomTypes?.length || 0) === 0 ? (
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>No room types found.</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7"
+                          onClick={() => void syncCatalogueForProperty(hotel.propertyId)}
+                        >
+                          Sync PMS catalogue
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-3">
+                      {(hotel.roomsRequested || []).map((r, roomIndex) => (
+                        <div key={roomIndex} className="grid gap-3 md:grid-cols-12 items-end">
+                          <div className="md:col-span-5 space-y-2">
+                            <label className="text-xs font-medium">Room Type</label>
+                            <Select
+                              value={r.roomTypeId || undefined}
+                              onValueChange={(val) => {
+                                const rt = catalogueByPropertyId[hotel.propertyId]?.roomTypes?.find(
+                                  (x) => x.roomTypeId === val
+                                );
+                                updateRoomRequest(index, roomIndex, {
+                                  roomTypeId: val,
+                                  roomTypeName: rt?.roomTypeName || "",
+                                });
+                              }}
+                              disabled={!hotel.propertyId}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select Room Type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {r.roomTypeId &&
+                                  !(catalogueByPropertyId[hotel.propertyId]?.roomTypes || []).some(
+                                    (x) => x.roomTypeId === r.roomTypeId
+                                  ) && (
+                                    <SelectItem value={r.roomTypeId}>
+                                      {resolveRoomTypeDisplayName(
+                                        r.roomTypeId,
+                                        r.roomTypeName,
+                                        catalogueByPropertyId[hotel.propertyId]?.roomTypes
+                                      )}
+                                    </SelectItem>
+                                  )}
+                                {(catalogueByPropertyId[hotel.propertyId]?.roomTypes || []).map((rt) => (
+                                  <SelectItem key={rt.roomTypeId} value={rt.roomTypeId}>
+                                    {resolveRoomTypeDisplayName(rt.roomTypeId, rt.roomTypeName, catalogueByPropertyId[hotel.propertyId]?.roomTypes)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="md:col-span-2 space-y-2">
+                            <label className="text-xs font-medium">Qty</label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={r.quantity}
+                              onChange={(e) => updateRoomRequest(index, roomIndex, { quantity: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="md:col-span-2 space-y-2">
+                            <label className="text-xs font-medium">Adults</label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={r.adults}
+                              onChange={(e) => updateRoomRequest(index, roomIndex, { adults: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="md:col-span-2 space-y-2">
+                            <label className="text-xs font-medium">Children</label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={r.children}
+                              onChange={(e) => updateRoomRequest(index, roomIndex, { children: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="md:col-span-1 flex md:justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeRoomRequest(index, roomIndex)}
+                              disabled={(hotel.roomsRequested || []).length <= 1}
+                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Adults *</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={hotel.adults}
-                        onChange={(e) => updateHotel(index, "adults", e.target.value)}
-                        placeholder="0"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Children</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={hotel.children}
-                        onChange={(e) => updateHotel(index, "children", e.target.value)}
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
                 </div>
               ))}
             </div>
@@ -2186,19 +2444,74 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-medium">Guest Contact Number *</label>
-                <Input
-                  value={form.guestPhone}
-                  onChange={(e) => onChange("guestPhone", e.target.value)}
-                  placeholder="+91 XXXXX XXXXX"
-                />
+                {(() => {
+                  const parsed = parsePhoneForForm(form.guestPhone);
+                  return (
+                    <div className="flex gap-2">
+                      <SearchableSelect
+                        options={COUNTRY_PHONE_OPTIONS}
+                        value={parsed.iso}
+                        placeholder="Country / code"
+                        triggerClassName="w-[min(260px,42vw)] shrink-0"
+                        contentClassName="w-[min(360px,calc(100vw-2rem))]"
+                        onValueChange={(iso) => {
+                          onChange(
+                            "guestPhone",
+                            buildE164FromIso(iso as CountryCode, parsed.nationalDigits)
+                          );
+                        }}
+                      />
+                      <Input
+                        className="min-w-0 flex-1"
+                        value={parsed.nationalDigits}
+                        inputMode="tel"
+                        autoComplete="tel-national"
+                        placeholder="National number"
+                        onChange={(e) => {
+                          const local = e.target.value.replace(/\D/g, "").slice(0, 18);
+                          onChange("guestPhone", buildE164FromIso(parsed.iso, local));
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-medium">Alternate Contact</label>
-                <Input
-                  value={form.alternateContact}
-                  onChange={(e) => onChange("alternateContact", e.target.value)}
-                  placeholder="+91 XXXXX XXXXX"
-                />
+                {(() => {
+                  const parsed = parsePhoneForForm(form.alternateContact);
+                  return (
+                    <div className="flex gap-2">
+                      <SearchableSelect
+                        options={COUNTRY_PHONE_OPTIONS}
+                        value={parsed.iso}
+                        placeholder="Country / code"
+                        triggerClassName="w-[min(260px,42vw)] shrink-0"
+                        contentClassName="w-[min(360px,calc(100vw-2rem))]"
+                        onValueChange={(iso) => {
+                          onChange(
+                            "alternateContact",
+                            buildE164FromIso(iso as CountryCode, parsed.nationalDigits) || ""
+                          );
+                        }}
+                      />
+                      <Input
+                        className="min-w-0 flex-1"
+                        value={parsed.nationalDigits}
+                        inputMode="tel"
+                        autoComplete="tel-national"
+                        placeholder="National number"
+                        onChange={(e) => {
+                          const local = e.target.value.replace(/\D/g, "").slice(0, 18);
+                          onChange(
+                            "alternateContact",
+                            buildE164FromIso(parsed.iso, local) || ""
+                          );
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -2231,58 +2544,6 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                 onChange={(e) => onChange("specialRequests", e.target.value)}
                 placeholder="Any special requirements, dietary restrictions, accessibility needs..."
               />
-            </div>
-
-            {/* Corporate Booking Section */}
-            <div className="border rounded-lg p-4 space-y-4">
-              <div className="flex items-center gap-4">
-                <label className="text-xs font-medium">Is this a Corporate Booking?</label>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="corporateBooking"
-                      value="yes"
-                      checked={form.isCorporateBooking === "yes"}
-                      onChange={() => onChange("isCorporateBooking", "yes")}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">Yes</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="corporateBooking"
-                      value="no"
-                      checked={form.isCorporateBooking === "no"}
-                      onChange={() => onChange("isCorporateBooking", "no")}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">No</span>
-                  </label>
-                </div>
-              </div>
-
-              {form.isCorporateBooking === "yes" && (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium">Company Name</label>
-                    <Input
-                      value={form.companyName}
-                      onChange={(e) => onChange("companyName", e.target.value)}
-                      placeholder="Company Name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium">GSTIN</label>
-                    <Input
-                      value={form.gstin}
-                      onChange={(e) => onChange("gstin", e.target.value)}
-                      placeholder="GSTIN Number"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Lead Type and Source */}
@@ -2329,60 +2590,6 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-
-            {/* Tag Dimensions (SOP 1.2, 1.3, 1.5 fields) */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <label className="text-xs font-medium">Customer Type</label>
-                <Select
-                  value={form.customerType}
-                  onValueChange={(value) => onChange("customerType", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="B2C">B2C</SelectItem>
-                    <SelectItem value="B2B">B2B</SelectItem>
-                    <SelectItem value="Corporate">Corporate</SelectItem>
-                    <SelectItem value="Influencer">Influencer</SelectItem>
-                    <SelectItem value="NRI">NRI</SelectItem>
-                    <SelectItem value="HNI">HNI</SelectItem>
-                    <SelectItem value="Reference">Reference</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium">Booking Window</label>
-                <Select
-                  value={form.bookingWindow}
-                  onValueChange={(value) => onChange("bookingWindow", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Booking Window" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Within 5 hrs">Within 5 hrs</SelectItem>
-                    <SelectItem value="6-12 hrs">6-12 hrs</SelectItem>
-                    <SelectItem value="13-24 hrs">13-24 hrs</SelectItem>
-                    <SelectItem value="Next Day">Next Day</SelectItem>
-                    <SelectItem value="2-7 days">2-7 days</SelectItem>
-                    <SelectItem value="1-4 weeks">1-4 weeks</SelectItem>
-                    <SelectItem value="1-3 months">1-3 months</SelectItem>
-                    <SelectItem value="3+ months">3+ months</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium">Budget</label>
-                <Input
-                  type="number"
-                  value={form.budget}
-                  onChange={(e) => onChange("budget", e.target.value)}
-                  placeholder="Total or per night budget"
-                />
               </div>
             </div>
 
@@ -2459,8 +2666,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
             {/* Account Selection - Show for B2B sources */}
             {(form.source === "TRAVEL_AGENT" ||
               form.source === "CORPORATE_OFFICE" ||
-              form.source === "EVENT_MICE" ||
-              form.isCorporateBooking === "yes") && (
+              form.source === "EVENT_MICE") && (
                 <div className="space-y-2 border rounded-lg p-4 bg-slate-50/50">
                   <label className="text-xs font-medium">
                     Account {form.source === "TRAVEL_AGENT" || form.source === "CORPORATE_OFFICE" || form.source === "EVENT_MICE" ? "(Optional - will auto-link if company name matches)" : "(Optional)"}

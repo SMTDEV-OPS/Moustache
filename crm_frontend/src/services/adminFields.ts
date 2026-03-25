@@ -62,9 +62,9 @@ export async function listAdminFields(entity: "lead" | "contact" | "deal" = "lea
   const raw = (await response.json()) as any[];
   return raw.map((f: any) => ({
     _id: f._id,
-    name: f.name ?? f.label,
-    slug: f.slug,
-    label: f.label ?? f.name,
+    name: f.name ?? f.fieldName ?? f.label ?? "",
+    slug: f.slug ?? f.fieldName ?? "",
+    label: f.label ?? f.name ?? f.fieldName ?? "",
     dataType: f.dataType ?? f.type,
     options: f.options,
     entity_type: f.entity_type ?? "lead",
@@ -73,7 +73,7 @@ export async function listAdminFields(entity: "lead" | "contact" | "deal" = "lea
     is_unique_identifier: f.is_unique_identifier ?? false,
     utm_capture: f.utm_capture ?? false,
     display_order: f.display_order ?? f.order ?? 0,
-    is_active: f.is_active ?? f.isActive ?? true,
+    is_active: f.is_active !== false && f.isActive !== false,
   }));
 }
 

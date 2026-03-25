@@ -28,6 +28,7 @@ import { notifyLeadAssigned } from "./notificationService";
 import { incrementAgentWorkload, checkCapacityAlerts } from "./allocationService";
 import { initializeWorkflowForLead } from "./workflowExecutionService";
 import { logger } from "../config/logger";
+import { conflict } from "../utils/httpError";
 import { generateTagsForLead } from "./leadTaggingService";
 import { PipelineModel } from "../models/pipeline";
 import { PipelineStageModel } from "../models/pipelineStage";
@@ -82,6 +83,19 @@ export interface CreateLeadInput {
   budget?: number;
   bookingWindow?: string;
   customerType?: string;
+  // Hotel booking fields
+  checkIn?: Date;
+  checkOut?: Date;
+  roomTypeId?: string;
+  roomTypeName?: string;
+  ratePlanId?: string;
+  ratePlanName?: string;
+  roomCategory?: string;
+  adults?: number;
+  children?: number;
+  estimatedRoomNights?: number;
+  estimatedRate?: number;
+  estimatedRevenue?: number;
 }
 
 export interface AutoAssignResult {
@@ -465,10 +479,27 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
           LeadStatus.CONFIRMED
         ]
       }
-    }).select("leadNumber status").exec();
+    })
+      .select("leadNumber status")
+      .lean()
+      .exec();
 
     if (activeLead) {
-      throw new Error(`Active lead exists for this guest (Lead #${activeLead.leadNumber} is ${activeLead.status}). Please manage the existing lead.`);
+      const num = activeLead.leadNumber ?? "unknown";
+      const raw = activeLead.status ? String(activeLead.status) : "active";
+      const statusLabel = raw
+        .replace(/_/g, " ")
+        .toLowerCase()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      const id = activeLead._id != null ? String(activeLead._id) : undefined;
+      throw conflict(
+        `This guest already has an active lead (${num}, ${statusLabel}). Open that lead or move it to a closed stage before creating another.`,
+        {
+          ...(id ? { existingLeadId: id } : {}),
+          existingLeadNumber: num,
+          existingStatus: raw,
+        }
+      );
     }
   }
 
@@ -651,6 +682,19 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
     assignedToUserId: assignment.assignedToUserId, leadAssignedAt: assignment.assignedToUserId ? new Date() : undefined,
     assignmentSource: assignment.assignmentSource,
     assignmentRuleName: assignment.assignmentRuleName,
+    // Hotel booking fields
+    checkIn: input.checkIn,
+    checkOut: input.checkOut,
+    roomTypeId: input.roomTypeId,
+    roomTypeName: input.roomTypeName,
+    ratePlanId: input.ratePlanId,
+    ratePlanName: input.ratePlanName,
+    roomCategory: input.roomCategory,
+    adults: input.adults,
+    children: input.children,
+    estimatedRoomNights: input.estimatedRoomNights,
+    estimatedRate: input.estimatedRate,
+    estimatedRevenue: input.estimatedRevenue,
     // Additional form fields
     alternateContact: input.alternateContact,
     occupation: input.occupation,
@@ -677,6 +721,7 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
       checkInDate: hotel.checkInDate,
       checkOutDate: hotel.checkOutDate,
       roomCategory: hotel.roomCategory,
+      roomsRequested: (hotel as any).roomsRequested,
       roomPreference: hotel.roomPreference,
       numberOfGuests: hotel.numberOfGuests,
     }));

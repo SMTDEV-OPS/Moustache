@@ -71,12 +71,24 @@ async function getTeamMemberIdsForRoleOwner(userId: string): Promise<string[]> {
   }
 }
 
+const roomRequestSchema = z.object({
+  roomTypeId: z.string().min(1).optional(),
+  roomTypeName: z.string().optional(),
+  quantity: z.number().int().min(1).optional(),
+  adults: z.number().int().min(1).optional(),
+  children: z.number().int().min(0).optional(),
+  notes: z.string().optional(),
+});
+
 const hotelSchema = z.object({
   hotelName: z.string().optional(),
   propertyId: z.string().optional(),
   checkInDate: z.string().optional(),
   checkOutDate: z.string().optional(),
+  // Legacy single room category (backward compatible)
   roomCategory: z.string().optional(),
+  // New multi-room-type structure (preferred)
+  roomsRequested: z.array(roomRequestSchema).optional(),
   roomPreference: z.string().optional(),
   numberOfGuests: z.string().optional(),
 });
@@ -122,6 +134,17 @@ const leadCreateSchema = z.object({
   budget: z.number().optional(),
   bookingWindow: z.string().optional(),
   customerType: z.string().optional(),
+  // Hotel booking fields
+  checkIn: z.string().optional(),
+  checkOut: z.string().optional(),
+  roomTypeId: z.string().optional(),
+  roomTypeName: z.string().optional(),
+  ratePlanId: z.string().optional(),
+  ratePlanName: z.string().optional(),
+  roomCategory: z.string().optional(),
+  adults: z.number().optional(),
+  children: z.number().optional(),
+  estimatedRate: z.number().optional(),
 });
 
 // Get eligible users for manual assignment based on lead type
@@ -209,6 +232,21 @@ leadsRouter.post("/", async (req, res, next) => {
 
     const data = parsed.data;
 
+    let estimatedRoomNights: number | undefined;
+    let estimatedRevenue: number | undefined;
+
+    // Auto-calculate room nights and revenue
+    if (data.checkIn && data.checkOut) {
+      const nights = Math.round(
+        (new Date(data.checkOut).getTime() - new Date(data.checkIn).getTime()) 
+        / (1000 * 60 * 60 * 24)
+      );
+      estimatedRoomNights = nights > 0 ? nights : undefined;
+      if (data.estimatedRate && nights > 0) {
+        estimatedRevenue = data.estimatedRate * nights;
+      }
+    }
+
     const hotels = data.hotels?.map((h) => ({
       ...h,
       checkInDate: h.checkInDate ? new Date(h.checkInDate) : undefined,
@@ -242,6 +280,19 @@ leadsRouter.post("/", async (req, res, next) => {
       createdByUserId: req.user?.id,
       customData: data.customData,
       hotels,
+      // Hotel booking fields
+      checkIn: data.checkIn ? new Date(data.checkIn) : undefined,
+      checkOut: data.checkOut ? new Date(data.checkOut) : undefined,
+      roomTypeId: data.roomTypeId,
+      roomTypeName: data.roomTypeName,
+      ratePlanId: data.ratePlanId,
+      ratePlanName: data.ratePlanName,
+      roomCategory: data.roomCategory,
+      adults: data.adults,
+      children: data.children,
+      estimatedRate: data.estimatedRate,
+      estimatedRoomNights,
+      estimatedRevenue,
     });
 
     // Note: Activity logging is now handled in leadService.createLead
@@ -579,6 +630,17 @@ const leadUpdateSchema = z.object({
     .optional(),
   customData: z.record(z.any()).optional(),
   hotels: z.array(hotelSchema).optional(),
+  // Hotel booking fields
+  checkIn: z.string().optional(),
+  checkOut: z.string().optional(),
+  roomTypeId: z.string().optional(),
+  roomTypeName: z.string().optional(),
+  ratePlanId: z.string().optional(),
+  ratePlanName: z.string().optional(),
+  roomCategory: z.string().optional(),
+  adults: z.number().optional(),
+  children: z.number().optional(),
+  estimatedRate: z.number().optional(),
 });
 
 leadsRouter.patch("/:id", async (req, res, next) => {
@@ -663,6 +725,30 @@ leadsRouter.patch("/:id", async (req, res, next) => {
     if (parsed.data.budget !== undefined) existing.budget = parsed.data.budget;
     if (parsed.data.bookingWindow !== undefined) existing.bookingWindow = parsed.data.bookingWindow;
     if (parsed.data.customerType !== undefined) existing.customerType = parsed.data.customerType;
+
+    // Hotel booking fields
+    if (parsed.data.checkIn) existing.checkIn = new Date(parsed.data.checkIn);
+    if (parsed.data.checkOut) existing.checkOut = new Date(parsed.data.checkOut);
+    if (parsed.data.roomTypeId !== undefined) existing.roomTypeId = parsed.data.roomTypeId;
+    if (parsed.data.roomTypeName !== undefined) existing.roomTypeName = parsed.data.roomTypeName;
+    if (parsed.data.ratePlanId !== undefined) existing.ratePlanId = parsed.data.ratePlanId;
+    if (parsed.data.ratePlanName !== undefined) existing.ratePlanName = parsed.data.ratePlanName;
+    if (parsed.data.roomCategory !== undefined) existing.roomCategory = parsed.data.roomCategory;
+    if (parsed.data.adults !== undefined) existing.adults = parsed.data.adults;
+    if (parsed.data.children !== undefined) existing.children = parsed.data.children;
+    if (parsed.data.estimatedRate !== undefined) existing.estimatedRate = parsed.data.estimatedRate;
+
+    // Auto-calculate room nights and revenue
+    if (existing.checkIn && existing.checkOut) {
+      const nights = Math.round(
+        (new Date(existing.checkOut).getTime() - new Date(existing.checkIn).getTime()) 
+        / (1000 * 60 * 60 * 24)
+      );
+      existing.estimatedRoomNights = nights > 0 ? nights : undefined;
+      if (existing.estimatedRate && nights > 0) {
+        existing.estimatedRevenue = existing.estimatedRate * nights;
+      }
+    }
 
     // Handle contactDetails update (with normalization)
     if (parsed.data.contactDetails) {
@@ -783,6 +869,7 @@ leadsRouter.patch("/:id", async (req, res, next) => {
           checkInDate: hotel.checkInDate,
           checkOutDate: hotel.checkOutDate,
           roomCategory: hotel.roomCategory,
+          roomsRequested: hotel.roomsRequested,
           roomPreference: hotel.roomPreference,
           numberOfGuests: hotel.numberOfGuests,
         }));

@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CustomFieldDefinition } from "@/services/customFields";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { HotelBookingSection } from "./leads/HotelBookingSection";
 
 export interface LeadTripDetails {
     checkInDate?: string;
@@ -24,6 +25,14 @@ export interface LeadTripDetails {
     guests?: LeadGuests;
     occasion?: string;
     customData?: Record<string, any>;
+    propertyId?: string;
+    roomTypeId?: string;
+    roomTypeName?: string;
+    ratePlanId?: string;
+    ratePlanName?: string;
+    estimatedRate?: number;
+    estimatedRoomNights?: number;
+    estimatedRevenue?: number;
     budget?: number | string;
     customerType?: string;
     bookingWindow?: string;
@@ -61,6 +70,16 @@ export function EditLeadDetailsDialog({
     const [notes, setNotes] = useState("");
     const [source, setSource] = useState("");
     const [heatLevel, setHeatLevel] = useState("");
+    // PMS Booking Fields
+    const [propertyId, setPropertyId] = useState("");
+    const [roomTypeId, setRoomTypeId] = useState("");
+    const [roomTypeName, setRoomTypeName] = useState("");
+    const [ratePlanId, setRatePlanId] = useState("");
+    const [ratePlanName, setRatePlanName] = useState("");
+    const [estimatedRate, setEstimatedRate] = useState<number | undefined>();
+    const [estimatedRoomNights, setEstimatedRoomNights] = useState<number | undefined>();
+    const [estimatedRevenue, setEstimatedRevenue] = useState<number | undefined>();
+
     const [isSaving, setIsSaving] = useState(false);
     const [errors, setErrors] = useState<{ dates?: string, custom?: string }>({});
 
@@ -90,6 +109,14 @@ export function EditLeadDetailsDialog({
             setNotes(currentDetails.notes || "");
             setSource(currentDetails.source || "");
             setHeatLevel(currentDetails.heatLevel || "");
+            setPropertyId(currentDetails.propertyId || "");
+            setRoomTypeId(currentDetails.roomTypeId || "");
+            setRoomTypeName(currentDetails.roomTypeName || "");
+            setRatePlanId(currentDetails.ratePlanId || "");
+            setRatePlanName(currentDetails.ratePlanName || "");
+            setEstimatedRate(currentDetails.estimatedRate);
+            setEstimatedRoomNights(currentDetails.estimatedRoomNights);
+            setEstimatedRevenue(currentDetails.estimatedRevenue);
             setErrors({});
         }
     }, [open, currentDetails]);
@@ -136,6 +163,14 @@ export function EditLeadDetailsDialog({
                 source: source || undefined,
                 heatLevel: heatLevel || undefined,
                 customData: Object.keys(customData).length > 0 ? customData : undefined,
+                propertyId: propertyId || undefined,
+                roomTypeId: roomTypeId || undefined,
+                roomTypeName: roomTypeName || undefined,
+                ratePlanId: ratePlanId || undefined,
+                ratePlanName: ratePlanName || undefined,
+                estimatedRate: estimatedRate,
+                estimatedRoomNights: estimatedRoomNights,
+                estimatedRevenue: estimatedRevenue,
             });
             onOpenChange(false);
         } catch (error) {
@@ -212,6 +247,40 @@ export function EditLeadDetailsDialog({
                             />
                         </div>
                     </div>
+
+                    {propertyId && (
+                        <div className="pt-2">
+                            <HotelBookingSection
+                                propertyId={propertyId}
+                                value={{
+                                    checkIn: checkInDate,
+                                    checkOut: checkOutDate,
+                                    roomTypeId,
+                                    roomTypeName,
+                                    ratePlanId,
+                                    ratePlanName,
+                                    adults: parseInt(adults) || 1,
+                                    children: parseInt(children) || 0,
+                                    estimatedRate,
+                                    estimatedRoomNights,
+                                    estimatedRevenue
+                                }}
+                                onChange={(patch) => {
+                                    if (patch.checkIn !== undefined) setCheckInDate(patch.checkIn);
+                                    if (patch.checkOut !== undefined) setCheckOutDate(patch.checkOut);
+                                    if (patch.roomTypeId !== undefined) setRoomTypeId(patch.roomTypeId);
+                                    if (patch.roomTypeName !== undefined) setRoomTypeName(patch.roomTypeName);
+                                    if (patch.ratePlanId !== undefined) setRatePlanId(patch.ratePlanId);
+                                    if (patch.ratePlanName !== undefined) setRatePlanName(patch.ratePlanName);
+                                    if (patch.adults !== undefined) setAdults(String(patch.adults));
+                                    if (patch.children !== undefined) setChildren(String(patch.children));
+                                    if (patch.estimatedRate !== undefined) setEstimatedRate(patch.estimatedRate);
+                                    if (patch.estimatedRoomNights !== undefined) setEstimatedRoomNights(patch.estimatedRoomNights);
+                                    if (patch.estimatedRevenue !== undefined) setEstimatedRevenue(patch.estimatedRevenue);
+                                }}
+                            />
+                        </div>
+                    )}
 
                     <div className="grid gap-2">
                         <Label htmlFor="budget">Budget</Label>

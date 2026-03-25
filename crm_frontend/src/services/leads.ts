@@ -1,5 +1,19 @@
 import { API_BASE_URL, withAuthHeaders } from "./api";
 
+/** Parse error bodies from Express errorHandler and legacy `{ message }` responses. */
+function extractApiErrorMessage(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const d = data as Record<string, unknown>;
+  if (typeof d.message === "string" && d.message.trim()) return d.message.trim();
+  const nested = d.error;
+  if (typeof nested === "string" && nested.trim()) return nested.trim();
+  if (nested && typeof nested === "object" && typeof (nested as { message?: unknown }).message === "string") {
+    const m = (nested as { message: string }).message.trim();
+    if (m) return m;
+  }
+  return undefined;
+}
+
 export type LeadStatus =
   | "NEW"
   | "IN_PROGRESS"
@@ -110,6 +124,14 @@ export interface LeadItinerary {
   checkInDate?: string;
   checkOutDate?: string;
   roomCategory?: string;
+  roomsRequested?: {
+    roomTypeId?: string;
+    roomTypeName?: string;
+    quantity?: number;
+    adults?: number;
+    children?: number;
+    notes?: string;
+  }[];
   roomPreference?: string;
   numberOfGuests?: string;
 }
@@ -147,7 +169,28 @@ export interface Lead {
   gstin?: string;
   estimatedValue?: string;
   notes?: string;
-  closedReason?: string; // Add closedReason
+  
+  // PMS Booking fields at root level
+  roomTypeId?: string;
+  roomTypeName?: string;
+  ratePlanId?: string;
+  ratePlanName?: string;
+  roomCategory?: string;
+  adults?: number;
+  children?: number;
+  estimatedRoomNights?: number;
+  estimatedRate?: number;
+  estimatedRevenue?: number;
+  pmsBookingId?: string;
+  pmsBookingStatus?: string;
+
+  // Stay details at root level (used by AdminLeads display)
+  checkInDate?: string;
+  checkOutDate?: string;
+  roomsRequested?: number;
+  occasion?: string;
+  
+  closedReason?: string;
 }
 
 export type LeadScope = "own" | "team" | "all";
@@ -314,11 +357,8 @@ export const createLead = async (
     let message = "Unable to create lead";
     try {
       const data = await response.json();
-      if (data?.message) {
-        message = data.message;
-      } else if (data?.error?.message) {
-        message = data.error.message;
-      }
+      const extracted = extractApiErrorMessage(data);
+      if (extracted) message = extracted;
     } catch {
       // ignore
     }
