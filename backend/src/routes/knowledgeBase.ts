@@ -2,7 +2,8 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { logger } from "../config/logger";
 import { requireAuth, requirePermissions } from "../middleware/auth";
-import { badRequest } from "../utils/httpError";
+import { badRequest, notFound } from "../utils/httpError";
+import { PropertyModel } from "../models/property";
 import { KnowledgeBaseService } from "../services/knowledgeBaseService";
 import {
   KnowledgeBaseType,
@@ -66,6 +67,54 @@ knowledgeBaseRouter.get("/", async (req, res, next) => {
 
     const items = await KnowledgeBaseService.find(filters);
     res.json(items);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const forQuotationQuerySchema = z.object({
+  propertyId: z.string().min(1),
+});
+
+// GET /knowledge-base/for-quotation — consolidated property + FACTSHEET for quotation UI (before /:id)
+knowledgeBaseRouter.get("/for-quotation", async (req, res, next) => {
+  try {
+    const parsed = forQuotationQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw badRequest("propertyId query parameter is required");
+    }
+
+    const { propertyId } = parsed.data;
+    if (!Types.ObjectId.isValid(propertyId)) {
+      throw badRequest("Invalid propertyId");
+    }
+
+    const propertyDoc = await PropertyModel.findById(propertyId).lean();
+    if (!propertyDoc) {
+      throw notFound("Property not found");
+    }
+
+    // Default tier for legacy properties without tier (email + UI branding fallback)
+    const tier = propertyDoc.tier ?? "SELECT";
+
+    const factsheet = await KnowledgeBaseService.getFactSheetForProperty(propertyId);
+
+    res.json({
+      property: {
+        id: propertyDoc._id.toString(),
+        name: propertyDoc.name,
+        tier,
+        branding: {
+          primaryFont: propertyDoc.branding?.primaryFont,
+          secondaryFont: propertyDoc.branding?.secondaryFont,
+          colorScheme: propertyDoc.branding?.colorScheme,
+        },
+        contactEmail: propertyDoc.contactEmail ?? "",
+        contactPhone: propertyDoc.contactPhone ?? "",
+        mapLocation: propertyDoc.mapLocation ?? "",
+      },
+      factsheet,
+    });
   } catch (err) {
     next(err);
   }

@@ -33,8 +33,10 @@ export const backendLogin = async (email: string, password: string): Promise<Bac
     let message = "Unable to login";
     try {
       const data = await response.json();
-      if (data?.message) {
+      if (typeof data?.message === "string" && data.message) {
         message = data.message;
+      } else if (typeof data?.error?.message === "string" && data.error.message) {
+        message = data.error.message;
       }
     } catch {
       // ignore JSON parse issues

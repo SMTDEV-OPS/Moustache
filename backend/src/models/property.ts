@@ -1,5 +1,18 @@
 import { Schema, model, Document } from "mongoose";
 
+export type PropertyTier = "HOSTEL" | "SELECT" | "LUXURIA";
+
+export interface IPropertyBranding {
+  primaryFont?: string;
+  secondaryFont?: string;
+  colorScheme?: {
+    primary?: string;
+    accent?: string;
+    background?: string;
+    text?: string;
+  };
+}
+
 export interface IProperty extends Document {
   name: string;
   code: string;
@@ -10,6 +23,11 @@ export interface IProperty extends Document {
   };
   timeZone?: string;
   status: "ACTIVE" | "INACTIVE";
+  tier?: PropertyTier;
+  branding?: IPropertyBranding;
+  contactEmail?: string;
+  contactPhone?: string;
+  mapLocation?: string;
   pmsProvider?: "NONE" | "EZEE";
   pmsConfig?: {
     hotelCode?: string;
@@ -31,6 +49,20 @@ const propertySchema = new Schema<IProperty>(
     },
     timeZone: String,
     status: { type: String, enum: ["ACTIVE", "INACTIVE"], default: "ACTIVE" },
+    tier: { type: String, enum: ["HOSTEL", "SELECT", "LUXURIA"] },
+    branding: {
+      primaryFont: String,
+      secondaryFont: String,
+      colorScheme: {
+        primary: String,
+        accent: String,
+        background: String,
+        text: String,
+      },
+    },
+    contactEmail: String,
+    contactPhone: String,
+    mapLocation: String,
     pmsProvider: {
       type: String,
       enum: ["NONE", "EZEE"],

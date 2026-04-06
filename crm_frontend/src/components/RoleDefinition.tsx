@@ -17,47 +17,54 @@ import {
 } from "@/components/ui/dialog";
 import { createRole, listRoles, updateRole, deleteRole, Role } from "@/services/roles";
 import { listUsers, User } from "@/services/users";
+import { PERMISSIONS } from "@/constants/permissions";
 
 const AVAILABLE_PERMISSIONS = [
   // User & admin
-  "users.manage",
-  "accounts.manage",
-  "properties.manage",
-  "regions.manage",
-  "workflows.manage",
+  PERMISSIONS.USERS.MANAGE,
+  PERMISSIONS.ACCOUNTS.MANAGE,
+  PERMISSIONS.PROPERTIES.MANAGE,
+  PERMISSIONS.REGIONS.MANAGE,
+  PERMISSIONS.WORKFLOWS.MANAGE,
   "availability.upload",
-  "reports.view",
+  PERMISSIONS.REPORTS.READ,
   "callcenter.access",
-  // Lead module – view scopes
-  "leads.view.own",
-  "leads.view.team",
-  "leads.view.all",
-  // Lead module – actions
-  "leads.create",
-  "leads.update",
-  "leads.assign",
-  "leads.delete",
+  // Lead module – actions (Profile mapping yields read/create/update/delete/manage)
+  PERMISSIONS.LEADS.READ,
+  PERMISSIONS.LEADS.CREATE,
+  PERMISSIONS.LEADS.UPDATE,
+  PERMISSIONS.LEADS.ASSIGN,
+  PERMISSIONS.LEADS.REASSIGN,
+  PERMISSIONS.LEADS.DELETE,
   "leads.send.quotation",
   "leads.schedule.followup",
   "leads.send.email",
   // Lead module – full control
-  "leads.manage",
-  // Ticket module – view scopes
-  "tickets.view.own",
-  "tickets.view.team",
-  "tickets.view.all",
-  // Ticket module – actions
-  "tickets.create",
-  "tickets.update",
+  PERMISSIONS.LEADS.MANAGE,
+  // Lead module – granular field edit (PATCH body keys; use with or without leads.update)
+  "leads.field.contact",
+  "leads.field.notes",
+  "leads.field.status",
+  "leads.field.source",
+  "leads.field.heat",
+  "leads.field.call_status",
+  "leads.field.assignment",
+  "leads.field.pipeline",
+  "leads.field.booking",
+  "leads.field.commercial",
+  "leads.field.custom",
+  // Ticket module – actions (Profile mapping yields read/write/update/delete/manage)
+  PERMISSIONS.TICKETS.READ,
+  PERMISSIONS.TICKETS.WRITE,
+  PERMISSIONS.TICKETS.UPDATE,
   "tickets.assign",
-  "tickets.delete",
+  PERMISSIONS.TICKETS.DELETE,
   "tickets.resolve",
   // Ticket module – full control
-  "tickets.manage",
+  PERMISSIONS.TICKETS.MANAGE,
   // Buddy module
-  "buddies.assign",
-  "buddies.view.history",
-  "buddies.view.reports",
+  PERMISSIONS.BUDDIES.READ,
+  PERMISSIONS.BUDDIES.MANAGE,
 ] as const;
 
 export const RoleDefinition = () => {

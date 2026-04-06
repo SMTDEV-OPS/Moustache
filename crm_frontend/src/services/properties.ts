@@ -11,6 +11,20 @@ export interface Property {
   };
   timeZone?: string;
   status: "ACTIVE" | "INACTIVE";
+  tier?: "HOSTEL" | "SELECT" | "LUXURIA";
+  branding?: {
+    primaryFont?: string;
+    secondaryFont?: string;
+    colorScheme?: {
+      primary?: string;
+      accent?: string;
+      background?: string;
+      text?: string;
+    };
+  };
+  contactEmail?: string;
+  contactPhone?: string;
+  mapLocation?: string;
   pmsProvider?: "NONE" | "EZEE";
   pmsConfig?: {
     hotelCode?: string;
@@ -268,5 +282,40 @@ export const listPropertyReservations = async (
 
   const data = await response.json();
   return Array.isArray(data) ? data : [];
+};
+
+export interface EzeeRateSuggestion {
+  roomType: string;
+  rate: number;
+  currency: "INR";
+}
+
+export const getPropertyEzeeRates = async (
+  propertyId: string,
+  checkIn: string,
+  checkOut: string
+): Promise<{
+  available: boolean;
+  rates: EzeeRateSuggestion[];
+  message?: string;
+}> => {
+  const params = new URLSearchParams({ checkIn, checkOut });
+  const response = await fetch(
+    `${API_BASE_URL}/properties/${propertyId}/ezee-rates?${params.toString()}`,
+    { headers: withAuthHeaders(), cache: "no-store" }
+  );
+
+  if (!response.ok) {
+    let message = "Unable to fetch Ezee rates";
+    try {
+      const data = await response.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
 };
 

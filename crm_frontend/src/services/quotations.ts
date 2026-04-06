@@ -14,6 +14,8 @@ export interface Quotation {
   leadId: string;
   versionNumber: number;
   propertyId?: string;
+  kbFactsheetId?: string;
+  propertyTier?: "HOSTEL" | "SELECT" | "LUXURIA";
   rooms?: number;
   rate?: number;
   taxes?: number;

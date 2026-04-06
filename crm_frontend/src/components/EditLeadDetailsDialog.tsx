@@ -48,6 +48,8 @@ interface EditLeadDetailsDialogProps {
     currentDetails: LeadTripDetails;
     customFields?: any[];
     onSave: (details: LeadTripDetails) => Promise<void>;
+    /** PATCH keys this user may change (from GET /leads/:id). If omitted, all fields are editable. */
+    editableFieldKeys?: string[];
 }
 
 export function EditLeadDetailsDialog({
@@ -56,7 +58,18 @@ export function EditLeadDetailsDialog({
     currentDetails,
     customFields = [],
     onSave,
+    editableFieldKeys,
 }: EditLeadDetailsDialogProps) {
+    const can = (key: string) =>
+        editableFieldKeys === undefined ? true : editableFieldKeys.includes(key);
+    const canBooking =
+        can("hotels") ||
+        can("checkIn") ||
+        can("checkOut") ||
+        can("roomTypeId") ||
+        can("estimatedRate") ||
+        can("adults") ||
+        can("children");
     const [checkInDate, setCheckInDate] = useState("");
     const [checkOutDate, setCheckOutDate] = useState("");
     const [rooms, setRooms] = useState("1");
@@ -198,6 +211,7 @@ export function EditLeadDetailsDialog({
                                 type="date"
                                 value={checkInDate}
                                 onChange={(e) => setCheckInDate(e.target.value)}
+                                disabled={!canBooking}
                             />
                         </div>
                         <div className="grid gap-2">
@@ -208,6 +222,7 @@ export function EditLeadDetailsDialog({
                                 value={checkOutDate}
                                 onChange={(e) => setCheckOutDate(e.target.value)}
                                 min={checkInDate}
+                                disabled={!canBooking}
                             />
                         </div>
                     </div>
@@ -224,6 +239,7 @@ export function EditLeadDetailsDialog({
                                 min="1"
                                 value={rooms}
                                 onChange={(e) => setRooms(e.target.value)}
+                                disabled={!canBooking}
                             />
                         </div>
                         <div className="grid gap-2">
@@ -234,6 +250,7 @@ export function EditLeadDetailsDialog({
                                 min="1"
                                 value={adults}
                                 onChange={(e) => setAdults(e.target.value)}
+                                disabled={!canBooking}
                             />
                         </div>
                         <div className="grid gap-2">
@@ -244,6 +261,7 @@ export function EditLeadDetailsDialog({
                                 min="0"
                                 value={children}
                                 onChange={(e) => setChildren(e.target.value)}
+                                disabled={!canBooking}
                             />
                         </div>
                     </div>
@@ -252,6 +270,7 @@ export function EditLeadDetailsDialog({
                         <div className="pt-2">
                             <HotelBookingSection
                                 propertyId={propertyId}
+                                readOnly={!canBooking}
                                 value={{
                                     checkIn: checkInDate,
                                     checkOut: checkOutDate,
@@ -290,11 +309,12 @@ export function EditLeadDetailsDialog({
                             placeholder="e.g., 700000"
                             value={budget}
                             onChange={(e) => setBudget(e.target.value)}
+                            disabled={!can("budget")}
                         />
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="customerType">Customer Type</Label>
-                        <Select value={customerType} onValueChange={setCustomerType}>
+                        <Select value={customerType} onValueChange={setCustomerType} disabled={!can("customerType")}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select customer type (optional)" />
                             </SelectTrigger>
@@ -311,7 +331,7 @@ export function EditLeadDetailsDialog({
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="bookingWindow">Booking Window</Label>
-                        <Select value={bookingWindow} onValueChange={setBookingWindow}>
+                        <Select value={bookingWindow} onValueChange={setBookingWindow} disabled={!can("bookingWindow")}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select booking window (optional)" />
                             </SelectTrigger>
@@ -330,11 +350,12 @@ export function EditLeadDetailsDialog({
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                             rows={3}
+                            disabled={!can("notes")}
                         />
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="source">Lead Source</Label>
-                        <Select value={source} onValueChange={setSource}>
+                        <Select value={source} onValueChange={setSource} disabled={!can("source")}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select source (optional)" />
                             </SelectTrigger>
@@ -353,7 +374,7 @@ export function EditLeadDetailsDialog({
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="heatLevel">Heat Level</Label>
-                        <Select value={heatLevel} onValueChange={setHeatLevel}>
+                        <Select value={heatLevel} onValueChange={setHeatLevel} disabled={!can("heatLevel")}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select heat level (optional)" />
                             </SelectTrigger>
@@ -366,7 +387,7 @@ export function EditLeadDetailsDialog({
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="occasion">Occasion</Label>
-                        <Select value={occasion} onValueChange={setOccasion}>
+                        <Select value={occasion} onValueChange={setOccasion} disabled={!canBooking}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select occasion (optional)" />
                             </SelectTrigger>
@@ -384,6 +405,9 @@ export function EditLeadDetailsDialog({
                     {customFields.length > 0 && (
                         <div className="border-t border-slate-200 mt-2 pt-4">
                             <h4 className="text-sm font-semibold mb-3">Additional Information</h4>
+                            {!can("customData") && (
+                                <p className="text-xs text-muted-foreground mb-2">You don&apos;t have permission to edit additional fields.</p>
+                            )}
                             <div className="grid gap-4">
                                 {customFields.map(field => {
                                     const fieldSlug = field.slug || field.fieldName;
@@ -401,6 +425,7 @@ export function EditLeadDetailsDialog({
                                                     placeholder={fieldName}
                                                     value={customData[fieldSlug] || ""}
                                                     onChange={e => setCustomData(prev => ({ ...prev, [fieldSlug]: e.target.value }))}
+                                                    disabled={!can("customData")}
                                                 />
                                             )}
                                             {dataType === "NUMBER" && (
@@ -409,6 +434,7 @@ export function EditLeadDetailsDialog({
                                                     placeholder={fieldName}
                                                     value={customData[fieldSlug] || ""}
                                                     onChange={e => setCustomData(prev => ({ ...prev, [fieldSlug]: Number(e.target.value) || "" }))}
+                                                    disabled={!can("customData")}
                                                 />
                                             )}
                                             {dataType === "TEXTAREA" && (
@@ -416,6 +442,7 @@ export function EditLeadDetailsDialog({
                                                     placeholder={fieldName}
                                                     value={customData[fieldSlug] || ""}
                                                     onChange={e => setCustomData(prev => ({ ...prev, [fieldSlug]: e.target.value }))}
+                                                    disabled={!can("customData")}
                                                 />
                                             )}
                                             {dataType === "DATE" && (
@@ -423,6 +450,7 @@ export function EditLeadDetailsDialog({
                                                     type="date"
                                                     value={customData[fieldSlug] || ""}
                                                     onChange={e => setCustomData(prev => ({ ...prev, [fieldSlug]: e.target.value }))}
+                                                    disabled={!can("customData")}
                                                 />
                                             )}
                                             {dataType === "BOOLEAN" && (
@@ -430,6 +458,7 @@ export function EditLeadDetailsDialog({
                                                     <Switch
                                                         checked={!!customData[fieldSlug]}
                                                         onCheckedChange={checked => setCustomData(prev => ({ ...prev, [fieldSlug]: checked }))}
+                                                        disabled={!can("customData")}
                                                     />
                                                 </div>
                                             )}
@@ -437,6 +466,7 @@ export function EditLeadDetailsDialog({
                                                 <Select
                                                     value={customData[fieldSlug] || ""}
                                                     onValueChange={value => setCustomData(prev => ({ ...prev, [fieldSlug]: value }))}
+                                                    disabled={!can("customData")}
                                                 >
                                                     <SelectTrigger>
                                                         <SelectValue placeholder={`Select ${fieldName}`} />
@@ -471,7 +501,13 @@ export function EditLeadDetailsDialog({
                     >
                         Cancel
                     </Button>
-                    <Button onClick={handleSave} disabled={isSaving}>
+                    <Button
+                        onClick={handleSave}
+                        disabled={
+                            isSaving ||
+                            (editableFieldKeys !== undefined && editableFieldKeys.length === 0)
+                        }
+                    >
                         {isSaving ? (
                             <>
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

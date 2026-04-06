@@ -9,6 +9,8 @@ export interface AppConfig {
     region: string;
     bucketName: string;
   };
+  gmailPubSubTopic: string;
+  gmailWebhookSecret: string;
 }
 
 function getEnv(name: string, fallback?: string): string {
@@ -31,6 +33,8 @@ export const config: AppConfig = {
     region: getEnv("AWS_REGION", ""),
     bucketName: getEnv("AWS_S3_BUCKET_NAME", ""),
   },
+  gmailPubSubTopic: getEnv("GMAIL_PUBSUB_TOPIC", ""),
+  gmailWebhookSecret: getEnv("GMAIL_WEBHOOK_SECRET", ""),
 };
 
 

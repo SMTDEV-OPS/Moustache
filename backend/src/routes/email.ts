@@ -18,6 +18,8 @@ import { badRequest, notFound } from "../utils/httpError";
 import { google } from "googleapis";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { logger } from "../config/logger";
+import { config } from "../config/env";
+import { GmailProvider } from "../services/email/gmailProvider";
 
 export const emailRouter = Router();
 
@@ -255,6 +257,34 @@ emailRouter.get("/accounts/connect/outlook/callback", async (req, res, next) => 
 });
 
 // Apply authentication middleware to all other routes
+// TEMPORARY DEBUG ROUTE - REMOVE BEFORE PRODUCTION
+emailRouter.post("/accounts/:id/setup-watch", async (req, res) => {
+  try {
+    const accountId = req.params.id;
+    const account = await EmailAccountModel.findById(accountId).exec();
+    if (!account) {
+      return res.status(404).json({ error: "Email account not found" });
+    }
+
+    const provider = new GmailProvider(account);
+    await provider.setupWatch(config.gmailPubSubTopic);
+
+    const updated = await EmailAccountModel.findById(accountId)
+      .select("gmailHistoryId gmailWatchExpiration gmailWatchResourceId")
+      .lean()
+      .exec();
+
+    return res.json({
+      gmailHistoryId: updated?.gmailHistoryId ?? null,
+      gmailWatchExpiration: updated?.gmailWatchExpiration ?? null,
+      gmailWatchResourceId: updated?.gmailWatchResourceId ?? null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message });
+  }
+});
+
 emailRouter.use(requireAuth);
 
 // ============================================
@@ -268,8 +298,9 @@ emailRouter.get("/accounts", async (req, res, next) => {
     if (!userId) {
       throw badRequest("User not authenticated");
     }
+    const userObjectId = new Types.ObjectId(userId);
 
-    const accounts = await EmailAccountModel.find({ userId }).sort({ isPrimary: -1, createdAt: -1 }).lean();
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).sort({ isPrimary: -1, createdAt: -1 }).lean();
 
     // Don't expose sensitive data
     const sanitized = accounts.map((acc) => ({
@@ -285,6 +316,47 @@ emailRouter.get("/accounts", async (req, res, next) => {
     }));
 
     res.json(sanitized);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /email/accounts/me - Get user's primary active account (fallback to latest active)
+emailRouter.get("/accounts/me", async (req, res, next) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw badRequest("User not authenticated");
+    }
+    const userObjectId = new Types.ObjectId(userId);
+
+    let account = await EmailAccountModel.findOne({
+      userId: userObjectId,
+      isPrimary: true,
+      isActive: true,
+    }).lean();
+
+    if (!account) {
+      account = await EmailAccountModel.findOne({ userId: userObjectId, isActive: true })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    if (!account) {
+      throw notFound("No active email account found");
+    }
+
+    const provider =
+      account.provider === "GMAIL"
+        ? "gmail"
+        : account.provider === "OUTLOOK"
+          ? "outlook"
+          : "outlook";
+
+    res.json({
+      email: account.email,
+      provider,
+    });
   } catch (err) {
     next(err);
   }
@@ -320,6 +392,7 @@ emailRouter.post("/accounts/connect/gmail", async (req, res, next) => {
     const scopes = [
       "https://www.googleapis.com/auth/gmail.send",
       "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.modify",
       "https://www.googleapis.com/auth/userinfo.email",
     ];
 
@@ -467,6 +540,7 @@ emailRouter.delete("/accounts/:id", async (req, res, next) => {
   try {
     const userId = (req as any).user?.id;
     const accountId = req.params.id;
+    const userObjectId = new Types.ObjectId(userId);
 
     const account = await EmailAccountModel.findOne({ _id: accountId, userId }).exec();
     if (!account) {
@@ -493,6 +567,7 @@ emailRouter.patch("/accounts/:id", async (req, res, next) => {
     if (!parsed.success) {
       throw badRequest("Invalid update payload");
     }
+    const userObjectId = new Types.ObjectId(userId);
 
     const account = await EmailAccountModel.findOne({ _id: accountId, userId }).exec();
     if (!account) {
@@ -515,6 +590,7 @@ emailRouter.post("/accounts/:id/sync", async (req, res, next) => {
   try {
     const userId = (req as any).user?.id;
     const accountId = req.params.id;
+    const userObjectId = new Types.ObjectId(userId);
 
     const account = await EmailAccountModel.findOne({ _id: accountId, userId }).exec();
     if (!account) {
@@ -545,6 +621,7 @@ emailRouter.patch("/accounts/:id/primary", async (req, res, next) => {
   try {
     const userId = (req as any).user?.id;
     const accountId = req.params.id;
+    const userObjectId = new Types.ObjectId(userId);
 
     const account = await EmailAccountModel.findOne({ _id: accountId, userId }).exec();
     if (!account) {
@@ -570,9 +647,10 @@ emailRouter.get("/messages", async (req, res, next) => {
   try {
     const userId = (req as any).user?.id;
     const { folder, accountId, limit = 50, offset = 0, search } = req.query;
+    const userObjectId = new Types.ObjectId(userId);
 
     // Get user's email accounts
-    const accounts = await EmailAccountModel.find({ userId }).select("_id").lean();
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).select("_id").lean();
     const accountIds = accounts.map((a) => a._id);
 
     const filter: any = { emailAccountId: { $in: accountIds } };
@@ -605,8 +683,9 @@ emailRouter.get("/messages/:id", async (req, res, next) => {
   try {
     const userId = (req as any).user?.id;
     const messageId = req.params.id;
+    const userObjectId = new Types.ObjectId(userId);
 
-    const accounts = await EmailAccountModel.find({ userId }).select("_id").lean();
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).select("_id").lean();
     const accountIds = accounts.map((a) => a._id);
 
     const message = await EmailMessageModel.findOne({
@@ -629,8 +708,9 @@ emailRouter.get("/threads/:threadId", async (req, res, next) => {
   try {
     const userId = (req as any).user?.id;
     const threadId = req.params.threadId;
+    const userObjectId = new Types.ObjectId(userId);
 
-    const accounts = await EmailAccountModel.find({ userId }).select("_id").lean();
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).select("_id").lean();
     const accountIds = accounts.map((a) => a._id);
 
     const messages = await EmailMessageModel.find({
@@ -665,6 +745,7 @@ emailRouter.post("/send", async (req, res, next) => {
     if (!parsed.success) {
       throw badRequest("Invalid email payload");
     }
+    const userObjectId = new Types.ObjectId(userId);
 
     let accountId = parsed.data.accountId;
     if (!accountId) {
@@ -676,7 +757,7 @@ emailRouter.post("/send", async (req, res, next) => {
     }
 
     // Verify account belongs to user
-    const account = await EmailAccountModel.findOne({ _id: accountId, userId }).exec();
+    const account = await EmailAccountModel.findOne({ _id: accountId, userId: userObjectId }).exec();
     if (!account) {
       throw notFound("Email account not found");
     }
@@ -703,8 +784,9 @@ emailRouter.post("/reply/:messageId", async (req, res, next) => {
     if (!parsed.success) {
       throw badRequest("Invalid reply payload");
     }
+    const userObjectId = new Types.ObjectId(userId);
 
-    const accounts = await EmailAccountModel.find({ userId }).select("_id").lean();
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).select("_id").lean();
     const accountIds = accounts.map((a) => a._id);
 
     const originalMessage = await EmailMessageModel.findOne({
@@ -717,7 +799,7 @@ emailRouter.post("/reply/:messageId", async (req, res, next) => {
     }
 
     let accountId = parsed.data.accountId || originalMessage.emailAccountId.toString();
-    const account = await EmailAccountModel.findOne({ _id: accountId, userId }).exec();
+    const account = await EmailAccountModel.findOne({ _id: accountId, userId: userObjectId }).exec();
     if (!account) {
       throw notFound("Email account not found");
     }
@@ -728,14 +810,20 @@ emailRouter.post("/reply/:messageId", async (req, res, next) => {
       ? originalMessage.subject
       : `Re: ${originalMessage.subject}`;
 
-    const replyBody = parsed.data.bodyHtml || parsed.data.bodyText || "";
+    const existingReferences = Array.isArray((originalMessage as any).references)
+      ? (originalMessage as any).references
+      : typeof (originalMessage as any).references === "string"
+        ? (originalMessage as any).references.split(/\s+/).filter(Boolean)
+        : [];
+    const references = [...existingReferences, originalMessage.messageId].join(" ");
 
     const email = await sendEmail(accountId, {
       to: [{ email: replyTo, name: originalMessage.from.name }],
       subject,
       bodyText: parsed.data.bodyText,
       bodyHtml: parsed.data.bodyHtml,
-      replyTo: originalMessage.messageId,
+      inReplyTo: originalMessage.messageId,
+      references,
     });
 
     res.status(201).json(email);
@@ -760,8 +848,9 @@ emailRouter.post("/forward/:messageId", async (req, res, next) => {
     if (!parsed.success) {
       throw badRequest("Invalid forward payload");
     }
+    const userObjectId = new Types.ObjectId(userId);
 
-    const accounts = await EmailAccountModel.find({ userId }).select("_id").lean();
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).select("_id").lean();
     const accountIds = accounts.map((a) => a._id);
 
     const originalMessage = await EmailMessageModel.findOne({
@@ -774,7 +863,7 @@ emailRouter.post("/forward/:messageId", async (req, res, next) => {
     }
 
     let accountId = parsed.data.accountId || originalMessage.emailAccountId.toString();
-    const account = await EmailAccountModel.findOne({ _id: accountId, userId }).exec();
+    const account = await EmailAccountModel.findOne({ _id: accountId, userId: userObjectId }).exec();
     if (!account) {
       throw notFound("Email account not found");
     }
@@ -818,8 +907,9 @@ emailRouter.patch("/messages/:id", async (req, res, next) => {
     if (!parsed.success) {
       throw badRequest("Invalid update payload");
     }
+    const userObjectId = new Types.ObjectId(userId);
 
-    const accounts = await EmailAccountModel.find({ userId }).select("_id").lean();
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).select("_id").lean();
     const accountIds = accounts.map((a) => a._id);
 
     const message = await EmailMessageModel.findOneAndUpdate(
@@ -843,8 +933,9 @@ emailRouter.delete("/messages/:id", async (req, res, next) => {
   try {
     const userId = (req as any).user?.id;
     const messageId = req.params.id;
+    const userObjectId = new Types.ObjectId(userId);
 
-    const accounts = await EmailAccountModel.find({ userId }).select("_id").lean();
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).select("_id").lean();
     const accountIds = accounts.map((a) => a._id);
 
     const message = await EmailMessageModel.findOneAndUpdate(
@@ -876,7 +967,8 @@ emailRouter.get("/folders", async (req, res, next) => {
 
     // Get unread counts
     const userId = (req as any).user?.id;
-    const accounts = await EmailAccountModel.find({ userId }).select("_id").lean();
+    const userObjectId = new Types.ObjectId(userId);
+    const accounts = await EmailAccountModel.find({ userId: userObjectId }).select("_id").lean();
     const accountIds = accounts.map((a) => a._id);
 
     for (const folder of folders) {

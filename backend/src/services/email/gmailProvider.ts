@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { logger } from "../../config/logger";
-import { IEmailAccount } from "../../models/emailAccount";
+import { IEmailAccount, EmailAccountModel } from "../../models/emailAccount";
 import { IEmailMessage, IEmailAddress, EmailMessageModel } from "../../models/emailMessage";
 import { SendEmailOptions } from "./imapProvider";
 
@@ -59,6 +59,11 @@ export class GmailProvider {
     if (credentials.expiry_date) {
       this.account.oauth.expiresAt = new Date(credentials.expiry_date);
     }
+
+    await EmailAccountModel.findByIdAndUpdate(this.account._id, {
+      "oauth.accessToken": this.account.oauth.accessToken,
+      "oauth.expiresAt": this.account.oauth.expiresAt,
+    });
   }
 
   /**
@@ -136,6 +141,102 @@ export class GmailProvider {
         const messageResponse = await this.gmail.users.messages.get({
           userId: "me",
           id: msg.id,
+          format: "full",
+        });
+        return messageResponse.data;
+      })
+    );
+
+    return messages;
+  }
+
+  async setupWatch(pubSubTopic: string): Promise<void> {
+    await this.refreshTokenIfNeeded();
+
+    const response = await this.gmail.users.watch({
+      userId: "me",
+      requestBody: {
+        topicName: pubSubTopic,
+        labelIds: ["INBOX"],
+      },
+    });
+
+    const gmailHistoryId = response.data.historyId ? String(response.data.historyId) : undefined;
+    const gmailWatchExpiration = response.data.expiration ? Number(response.data.expiration) : undefined;
+    const gmailWatchResourceId = response.data.resourceId ? String(response.data.resourceId) : undefined;
+
+    await EmailAccountModel.findByIdAndUpdate(this.account._id, {
+      gmailHistoryId,
+      gmailWatchExpiration,
+      gmailWatchResourceId,
+    });
+  }
+
+  async stopWatch(): Promise<void> {
+    await this.refreshTokenIfNeeded();
+
+    await this.gmail.users.stop({
+      userId: "me",
+    });
+
+    await EmailAccountModel.findByIdAndUpdate(this.account._id, {
+      $unset: {
+        gmailHistoryId: 1,
+        gmailWatchExpiration: 1,
+        gmailWatchResourceId: 1,
+      },
+    });
+  }
+
+  async fetchEmailsByHistory(startHistoryId: string): Promise<any[]> {
+    await this.refreshTokenIfNeeded();
+
+    let pageToken: string | undefined;
+    const messageIds = new Set<string>();
+    let latestHistoryId: string | undefined;
+
+    do {
+      const historyResponse = await this.gmail.users.history.list({
+        userId: "me",
+        startHistoryId,
+        historyTypes: ["messageAdded"],
+        labelId: "INBOX",
+        pageToken,
+      });
+
+      latestHistoryId = historyResponse.data.historyId
+        ? String(historyResponse.data.historyId)
+        : latestHistoryId;
+
+      const historyItems = historyResponse.data.history || [];
+      for (const item of historyItems) {
+        const added = item.messagesAdded || [];
+        for (const entry of added) {
+          const id = entry.message?.id;
+          if (id) {
+            messageIds.add(id);
+          }
+        }
+      }
+
+      pageToken = historyResponse.data.nextPageToken || undefined;
+    } while (pageToken);
+
+    if (latestHistoryId) {
+      await EmailAccountModel.findByIdAndUpdate(this.account._id, {
+        gmailHistoryId: latestHistoryId,
+      });
+    }
+
+    if (messageIds.size === 0) {
+      return [];
+    }
+
+    const messages = await Promise.all(
+      Array.from(messageIds).map(async (id) => {
+        const messageResponse = await this.gmail.users.messages.get({
+          userId: "me",
+          id,
           format: "full",
         });
         return messageResponse.data;

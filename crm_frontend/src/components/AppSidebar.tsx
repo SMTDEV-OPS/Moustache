@@ -16,6 +16,7 @@ import {
   ListTodo,
   GitBranch,
   Workflow,
+  Inbox,
   Mail,
   CalendarClock,
   CalendarDays,
@@ -56,6 +57,7 @@ import { SidebarHeader, SidebarFooter, SidebarInput, useSidebar } from "@/compon
 import { Button } from "@/components/ui/button";
 
 import { cn } from "@/lib/utils";
+import { PERMISSIONS } from "@/constants/permissions";
 
 interface AppSidebarProps {
   userRole: string;
@@ -84,13 +86,13 @@ export function AppSidebar({
   const { theme, setTheme } = useTheme();
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const isDark = theme === "dark";
-  const hasUsersManagePermission = permissions?.includes("users.manage");
-  const canManageAccounts = !!isAdmin || permissions?.includes("accounts.manage");
+  const hasUsersManagePermission = permissions?.includes(PERMISSIONS.USERS.MANAGE);
+  const canManageAccounts = !!isAdmin || permissions?.includes(PERMISSIONS.ACCOUNTS.MANAGE);
   const isAdminLike = !!isAdmin || userRole === "admin";
   const isBackendSession = Array.isArray(permissions) && permissions.length > 0;
-  const canAssignBuddy = !!isAdmin || permissions?.includes("buddies.assign");
-  const canViewBuddyHistory = !!isAdmin || permissions?.includes("buddies.view.history");
-  const canViewBuddyReports = !!isAdmin || permissions?.includes("buddies.view.reports");
+  const canAssignBuddy = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.MANAGE);
+  const canViewBuddyHistory = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.READ);
+  const canViewBuddyReports = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.READ);
   const canAccessBuddy = canAssignBuddy || canViewBuddyHistory || canViewBuddyReports;
 
   // Module descriptions for info buttons
@@ -113,10 +115,8 @@ export function AppSidebar({
     "assignment-rules": "Configure automatic lead assignment rules. Set up rules based on lead source, property, region, or other criteria to automatically assign leads to team members.",
     "workflow-management": "Create and manage automated follow-up workflows. Define multi-step workflows that automatically send communications and reminders based on lead status and timing.",
     "message-templates": "Create and manage reusable message templates for emails, SMS, and WhatsApp. Standardize communications and speed up response times.",
-    "email-provider-settings": "Configure email provider settings and integrations. Set up SMTP, IMAP, and other email service configurations for sending and receiving emails.",
-    "email-client": "Access your integrated email client. Send and receive emails directly from the CRM, view email history, and manage email communications with leads.",
-    "email-settings": "Configure personal email settings, signatures, and preferences. Customize your email experience within the CRM system.",
-    "email-health": "Monitor email health metrics and delivery status. Track email open rates, bounce rates, and overall email system performance.",
+    "email-inbox": "Access your integrated email inbox. Read, reply, and manage lead email communication in one place.",
+    "email-accounts": "Manage connected Gmail accounts for syncing, sending, and receiving CRM emails.",
     "notifications": "View system notifications and alerts. Stay updated on important events, follow-up reminders, and system messages.",
     "integration-settings": "Configure Webhooks and External APIs for capturing leads into the CRM.",
     "profile-definition": "Define feature access profiles. These profiles dictate what actions users can perform across different modules.",
@@ -181,7 +181,7 @@ export function AppSidebar({
         url: "reports",
         icon: TrendingUp,
         roles: ['management', 'admin']
-        // For backend sessions, this will be additionally gated by `reports.view` in the main app.
+        // For backend sessions, this will be additionally gated by reporting perms in the main app.
       },*/
       {
         title: "Buddy",
@@ -207,22 +207,20 @@ export function AppSidebar({
       if (isBackendSession) {
         // Call Center – requires callcenter.access permission
         if (item.url === "calls") {
-          return permissions?.includes("callcenter.access");
+          return false;
         }
 
         // Lead CRM module – show whenever user has any lead view/control permission.
         if (item.url === "admin-leads") {
-          return permissions?.some((p) =>
-            p === "leads.manage" ||
-            p === "leads.view.own" ||
-            p === "leads.view.team" ||
-            p === "leads.view.all"
-          );
+          return permissions?.some((p) => p === PERMISSIONS.LEADS.READ || p === PERMISSIONS.LEADS.MANAGE);
         }
 
         // Reports – requires explicit reporting permission
         if (item.url === "reports") {
-          return permissions?.includes("reports.view");
+          return (
+            permissions?.includes(PERMISSIONS.REPORTS.READ) ||
+            permissions?.includes(PERMISSIONS.REPORTS.MANAGE)
+          );
         }
 
         // Buddy – requires any buddy permission
@@ -232,12 +230,7 @@ export function AppSidebar({
 
         // Tickets – requires any ticket view/control permission
         if (item.url === "ticket-management") {
-          return permissions?.some((p) =>
-            p === "tickets.manage" ||
-            p === "tickets.view.own" ||
-            p === "tickets.view.team" ||
-            p === "tickets.view.all"
-          );
+          return permissions?.some((p) => p === PERMISSIONS.TICKETS.READ || p === PERMISSIONS.TICKETS.MANAGE);
         }
 
         // In backend session we do not use demo \"leads\" route – hide it.
@@ -429,53 +422,36 @@ export function AppSidebar({
             <SidebarMenu className="space-y-1">
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  onClick={() => onViewChange("email-client")}
-                  isActive={activeView === "email-client"}
+                  onClick={() => onViewChange("email-inbox")}
+                  isActive={activeView === "email-inbox"}
                   className={`
                       w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                      ${activeView === "email-client"
+                      ${activeView === "email-inbox"
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                    }
+                    `}
+                >
+                  <Inbox className="mr-3 h-4 w-4" />
+                  <span className="text-sm flex-1">Inbox</span>
+                  <ModuleInfoButton description={moduleDescriptions["email-inbox"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => onViewChange("email-accounts")}
+                  isActive={activeView === "email-accounts"}
+                  className={`
+                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                      ${activeView === "email-accounts"
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                     }
                     `}
                 >
                   <Mail className="mr-3 h-4 w-4" />
-                  <span className="text-sm flex-1">Email Client</span>
-                  <ModuleInfoButton description={moduleDescriptions["email-client"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onViewChange("email-settings")}
-                  isActive={activeView === "email-settings"}
-                  className={`
-                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                      ${activeView === "email-settings"
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                    }
-                    `}
-                >
-                  <Settings2 className="mr-3 h-4 w-4" />
-                  <span className="text-sm flex-1">Email Settings</span>
-                  <ModuleInfoButton description={moduleDescriptions["email-settings"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => onViewChange("email-health")}
-                  isActive={activeView === "email-health"}
-                  className={`
-                      w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
-                      ${activeView === "email-health"
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
-                    }
-                    `}
-                >
-                  <Activity className="mr-3 h-4 w-4" />
-                  <span className="text-sm flex-1">Email Health</span>
-                  <ModuleInfoButton description={moduleDescriptions["email-health"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                  <span className="text-sm flex-1">Email Accounts</span>
+                  <ModuleInfoButton description={moduleDescriptions["email-accounts"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -534,7 +510,7 @@ export function AppSidebar({
               <DropdownMenuContent align="start" className="w-56" side="right">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onViewChange("email-settings")}>
+                <DropdownMenuItem onClick={() => onViewChange("email-accounts")}>
                   <User className="mr-2 h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
@@ -575,7 +551,7 @@ export function AppSidebar({
               <DropdownMenuContent align="start" side="right" className="w-48">
                 <DropdownMenuLabel className="truncate">{userName}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onViewChange("email-settings")}>
+                <DropdownMenuItem onClick={() => onViewChange("email-accounts")}>
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>

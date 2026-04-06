@@ -133,9 +133,10 @@ export async function connectGmail(
   email: string
 ): Promise<IEmailAccount> {
   const expiresAt = new Date(Date.now() + expiresIn * 1000);
+  const userObjectId = new Types.ObjectId(userId);
 
   // Check if account already exists
-  let account = await EmailAccountModel.findOne({ userId, email }).exec();
+  let account = await EmailAccountModel.findOne({ userId: userObjectId, email }).exec();
 
   if (account) {
     account.oauth = {
@@ -148,10 +149,10 @@ export async function connectGmail(
     await account.save();
   } else {
     // Set other accounts as non-primary if this is first account
-    await EmailAccountModel.updateMany({ userId }, { isPrimary: false });
+    await EmailAccountModel.updateMany({ userId: userObjectId }, { isPrimary: false });
 
     account = await EmailAccountModel.create({
-      userId: new Types.ObjectId(userId),
+      userId: userObjectId,
       provider: "GMAIL",
       email,
       isActive: true,
@@ -164,6 +165,17 @@ export async function connectGmail(
       },
       syncStatus: "IDLE",
     });
+  }
+
+  try {
+    const provider = new GmailProvider(account);
+    await provider.setupWatch(process.env.GMAIL_PUBSUB_TOPIC!);
+  } catch (error) {
+    logger.error("Failed to setup Gmail watch after connect", {
+      userId,
+      email,
+      accountId: account._id.toString(),
+    }, error instanceof Error ? error : new Error(String(error)));
   }
 
   return account;
@@ -180,8 +192,9 @@ export async function connectOutlook(
   email: string
 ): Promise<IEmailAccount> {
   const expiresAt = new Date(Date.now() + expiresIn * 1000);
+  const userObjectId = new Types.ObjectId(userId);
 
-  let account = await EmailAccountModel.findOne({ userId, email }).exec();
+  let account = await EmailAccountModel.findOne({ userId: userObjectId, email }).exec();
 
   if (account) {
     account.oauth = {
@@ -193,10 +206,10 @@ export async function connectOutlook(
     account.isActive = true;
     await account.save();
   } else {
-    await EmailAccountModel.updateMany({ userId }, { isPrimary: false });
+    await EmailAccountModel.updateMany({ userId: userObjectId }, { isPrimary: false });
 
     account = await EmailAccountModel.create({
-      userId: new Types.ObjectId(userId),
+      userId: userObjectId,
       provider: "OUTLOOK",
       email,
       isActive: true,
@@ -235,7 +248,8 @@ export async function connectSMTP(
     password: string;
   }
 ): Promise<IEmailAccount> {
-  let account = await EmailAccountModel.findOne({ userId, email }).exec();
+  const userObjectId = new Types.ObjectId(userId);
+  let account = await EmailAccountModel.findOne({ userId: userObjectId, email }).exec();
 
   if (account) {
     account.smtp = smtpConfig;
@@ -243,10 +257,10 @@ export async function connectSMTP(
     account.isActive = true;
     await account.save();
   } else {
-    await EmailAccountModel.updateMany({ userId }, { isPrimary: false });
+    await EmailAccountModel.updateMany({ userId: userObjectId }, { isPrimary: false });
 
     account = await EmailAccountModel.create({
-      userId: new Types.ObjectId(userId),
+      userId: userObjectId,
       provider: "SMTP_IMAP",
       email,
       isActive: true,
@@ -299,6 +313,78 @@ export async function sendEmail(
 
   const savedEmail = await EmailMessageModel.create(emailMessage);
   return savedEmail;
+}
+
+export async function syncAndStoreEmail(
+  account: IEmailAccount,
+  msg: any,
+  folder: string = "INBOX"
+): Promise<{ savedEmail?: IEmailMessage; created: boolean }> {
+  let emailData: Partial<IEmailMessage>;
+
+  if (account.provider === "GMAIL") {
+    emailData = GmailProvider.gmailMessageToEmailMessage(msg, account._id.toString(), folder);
+  } else if (account.provider === "OUTLOOK") {
+    emailData = OutlookProvider.outlookMessageToEmailMessage(msg, account._id.toString(), folder);
+  } else {
+    emailData = IMAPProvider.parsedMailToEmailMessage(msg, account._id.toString(), folder);
+  }
+
+  const upsertResult = await EmailMessageModel.findOneAndUpdate(
+    { emailAccountId: account._id, messageId: emailData.messageId },
+    { $setOnInsert: { ...emailData } },
+    { upsert: true, new: true, rawResult: true }
+  ).exec();
+
+  const savedEmail = (upsertResult as any)?.value as IEmailMessage | null;
+  const created = Boolean((upsertResult as any)?.lastErrorObject?.upserted);
+  emailData._id = savedEmail?._id;
+  await linkEmailToCRM(emailData);
+
+  if (!savedEmail) {
+    return { savedEmail: undefined, created: false };
+  }
+
+  if (emailData.linkedLeadId) {
+    savedEmail.linkedLeadId = emailData.linkedLeadId as any;
+    savedEmail.linkedGuestId = emailData.linkedGuestId as any;
+    await EmailMessageModel.updateOne(
+      { _id: savedEmail._id },
+      { $set: { linkedLeadId: emailData.linkedLeadId, linkedGuestId: emailData.linkedGuestId } }
+    );
+  }
+
+  if (savedEmail.folder === "INBOX") {
+    emitToUser(account.userId.toString(), "EMAIL_RECEIVED", { emailId: savedEmail._id.toString() });
+  }
+
+  if (savedEmail.folder !== "SENT" && (emailData.linkedLeadId || savedEmail.linkedLeadId)) {
+    const leadId = (emailData.linkedLeadId || savedEmail.linkedLeadId) as any;
+    const io = getIO();
+    if (io) {
+      io.to(`lead:${String(leadId)}`).emit("lead:email_received");
+    }
+  }
+
+  if (savedEmail.folder !== "SENT" && savedEmail.linkedLeadId) {
+    try {
+      await handleClientResponse(savedEmail);
+    } catch (e) {
+      logger.error("Failed to handle client response after linking", {}, e as Error);
+    }
+  }
+
+  if (savedEmail.folder === "INBOX" && !savedEmail.linkedLeadId) {
+    const bodyText = savedEmail.bodyText || savedEmail.bodyHtml?.replace(/<[^>]+>/g, " ") || "";
+    await processInboundEmailForLeads({
+      fromName: savedEmail.from?.name || null,
+      fromEmail: savedEmail.from?.email || null,
+      subject: savedEmail.subject || null,
+      body: bodyText,
+    }, savedEmail._id.toString());
+  }
+
+  return { savedEmail, created };
 }
 
 /**
@@ -368,73 +454,8 @@ export async function syncEmails(accountId: string): Promise<{ syncedCount: numb
         }
 
         for (const msg of messages) {
-          let emailData: Partial<IEmailMessage>;
-
-          if (account.provider === "GMAIL") {
-            emailData = GmailProvider.gmailMessageToEmailMessage(msg, account._id.toString(), folder);
-          } else if (account.provider === "OUTLOOK") {
-            emailData = OutlookProvider.outlookMessageToEmailMessage(msg, account._id.toString(), folder);
-          } else {
-            emailData = IMAPProvider.parsedMailToEmailMessage(msg, account._id.toString(), folder);
-          }
-
-          // Check if email already exists
-          const existing = await EmailMessageModel.findOne({
-            messageId: emailData.messageId,
-            emailAccountId: account._id,
-          }).exec();
-
-          if (!existing) {
-            const savedEmail = await EmailMessageModel.create(emailData);
-            // Link email after saving to get the _id
-            emailData._id = savedEmail._id;
-            await linkEmailToCRM(emailData);
-
-            if (emailData.linkedLeadId) {
-              savedEmail.linkedLeadId = emailData.linkedLeadId as any;
-              savedEmail.linkedGuestId = emailData.linkedGuestId as any;
-              await EmailMessageModel.updateOne(
-                { _id: savedEmail._id },
-                { $set: { linkedLeadId: emailData.linkedLeadId, linkedGuestId: emailData.linkedGuestId } }
-              );
-            }
-
-            // Notify the owning user (EmailClient listens for this)
-            if (savedEmail.folder === "INBOX") {
-              emitToUser(account.userId.toString(), "EMAIL_RECEIVED", { emailId: savedEmail._id.toString() });
-            }
-
-            // Notify lead room listeners (LeadDetailPage refreshes timeline)
-            if (savedEmail.folder !== "SENT" && (emailData.linkedLeadId || savedEmail.linkedLeadId)) {
-              const leadId = (emailData.linkedLeadId || savedEmail.linkedLeadId) as any;
-              const io = getIO();
-              if (io) {
-                io.to(`lead:${String(leadId)}`).emit("lead:email_received");
-              }
-            }
-
-            // Check if this is a client response and handle it
-            if (savedEmail.folder !== "SENT" && savedEmail.linkedLeadId) {
-              try {
-                await handleClientResponse(savedEmail);
-              } catch (e) {
-                logger.error("Failed to handle client response after linking", {}, e as Error);
-              }
-            }
-
-            // 🔥 NEW: Run LLM-based lead extraction for new INBOX emails
-            if (savedEmail.folder === "INBOX" && !savedEmail.linkedLeadId) {
-              // Only run on unmapped emails (no linked lead yet = unknown sender)
-              // For known senders who already have a lead, handleClientResponse above is sufficient
-              const bodyText = savedEmail.bodyText || savedEmail.bodyHtml?.replace(/<[^>]+>/g, " ") || "";
-              await processInboundEmailForLeads({
-                fromName: savedEmail.from?.name || null,
-                fromEmail: savedEmail.from?.email || null,
-                subject: savedEmail.subject || null,
-                body: bodyText,
-              }, savedEmail._id.toString());
-            }
-
+          const result = await syncAndStoreEmail(account, msg, folder);
+          if (result.created) {
             syncedCount++;
           }
         }
@@ -484,7 +505,8 @@ export async function syncEmails(accountId: string): Promise<{ syncedCount: numb
  * Get primary email account for user
  */
 export async function getPrimaryEmailAccount(userId: string): Promise<IEmailAccount | null> {
-  return EmailAccountModel.findOne({ userId, isPrimary: true, isActive: true }).exec();
+  const userObjectId = new Types.ObjectId(userId);
+  return EmailAccountModel.findOne({ userId: userObjectId, isPrimary: true, isActive: true }).exec();
 }
 
 /**

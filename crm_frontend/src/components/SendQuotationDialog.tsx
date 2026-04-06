@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -44,9 +44,18 @@ import {
   CalendarDays,
   Users,
   AlertTriangle,
-  Settings,
+  ChevronDown,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { getKBForQuotation, type KBForQuotationResponse } from "@/services/knowledgeBase";
+import { getPropertyEzeeRates, type EzeeRateSuggestion } from "@/services/properties";
+
+const DEFAULT_INCLUSIONS = "Breakfast included\nWi-Fi\nPool access";
 
 interface SendQuotationDialogProps {
   open: boolean;
@@ -86,13 +95,18 @@ export const SendQuotationDialog = ({
   );
   const [rate, setRate] = useState<string>("");
   const [taxes, setTaxes] = useState<string>("");
-  const [inclusions, setInclusions] = useState<string>(
-    "Breakfast included\nWi-Fi\nPool access"
-  );
+  const [inclusions, setInclusions] = useState<string>(DEFAULT_INCLUSIONS);
   const [specialPackages, setSpecialPackages] = useState<string>("");
   const [recipientName, setRecipientName] = useState<string>(guestName || "");
   const [recipientEmail, setRecipientEmail] = useState<string>(guestEmail || "");
   const [recipientPhone, setRecipientPhone] = useState<string>(guestPhone || "");
+
+  const [kbData, setKbData] = useState<KBForQuotationResponse | null>(null);
+  const [kbLoading, setKbLoading] = useState(false);
+  const [ezeeRates, setEzeeRates] = useState<EzeeRateSuggestion[]>([]);
+  const [ezeeLoading, setEzeeLoading] = useState(false);
+  const [showAllKbRules, setShowAllKbRules] = useState(false);
+  const kbInclusionsAppliedRef = useRef(false);
 
   // Update recipient fields when props change
   useEffect(() => {
@@ -102,13 +116,129 @@ export const SendQuotationDialog = ({
     if (lead?.roomsRequested) setRooms(lead.roomsRequested.toString());
   }, [guestName, guestEmail, guestPhone, lead]);
 
-  // Load quotation history and email accounts when dialog opens
+  const toYmd = (d: string | undefined) => {
+    if (!d) return null;
+    const x = new Date(d);
+    if (Number.isNaN(x.getTime())) return null;
+    return x.toISOString().slice(0, 10);
+  };
+
+  const getLeadPropertyId = (): string | null => {
+    const candidates: unknown[] = [
+      (lead as any)?.propertyId,
+      (lead as any)?.itineraries?.[0]?.propertyId,
+      (leadDetail as any)?.lead?.propertyId,
+      (leadDetail as any)?.lead?.itineraries?.[0]?.propertyId,
+    ];
+
+    for (const raw of candidates) {
+      if (!raw) continue;
+      if (typeof raw === "string") return raw;
+      if (typeof raw === "object") {
+        const o = raw as any;
+        if (typeof o._id === "string") return o._id;
+        if (typeof o.id === "string") return o.id;
+      }
+    }
+    return null;
+  };
+
+  const getLeadDates = (): { checkIn: string | null; checkOut: string | null } => {
+    const checkInRaw =
+      lead?.checkInDate ??
+      (lead as any)?.itineraries?.[0]?.checkInDate ??
+      (leadDetail as any)?.lead?.checkInDate;
+    const checkOutRaw =
+      lead?.checkOutDate ??
+      (lead as any)?.itineraries?.[0]?.checkOutDate ??
+      (leadDetail as any)?.lead?.checkOutDate;
+    return { checkIn: toYmd(checkInRaw), checkOut: toYmd(checkOutRaw) };
+  };
+
+  const effectivePropertyId = getLeadPropertyId();
+  const { checkIn: effectiveCheckIn, checkOut: effectiveCheckOut } = getLeadDates();
+
+  // Load quotation history, email accounts, KB, and Ezee rate suggestions when dialog opens
   useEffect(() => {
+    if (!open) {
+      setKbData(null);
+      setEzeeRates([]);
+      kbInclusionsAppliedRef.current = false;
+      setShowAllKbRules(false);
+      return;
+    }
     if (open && lead?.id) {
       loadQuotationHistory();
       loadEmailAccounts();
     }
   }, [open, lead?.id]);
+
+  useEffect(() => {
+    if (!open || !lead?.id || !effectivePropertyId) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setKbLoading(true);
+        const data = await getKBForQuotation(effectivePropertyId);
+        if (cancelled) return;
+        setKbData(data);
+
+        if (!kbInclusionsAppliedRef.current && data.factsheet) {
+          const lines: string[] = [];
+          if (data.factsheet.generalInfo?.length) {
+            lines.push(...data.factsheet.generalInfo);
+          }
+          if (data.factsheet.hotelAmenities?.length) {
+            lines.push(...data.factsheet.hotelAmenities);
+          }
+          if (lines.length > 0) {
+            setInclusions(lines.join("\n"));
+            kbInclusionsAppliedRef.current = true;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load KB for quotation:", err);
+      } finally {
+        if (!cancelled) setKbLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, lead?.id, effectivePropertyId]);
+
+  useEffect(() => {
+    if (!open || !effectivePropertyId || !effectiveCheckIn || !effectiveCheckOut) {
+      setEzeeRates([]);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setEzeeLoading(true);
+        const res = await getPropertyEzeeRates(
+          effectivePropertyId,
+          effectiveCheckIn,
+          effectiveCheckOut
+        );
+        if (cancelled) return;
+        setEzeeRates(res.available ? res.rates : []);
+      } catch {
+        if (!cancelled) setEzeeRates([]);
+      } finally {
+        if (!cancelled) setEzeeLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, effectivePropertyId, effectiveCheckIn, effectiveCheckOut]);
 
   const loadEmailAccounts = async () => {
     try {
@@ -271,7 +401,7 @@ export const SendQuotationDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -472,6 +602,143 @@ export const SendQuotationDialog = ({
                   {calculateTotal().toLocaleString("en-IN")}
                 </span>
               </div>
+
+              {ezeeLoading && (
+                <p className="text-xs text-muted-foreground">Loading rate suggestions from PMS…</p>
+              )}
+              {!ezeeLoading && ezeeRates.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground text-xs">Rate suggestions (click to apply)</Label>
+                  <div className="max-h-56 overflow-y-auto rounded-md border border-border/50 bg-muted/10 p-2">
+                    <div className="grid gap-2">
+                    {ezeeRates.map((r, i) => (
+                      <Button
+                        key={`${r.roomType}-${i}`}
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-auto w-full justify-start whitespace-normal break-words py-1.5 text-left text-xs font-normal"
+                        onClick={() => setRate(String(Math.round(r.rate)))}
+                      >
+                        Click to use: {formatCurrency(r.rate)} — {r.roomType}
+                      </Button>
+                    ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {kbLoading && !kbData && lead?.propertyId && (
+                <p className="text-xs text-muted-foreground">Loading property knowledge…</p>
+              )}
+
+              {kbData && (
+                <Collapsible
+                  className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+                  defaultOpen={false}
+                >
+                  <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-1 text-left text-sm font-medium [&[data-state=open]>svg]:rotate-180">
+                    <span>Property knowledge base</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-3 pt-2 text-sm">
+                    {!kbData.factsheet ? (
+                      <p className="text-muted-foreground text-xs">
+                        No fact sheet content yet. Add details in Knowledge Base → Fact sheets.
+                      </p>
+                    ) : (
+                      <>
+                        {kbData.factsheet.roomCategories && kbData.factsheet.roomCategories.length > 0 && (
+                          <div>
+                            <span className="font-medium text-foreground">Room categories</span>
+                            <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                              {kbData.factsheet.roomCategories.map((rc, idx) => (
+                                <li key={idx}>
+                                  {rc.name}
+                                  {rc.capacity != null ? ` · up to ${rc.capacity} guests` : ""}
+                                  {rc.sizesqft != null ? ` · ${rc.sizesqft} sq ft` : ""}
+                                  {rc.isAC ? " · AC" : ""}
+                                  {rc.isDorm ? " · Dorm" : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {kbData.factsheet.inHouseRules && kbData.factsheet.inHouseRules.length > 0 && (
+                          <div>
+                            <span className="font-medium text-foreground">In-house rules</span>
+                            <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                              {(showAllKbRules
+                                ? kbData.factsheet.inHouseRules
+                                : kbData.factsheet.inHouseRules.slice(0, 5)
+                              ).map((rule, idx) => (
+                                <li key={idx}>{rule}</li>
+                              ))}
+                            </ul>
+                            {kbData.factsheet.inHouseRules.length > 5 && (
+                              <button
+                                type="button"
+                                className="mt-1 text-xs text-primary underline"
+                                onClick={() => setShowAllKbRules(!showAllKbRules)}
+                              >
+                                {showAllKbRules ? "Show less" : "Show more"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {kbData.factsheet.additionalCharges &&
+                          kbData.factsheet.additionalCharges.length > 0 && (
+                            <div>
+                              <span className="font-medium text-foreground">Additional charges</span>
+                              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                                {kbData.factsheet.additionalCharges.map((ac, idx) => (
+                                  <li key={idx}>
+                                    {ac.item}
+                                    {ac.amount ? ` — ${ac.amount}` : ""}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        {kbData.factsheet.nearbyAttractions &&
+                          kbData.factsheet.nearbyAttractions.length > 0 && (
+                            <div>
+                              <span className="font-medium text-foreground">Nearby attractions</span>
+                              <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                                {kbData.factsheet.nearbyAttractions.slice(0, 3).map((a, idx) => (
+                                  <li key={idx}>{a}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        {kbData.factsheet.pocDetails &&
+                          (kbData.factsheet.pocDetails.frontDeskPhone ||
+                            kbData.factsheet.pocDetails.frontDeskEmail ||
+                            kbData.factsheet.pocDetails.gmName ||
+                            kbData.factsheet.pocDetails.gmPhone) && (
+                            <div>
+                              <span className="font-medium text-foreground">POC</span>
+                              <div className="mt-1 space-y-0.5 text-muted-foreground text-xs">
+                                {kbData.factsheet.pocDetails.frontDeskPhone && (
+                                  <div>Front desk: {kbData.factsheet.pocDetails.frontDeskPhone}</div>
+                                )}
+                                {kbData.factsheet.pocDetails.frontDeskEmail && (
+                                  <div>{kbData.factsheet.pocDetails.frontDeskEmail}</div>
+                                )}
+                                {kbData.factsheet.pocDetails.gmName && (
+                                  <div>GM: {kbData.factsheet.pocDetails.gmName}</div>
+                                )}
+                                {kbData.factsheet.pocDetails.gmPhone && (
+                                  <div>GM phone: {kbData.factsheet.pocDetails.gmPhone}</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                      </>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
             </div>
 
             <Separator />

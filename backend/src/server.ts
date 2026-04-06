@@ -42,6 +42,15 @@ async function start() {
     await mongoose.connect(config.mongoUri);
     logger.info("Connected to MongoDB", { uri: config.mongoUri });
 
+    // Drop old incorrect unique index on messageId if it exists
+    try {
+      await mongoose.connection.collection("emailmessages").dropIndex("messageId_1");
+      console.log("[Migration] Dropped old messageId unique index");
+    } catch (e: any) {
+      // Index may not exist, ignore
+      if (e.code !== 27) console.warn("[Migration] dropIndex warning:", e.message);
+    }
+
     const { ensureDefaultPipeline } = await import("./scripts/ensureDefaultPipeline");
     await ensureDefaultPipeline();
     

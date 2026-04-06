@@ -6,6 +6,7 @@ import { UserModel } from "../models/user";
 import { RoleModel } from "../models/role";
 import { UserRoleModel } from "../models/userRole";
 import { EmployeeGroupModel } from "../models/employeeGroup";
+import { ProfileModel } from "../models/profile";
 import { logger } from "../config/logger";
 import { AccessControlService } from "../services/auth/AccessControlService";
 
@@ -94,6 +95,43 @@ export async function requireAuth(
         ...source,
       });
       return next(unauthorized());
+    }
+
+    // Gap A (Part A): ensure every ACTIVE user has a profileId.
+    // We intentionally do this here so older users in DB start working immediately after login.
+    if (!user.profileId) {
+      // 1) Prefer an explicit "Standard User" profile if present
+      // 2) Else choose the lowest-privilege non-system profile (heuristic)
+      // 3) Else fall back to "Executives" (known to exist in current DB)
+      const standardUser =
+        (await ProfileModel.findOne({ name: "Standard User" }).lean()) ||
+        null;
+
+      let fallback =
+        standardUser ||
+        (await ProfileModel.findOne({ isSystemProfile: false })
+          .sort({ name: 1 })
+          .lean());
+
+      if (!fallback) {
+        fallback = await ProfileModel.findOne({ name: "Executives" }).lean();
+      }
+
+      if (fallback?._id) {
+        user.profileId = fallback._id as any;
+        await user.save();
+        logger.warn("User had no profile — assigned default", {
+          requestId,
+          email: user.email,
+          assignedProfileName: (fallback as any).name,
+          assignedProfileId: String(fallback._id),
+        });
+      } else {
+        logger.warn("User had no profile and no default could be found", {
+          requestId,
+          email: user.email,
+        });
+      }
     }
 
     const { permissions, isAdmin } = await AccessControlService.getUserPermissions(user.id);

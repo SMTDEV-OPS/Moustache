@@ -6,11 +6,10 @@ import {
   Ticket,
   BookOpen,
   Calendar,
-  Settings2,
+  Inbox,
   Mail,
   Bell,
   UserCheck,
-  Activity,
   BarChart2,
   Clock,
   ChevronDown,
@@ -22,6 +21,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { PERMISSIONS } from "@/constants/permissions";
 
 interface NavItem {
   title: string;
@@ -64,9 +64,9 @@ export function Sidebar({
 
   const isAdminLike = !!isAdmin || userRole === "admin";
   const isBackendSession = Array.isArray(permissions) && permissions.length > 0;
-  const canAssignBuddy = !!isAdmin || permissions.includes("buddies.assign");
-  const canViewBuddyHistory = !!isAdmin || permissions.includes("buddies.view.history");
-  const canViewBuddyReports = !!isAdmin || permissions.includes("buddies.view.reports");
+  const canAssignBuddy = !!isAdmin || permissions.includes(PERMISSIONS.BUDDIES.MANAGE);
+  const canViewBuddyHistory = !!isAdmin || permissions.includes(PERMISSIONS.BUDDIES.READ);
+  const canViewBuddyReports = !!isAdmin || permissions.includes(PERMISSIONS.BUDDIES.READ);
   const canAccessBuddy = canAssignBuddy || canViewBuddyHistory || canViewBuddyReports;
 
   const hasKnowledgeAccess = [
@@ -94,26 +94,14 @@ export function Sidebar({
     return items.filter((item) => {
       if (isAdminLike) return true;
       if (isBackendSession) {
-        if (item.url === "calls") return permissions.includes("callcenter.access");
+        if (item.url === "calls") return false;
         if (item.url === "admin-leads") {
-          return permissions.some(
-            (p) =>
-              p === "leads.manage" ||
-              p === "leads.view.own" ||
-              p === "leads.view.team" ||
-              p === "leads.view.all"
-          );
+          return permissions.some((p) => p === PERMISSIONS.LEADS.READ || p === PERMISSIONS.LEADS.MANAGE);
         }
-        if (item.url === "reports") return permissions.includes("reports.view");
+        if (item.url === "reports") return permissions.includes(PERMISSIONS.REPORTS.READ) || permissions.includes(PERMISSIONS.REPORTS.MANAGE);
         if (item.url === "buddy-management") return canAccessBuddy;
         if (item.url === "ticket-management") {
-          return permissions.some(
-            (p) =>
-              p === "tickets.manage" ||
-              p === "tickets.view.own" ||
-              p === "tickets.view.team" ||
-              p === "tickets.view.all"
-          );
+          return permissions.some((p) => p === PERMISSIONS.TICKETS.READ || p === PERMISSIONS.TICKETS.MANAGE);
         }
         if (item.url === "leads") return false;
         if (item.url === "dashboard" || item.url === "todays-followups" || item.url === "my-calendar") return true;
@@ -244,7 +232,7 @@ export function Sidebar({
         </div>
 
         {/* Setup - shown when admin-like or has settings access */}
-        {(isAdminLike || permissions.includes("settings.manage")) && (
+        {(isAdminLike || permissions.includes(PERMISSIONS.SETTINGS.MANAGE)) && (
           <div>
             <div
               className="text-[10px] font-medium uppercase tracking-[0.08em] text-text-faint px-5"
@@ -316,9 +304,8 @@ export function Sidebar({
             EMAIL
           </div>
           {[
-            { title: "Email Client", url: "email-client", icon: Mail },
-            { title: "Email Settings", url: "email-settings", icon: Settings2 },
-            { title: "Email Health", url: "email-health", icon: Activity },
+            { title: "Inbox", url: "email-inbox", icon: Inbox },
+            { title: "Email Accounts", url: "email-accounts", icon: Mail },
           ].map((item) => {
             const isActive = activeView === item.url;
             const Icon = item.icon;
@@ -388,7 +375,7 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => {
-                onViewChange("email-settings");
+                onViewChange("email-accounts");
                 setUserMenuOpen(false);
               }}
               className="w-full flex items-center gap-2 h-9 px-4 text-sm text-text hover:bg-hover transition-colors duration-150"

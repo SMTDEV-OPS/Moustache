@@ -5,6 +5,7 @@ import {
   IKnowledgeBase,
   KnowledgeBaseType,
   IKnowledgeBaseFile,
+  IFactSheetContent,
 } from "../models/knowledgeBase";
 import { notFound } from "../utils/httpError";
 import mongoose from "mongoose";
@@ -35,7 +36,68 @@ export interface SearchFilters {
   isActive?: boolean;
 }
 
+/** Non-array object with at least one own key — otherwise treated as no factsheet data. */
+function parseFactSheetContentFromDb(
+  raw: unknown
+): IFactSheetContent | null {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  if (Object.keys(raw as Record<string, unknown>).length === 0) {
+    return null;
+  }
+  return raw as IFactSheetContent;
+}
+
 export class KnowledgeBaseService {
+  /**
+   * Active FACTSHEET for a property (latest by updatedAt).
+   * Returns null if there is no row or stored content is missing/empty.
+   */
+  static async getFactSheetForProperty(
+    propertyId: string
+  ): Promise<IFactSheetContent | null> {
+    const item = await KnowledgeBaseModel.findOne({
+      propertyId: new Types.ObjectId(propertyId),
+      type: KnowledgeBaseType.FACTSHEET,
+      isActive: true,
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    if (!item) {
+      return null;
+    }
+    return parseFactSheetContentFromDb(item.content);
+  }
+
+  /**
+   * Same KB row as getFactSheetForProperty, including Mongo id for quotation linkage.
+   * `content` is null when the row exists but has no usable structured body.
+   */
+  static async getFactSheetRecordForProperty(
+    propertyId: string
+  ): Promise<{
+    kbFactsheetId: Types.ObjectId;
+    content: IFactSheetContent | null;
+  } | null> {
+    const item = await KnowledgeBaseModel.findOne({
+      propertyId: new Types.ObjectId(propertyId),
+      type: KnowledgeBaseType.FACTSHEET,
+      isActive: true,
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    if (!item?._id) {
+      return null;
+    }
+    return {
+      kbFactsheetId: item._id as Types.ObjectId,
+      content: parseFactSheetContentFromDb(item.content),
+    };
+  }
+
   /**
    * Create a new knowledge base item
    */

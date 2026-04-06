@@ -24,6 +24,7 @@ import {
   EligibleAssignee,
 } from "@/services/tickets";
 import { TicketDetailPage } from "./TicketDetailPage";
+import { PERMISSIONS } from "@/constants/permissions";
 
 const statusColors: Record<TicketStatus, string> = {
   NEW: "bg-blue-100 text-blue-800",
@@ -55,9 +56,9 @@ export const TicketManagement = ({ permissions = [], isAdmin = false }: TicketMa
   const [eligibleAssignees, setEligibleAssignees] = useState<EligibleAssignee[]>([]);
   
   // Determine available scopes based on permissions
-  const canViewOwn = isAdmin || permissions.includes("tickets.view.own") || permissions.includes("tickets.manage");
-  const canViewTeam = isAdmin || permissions.includes("tickets.view.team") || permissions.includes("tickets.manage");
-  const canViewAll = isAdmin || permissions.includes("tickets.view.all") || permissions.includes("tickets.manage");
+  const canViewOwn = isAdmin || permissions.includes(PERMISSIONS.TICKETS.READ) || permissions.includes(PERMISSIONS.TICKETS.MANAGE);
+  const canViewTeam = isAdmin || permissions.includes(PERMISSIONS.TICKETS.READ) || permissions.includes(PERMISSIONS.TICKETS.MANAGE);
+  const canViewAll = isAdmin || permissions.includes(PERMISSIONS.TICKETS.MANAGE);
   
   // Set default scope to the highest permission level available
   const getDefaultScope = (): TicketScope => {

@@ -1,173 +1,175 @@
-import { useEffect, useState, useRef } from "react";
-import { io, Socket } from "socket.io-client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
 import { getAuthToken, API_BASE_URL } from "@/services/api";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
+  Inbox,
+  Send,
+  FileText,
+  Trash2,
+  Mail,
+  Reply,
+  Forward,
+  Star,
+  Loader2,
+} from "lucide-react";
 import {
   listEmails,
-  getEmail,
   getEmailThread,
-  sendEmail,
-  replyToEmail,
-  forwardEmail,
   updateEmail,
   deleteEmail,
   listEmailFolders,
-  EmailMessage,
-  EmailFolder,
-  EmailAddress,
-  SendEmailPayload,
+  type EmailFolder,
+  type EmailMessage,
 } from "@/services/email";
-import {
-  Mail,
-  MailOpen,
-  Star,
-  StarOff,
-  Reply,
-  Forward,
-  Trash2,
-  Search,
-  Plus,
-  RefreshCw,
-  ChevronRight,
-  Paperclip,
-} from "lucide-react";
-import { EmailComposer } from "./EmailComposer";
+import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
+
+type ComposerState = {
+  open: boolean;
+  mode: "compose" | "reply" | "forward";
+};
+
+type FolderUi = {
+  id: string;
+  name: string;
+  unreadCount: number;
+};
+
+function getRelativeTime(dateStr?: string): string {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffHours < 1) return "Just now";
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
+function getFolderIcon(folderId: string) {
+  const key = folderId.toUpperCase();
+  if (key === "INBOX") return Inbox;
+  if (key === "SENT") return Send;
+  if (key === "DRAFTS") return FileText;
+  if (key === "TRASH") return Trash2;
+  return Mail;
+}
 
 export const EmailClient = () => {
   const { toast } = useToast();
-  const [folders, setFolders] = useState<EmailFolder[]>([]);
-  const [messages, setMessages] = useState<EmailMessage[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<string>("INBOX");
-  const [selectedMessage, setSelectedMessage] = useState<EmailMessage | null>(null);
-  const [thread, setThread] = useState<EmailMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isComposeOpen, setIsComposeOpen] = useState(false);
-  const [isReplyOpen, setIsReplyOpen] = useState(false);
-  const [isForwardOpen, setIsForwardOpen] = useState(false);
-  const [replyToMessage, setReplyToMessage] = useState<EmailMessage | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
   const socketRef = useRef<Socket | null>(null);
+  const [folders, setFolders] = useState<FolderUi[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState("INBOX");
+  const selectedFolderRef = useRef(selectedFolder);
+  const [messages, setMessages] = useState<EmailMessage[]>([]);
+  const [selectedMessage, setSelectedMessage] = useState<EmailMessage | null>(null);
+  const [threadMessages, setThreadMessages] = useState<EmailMessage[]>([]);
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [isFoldersLoading, setIsFoldersLoading] = useState(false);
+  const [isMessagesLoading, setIsMessagesLoading] = useState(false);
+  const [isThreadLoading, setIsThreadLoading] = useState(false);
+  const [composer, setComposer] = useState<ComposerState>({ open: false, mode: "compose" });
+
+  const fallbackFolders = useMemo<FolderUi[]>(
+    () => [
+      { id: "INBOX", name: "Inbox", unreadCount: 0 },
+      { id: "SENT", name: "Sent", unreadCount: 0 },
+      { id: "DRAFTS", name: "Drafts", unreadCount: 0 },
+      { id: "TRASH", name: "Trash", unreadCount: 0 },
+    ],
+    []
+  );
 
   useEffect(() => {
-    void loadFolders();
+    selectedFolderRef.current = selectedFolder;
+  }, [selectedFolder]);
 
-    // Set up WebSocket for real-time inbox refresh
-    const token = getAuthToken();
-    if (token) {
-      const wsUrl = API_BASE_URL.replace(/^http/, "ws").replace(/\/api$/, "");
-      const socket = io(wsUrl, {
-        auth: { token },
-        transports: ["websocket", "polling"],
-        autoConnect: true,
-      });
-
-      socketRef.current = socket;
-
-      socket.on("EMAIL_RECEIVED", () => {
-        // Silently reload messages and folders so new emails drop right in!
-        void loadFolders();
-        void loadMessages();
-
-        toast({
-          title: "New Email Received",
-          description: "Your inbox just updated with a new message.",
-        });
-      });
-    }
-
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
+  const loadFolders = useCallback(async () => {
+    try {
+      setIsFoldersLoading(true);
+      const result = await listEmailFolders();
+      if (!result.length) {
+        setFolders(fallbackFolders);
+        return;
       }
-    };
-  }, []); // Run once on mount
-
-  useEffect(() => {
-    void loadMessages();
-  }, [selectedFolder, searchQuery]);
-
-  const loadFolders = async () => {
-    try {
-      const list = await listEmailFolders();
-      setFolders(list);
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to load folders",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const loadMessages = async () => {
-    try {
-      setIsLoading(true);
-      const result = await listEmails({
-        folder: selectedFolder,
-        search: searchQuery || undefined,
-        limit: 50,
-        offset,
-      });
-      setMessages(result.messages);
-      setTotal(result.total);
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to load emails",
-        variant: "destructive",
-      });
+      const mapped = result.map((folder: EmailFolder) => ({
+        id: folder.id,
+        name: folder.name,
+        unreadCount: folder.unreadCount || 0,
+      }));
+      setFolders(mapped);
+    } catch {
+      setFolders(fallbackFolders);
     } finally {
-      setIsLoading(false);
+      setIsFoldersLoading(false);
     }
-  };
+  }, [fallbackFolders]);
 
-  const handleSelectMessage = async (message: EmailMessage) => {
-    setSelectedMessage(message);
-
-    // Mark as read if unread
-    if (!message.isRead) {
-      try {
-        await updateEmail(message.id, { isRead: true });
-        setMessages((prev) =>
-          prev.map((m) => (m.id === message.id ? { ...m, isRead: true } : m))
-        );
-      } catch (err) {
-        // Ignore error
-      }
-    }
-
-    // Load thread
+  const loadMessages = useCallback(async (folderOverride?: string) => {
     try {
-      const threadData = await getEmailThread(message.threadId);
-      setThread(threadData.messages);
+      setIsMessagesLoading(true);
+      const folderToLoad = folderOverride || selectedFolderRef.current;
+      const result = await listEmails({ folder: folderToLoad, limit: 50 });
+      setMessages(result.messages);
     } catch (err) {
-      setThread([message]);
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to load messages",
+        variant: "destructive",
+      });
+      setMessages([]);
+    } finally {
+      setIsMessagesLoading(false);
+    }
+  }, [toast]);
+
+  const loadThread = async (message: EmailMessage) => {
+    try {
+      setIsThreadLoading(true);
+      const thread = await getEmailThread(message.threadId);
+      setThreadMessages(thread.messages);
+      const initialState: Record<string, boolean> = {};
+      thread.messages.forEach((msg) => {
+        initialState[msg.id] = msg.id === message.id;
+      });
+      setExpandedIds(initialState);
+    } catch {
+      setThreadMessages([message]);
+      setExpandedIds({ [message.id]: true });
+    } finally {
+      setIsThreadLoading(false);
     }
   };
 
-  const handleToggleStar = async (message: EmailMessage) => {
+  const markReadIfNeeded = async (message: EmailMessage) => {
+    if (message.isRead) return;
+    try {
+      const updated = await updateEmail(message.id, { isRead: true });
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
+      setSelectedMessage(updated);
+    } catch {
+      // no-op
+    }
+  };
+
+  const onSelectMessage = async (message: EmailMessage) => {
+    setSelectedMessage(message);
+    await markReadIfNeeded(message);
+    await loadThread(message);
+  };
+
+  const onToggleStar = async (message: EmailMessage) => {
     try {
       const updated = await updateEmail(message.id, { isStarred: !message.isStarred });
-      setMessages((prev) =>
-        prev.map((m) => (m.id === message.id ? updated : m))
-      );
-      if (selectedMessage?.id === message.id) {
-        setSelectedMessage(updated);
-      }
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
+      setThreadMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
+      if (selectedMessage?.id === message.id) setSelectedMessage(updated);
     } catch (err) {
       toast({
         title: "Error",
@@ -177,18 +179,13 @@ export const EmailClient = () => {
     }
   };
 
-  const handleDelete = async (message: EmailMessage) => {
+  const onDeleteSelected = async () => {
+    if (!selectedMessage) return;
     try {
-      await deleteEmail(message.id);
-      toast({
-        title: "Success",
-        description: "Email moved to trash",
-      });
-      setMessages((prev) => prev.filter((m) => m.id !== message.id));
-      if (selectedMessage?.id === message.id) {
-        setSelectedMessage(null);
-        setThread([]);
-      }
+      await deleteEmail(selectedMessage.id);
+      setMessages((prev) => prev.filter((m) => m.id !== selectedMessage.id));
+      setThreadMessages([]);
+      setSelectedMessage(null);
       void loadFolders();
     } catch (err) {
       toast({
@@ -199,409 +196,275 @@ export const EmailClient = () => {
     }
   };
 
-  const handleReply = (message: EmailMessage) => {
-    setReplyToMessage(message);
-    setIsReplyOpen(true);
-  };
+  useEffect(() => {
+    void loadFolders();
+  }, [loadFolders]);
 
-  const handleForward = (message: EmailMessage) => {
-    setReplyToMessage(message);
-    setIsForwardOpen(true);
-  };
+  useEffect(() => {
+    void loadMessages(selectedFolder);
+  }, [selectedFolder, loadMessages]);
 
-  const handleSendReply = async (payload: SendEmailPayload) => {
-    if (!replyToMessage) return;
+  useEffect(() => {
+    const wsUrl = API_BASE_URL.replace(/\/api$/, "");
 
-    try {
-      await replyToEmail(replyToMessage.id, payload.bodyText, payload.bodyHtml, payload.accountId);
-      toast({
-        title: "Success",
-        description: "Reply sent successfully",
+    const connectIfPossible = () => {
+      if (socketRef.current?.connected) return;
+      const token = getAuthToken() || window.localStorage.getItem("authToken");
+      if (!token) return;
+
+      const socket = io(wsUrl, {
+        auth: { token },
+        transports: ["websocket", "polling"],
+        autoConnect: true,
       });
-      setIsReplyOpen(false);
-      setReplyToMessage(null);
-      void loadMessages();
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to send reply",
-        variant: "destructive",
+      socketRef.current = socket;
+
+      socket.on("EMAIL_RECEIVED", () => {
+        console.log("[EmailClient] New email received via push");
+        void loadFolders();
+        void loadMessages();
+        toast({ title: "New email received" });
       });
-    }
-  };
+    };
 
-  const handleSendForward = async (payload: SendEmailPayload) => {
-    if (!replyToMessage) return;
+    connectIfPossible();
 
-    try {
-      await forwardEmail(replyToMessage.id, payload.to, payload.bodyText, payload.bodyHtml, payload.accountId);
-      toast({
-        title: "Success",
-        description: "Email forwarded successfully",
-      });
-      setIsForwardOpen(false);
-      setReplyToMessage(null);
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to forward email",
-        variant: "destructive",
-      });
-    }
-  };
+    const interval = window.setInterval(connectIfPossible, 750);
+    const onFocus = () => connectIfPossible();
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return "";
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("focus", onFocus);
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [loadFolders, loadMessages, toast]);
 
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  };
-
-  const currentFolder = folders.find((f) => f.id === selectedFolder);
+  const messageForComposer = selectedMessage || threadMessages[threadMessages.length - 1];
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] border rounded-lg bg-card shadow-sm overflow-hidden">
-      {/* Folder Sidebar */}
-      <div className="w-56 border-r bg-muted/30 flex flex-col">
-        <div className="p-4 border-b bg-card">
-          <Button
-            onClick={() => setIsComposeOpen(true)}
-            className="w-full font-medium"
-            size="default"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Compose
-          </Button>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-0.5">
-            {folders.map((folder) => (
-              <button
-                key={folder.id}
-                onClick={() => {
-                  setSelectedFolder(folder.id);
-                  setSelectedMessage(null);
-                  setThread([]);
-                  setOffset(0);
-                }}
-                className={`
-                  w-full flex items-center justify-between px-3 py-2.5 rounded-md text-sm transition-all duration-200
-                  ${selectedFolder === folder.id
-                    ? "bg-primary text-primary-foreground font-medium shadow-sm"
-                    : "hover:bg-muted text-foreground"
-                  }
-                `}
-              >
-                <div className="flex items-center gap-3">
-                  <Mail className={`h-4 w-4 ${selectedFolder === folder.id ? '' : 'text-muted-foreground'}`} />
-                  <span className="truncate">{folder.name}</span>
-                </div>
-                {folder.unreadCount > 0 && (
-                  <Badge
-                    variant={selectedFolder === folder.id ? "secondary" : "default"}
-                    className="text-xs font-semibold min-w-[20px] justify-center"
+    <div className="h-[calc(100vh-8rem)] overflow-hidden rounded-lg border bg-card">
+      <div className="flex h-full">
+        <div className="w-56 border-r bg-muted/20">
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <span className="text-sm font-medium">Inbox</span>
+            <Button size="sm" onClick={() => setComposer({ open: true, mode: "compose" })}>
+              Compose
+            </Button>
+          </div>
+          <ScrollArea className="h-[calc(100%-56px)]">
+            <div className="space-y-1 p-2">
+              {(isFoldersLoading ? fallbackFolders : folders).map((folder) => {
+                const Icon = getFolderIcon(folder.id);
+                const isActive = selectedFolder === folder.id;
+                return (
+                  <button
+                    key={folder.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedFolder(folder.id);
+                      setSelectedMessage(null);
+                      setThreadMessages([]);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm ${
+                      isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                    }`}
                   >
-                    {folder.unreadCount}
-                  </Badge>
-                )}
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
-
-      {/* Email List */}
-      <div className="w-80 border-r flex flex-col bg-background">
-        <div className="p-3 border-b bg-card">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search emails..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setOffset(0);
-              }}
-              className="pl-9 h-9 bg-muted/50 border-muted focus:bg-background"
-            />
-          </div>
+                    <span className="flex items-center gap-2">
+                      <Icon className="h-4 w-4" />
+                      {folder.name}
+                    </span>
+                    {folder.unreadCount > 0 ? <Badge variant="secondary">{folder.unreadCount}</Badge> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </ScrollArea>
         </div>
-        <ScrollArea className="flex-1">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground text-sm">Loading emails...</div>
-          ) : messages.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground text-sm">
-              <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>No emails in {currentFolder?.name || selectedFolder}</p>
+
+        <div className="w-96 border-r">
+          <div className="border-b px-4 py-3 text-sm font-medium">Messages</div>
+          <ScrollArea className="h-[calc(100%-49px)]">
+            {isMessagesLoading ? (
+              <div className="space-y-3 p-3">
+                {[1, 2, 3, 4].map((k) => (
+                  <div key={k} className="animate-pulse rounded-md border p-3">
+                    <div className="mb-2 h-3 w-2/3 rounded bg-muted" />
+                    <div className="mb-1 h-3 w-full rounded bg-muted" />
+                    <div className="h-3 w-1/2 rounded bg-muted" />
+                  </div>
+                ))}
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
+                <Inbox className="h-6 w-6" />
+                <span className="text-sm">No emails in this folder</span>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => void onSelectMessage(message)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        void onSelectMessage(message);
+                      }
+                    }}
+                    className={`w-full px-4 py-3 text-left hover:bg-muted/40 ${
+                      selectedMessage?.id === message.id ? "bg-muted/40" : ""
+                    }`}
+                  >
+                    <div className="mb-1 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          {!message.isRead ? <span className="h-2 w-2 rounded-full bg-primary" /> : null}
+                          <span className={`truncate text-sm ${message.isRead ? "" : "font-semibold"}`}>
+                            {message.from.name || message.from.email}
+                          </span>
+                        </div>
+                        <div className={`truncate text-sm ${message.isRead ? "" : "font-semibold"}`}>
+                          {message.subject || "(No subject)"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void onToggleStar(message);
+                        }}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Star className={`h-4 w-4 ${message.isStarred ? "fill-yellow-400 text-yellow-500" : ""}`} />
+                      </button>
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">{message.snippet}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {getRelativeTime(message.receivedAt || message.sentAt)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {!selectedMessage ? (
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <Mail className="mx-auto mb-2 h-8 w-8" />
+                <p className="text-sm">Select an email to read</p>
+              </div>
             </div>
           ) : (
-            <div className="divide-y divide-border">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  onClick={() => handleSelectMessage(message)}
-                  className={`
-                    p-4 cursor-pointer transition-all duration-200 border-l-4
-                    ${selectedMessage?.id === message.id
-                      ? "bg-primary/5 border-l-primary"
-                      : "border-l-transparent hover:bg-muted/50"
-                    }
-                    ${!message.isRead ? "bg-muted/30" : ""}
-                  `}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className={`text-sm truncate ${!message.isRead ? 'font-semibold' : 'font-medium'}`}>
-                          {message.from.name || message.from.email}
-                        </p>
-                        {!message.isRead && (
-                          <div className="h-2 w-2 bg-primary rounded-full flex-shrink-0" />
-                        )}
-                      </div>
-                      <p className={`text-sm truncate ${!message.isRead ? 'font-medium' : ''} text-foreground`}>
-                        {message.subject || '(No subject)'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {message.isStarred ? (
-                        <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                      ) : (
-                        <Star className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                    {message.snippet}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(message.receivedAt || message.sentAt)}
-                  </p>
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold">{selectedMessage.subject || "(No subject)"}</h3>
                 </div>
-              ))}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setComposer({ open: true, mode: "reply" })}
+                  >
+                    <Reply className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setComposer({ open: true, mode: "forward" })}
+                  >
+                    <Forward className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => void onToggleStar(selectedMessage)}>
+                    <Star className={`h-4 w-4 ${selectedMessage.isStarred ? "fill-yellow-400 text-yellow-500" : ""}`} />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="text-destructive" onClick={() => void onDeleteSelected()}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <ScrollArea className="h-[calc(100%-57px)]">
+                {isThreadLoading ? (
+                  <div className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading thread...
+                  </div>
+                ) : (
+                  <div className="space-y-3 p-4">
+                    {threadMessages.map((msg, index) => {
+                      const expanded = expandedIds[msg.id] ?? index === threadMessages.length - 1;
+                      return (
+                        <div key={msg.id} className="rounded-md border">
+                          <div className="flex items-center justify-between border-b px-3 py-2">
+                            <div className="text-sm">
+                              <div className="font-medium">
+                                {msg.from.name || msg.from.email}
+                              </div>
+                              <div className="text-xs text-muted-foreground">{new Date(msg.receivedAt || msg.sentAt || "").toLocaleString()}</div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setExpandedIds((prev) => ({ ...prev, [msg.id]: !expanded }))}
+                            >
+                              {expanded ? "Collapse" : "Expand"}
+                            </Button>
+                          </div>
+                          {expanded ? (
+                            <div
+                              className="p-3 text-sm"
+                              dangerouslySetInnerHTML={{
+                                __html: msg.bodyHtml || `<div>${msg.bodyText || msg.snippet || ""}</div>`,
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </ScrollArea>
             </div>
           )}
-        </ScrollArea>
+        </div>
       </div>
 
-      {/* Email Viewer */}
-      <div className="flex-1 flex flex-col bg-background">
-        {selectedMessage ? (
-          <>
-            <div className="p-4 border-b bg-card flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-lg font-semibold truncate">
-                    {selectedMessage.subject || '(No subject)'}
-                  </h3>
-                  {selectedMessage.isStarred && (
-                    <Star className="h-4 w-4 fill-yellow-500 text-yellow-500 flex-shrink-0" />
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                  <div>
-                    <span className="font-medium text-foreground">From:</span> {selectedMessage.from.name || selectedMessage.from.email}
-                  </div>
-                  {selectedMessage.to.length > 0 && (
-                    <div>
-                      <span className="font-medium text-foreground">To:</span> {selectedMessage.to.map((t) => t.email).join(", ")}
-                    </div>
-                  )}
-                  {selectedMessage.cc && selectedMessage.cc.length > 0 && (
-                    <div>
-                      <span className="font-medium text-foreground">CC:</span> {selectedMessage.cc.map((t) => t.email).join(", ")}
-                    </div>
-                  )}
-                  <div className="text-xs">
-                    {formatDate(selectedMessage.receivedAt || selectedMessage.sentAt)}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 ml-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleToggleStar(selectedMessage)}
-                  className="h-9 w-9 p-0"
-                >
-                  {selectedMessage.isStarred ? (
-                    <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                  ) : (
-                    <Star className="h-4 w-4" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleReply(selectedMessage)}
-                  className="h-9 w-9 p-0"
-                  title="Reply"
-                >
-                  <Reply className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleForward(selectedMessage)}
-                  className="h-9 w-9 p-0"
-                  title="Forward"
-                >
-                  <Forward className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(selectedMessage)}
-                  className="h-9 w-9 p-0 text-destructive hover:text-destructive"
-                  title="Delete"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            <ScrollArea className="flex-1">
-              <div className="p-6 space-y-6">
-                {/* Thread */}
-                {thread.length > 1 && (
-                  <div className="space-y-3">
-                    <p className="text-sm font-semibold text-foreground mb-3">
-                      Conversation ({thread.length} messages)
-                    </p>
-                    {thread.map((msg, idx) => (
-                      <Card
-                        key={msg.id}
-                        className={`
-                          transition-all duration-200
-                          ${msg.id === selectedMessage.id
-                            ? "ring-2 ring-primary border-primary shadow-sm"
-                            : "hover:shadow-sm"
-                          }
-                        `}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">
-                                {msg.from.name || msg.from.email}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {formatDate(msg.receivedAt || msg.sentAt)}
-                              </p>
-                            </div>
-                            {msg.id !== selectedMessage.id && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleSelectMessage(msg)}
-                                className="h-8"
-                              >
-                                View
-                              </Button>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {msg.snippet}
-                          </p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-
-                {/* Current Message */}
-                <div className="prose prose-sm max-w-none">
-                  {selectedMessage.bodyHtml ? (
-                    <div
-                      className="email-body"
-                      dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
-                    />
-                  ) : (
-                    <div className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
-                      {selectedMessage.bodyText || selectedMessage.snippet}
-                    </div>
-                  )}
-                </div>
-
-                {/* Attachments */}
-                {selectedMessage.attachments && selectedMessage.attachments.length > 0 && (
-                  <div className="mt-6 pt-6 border-t">
-                    <p className="text-sm font-semibold mb-3 text-foreground">Attachments</p>
-                    <div className="space-y-2">
-                      {selectedMessage.attachments.map((att, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                        >
-                          <Paperclip className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">{att.filename}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {att.mimeType} • {(att.size / 1024).toFixed(1)} KB
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">
-            <Mail className="h-12 w-12 mb-4 opacity-30" />
-            <p className="text-sm font-medium">Select an email to view</p>
-            <p className="text-xs mt-1">Choose a message from the list to read its contents</p>
-          </div>
-        )}
-      </div>
-
-      {/* Compose Dialog */}
-      <EmailComposer
-        open={isComposeOpen}
-        onOpenChange={setIsComposeOpen}
-        onSend={async (payload) => {
-          try {
-            await sendEmail(payload);
-            toast({
-              title: "Success",
-              description: "Email sent successfully",
-            });
-            setIsComposeOpen(false);
-            void loadMessages();
-          } catch (err) {
-            toast({
-              title: "Error",
-              description: err instanceof Error ? err.message : "Failed to send email",
-              variant: "destructive",
-            });
-          }
+      <SharedEmailComposer
+        isOpen={composer.open}
+        mode={composer.mode}
+        defaultTo={
+          composer.mode === "reply"
+            ? messageForComposer?.from?.email
+            : composer.mode === "forward"
+            ? ""
+            : undefined
+        }
+        defaultSubject={
+          messageForComposer?.subject
+            ? composer.mode === "reply"
+              ? `Re: ${messageForComposer.subject}`
+              : composer.mode === "forward"
+              ? `Fwd: ${messageForComposer.subject}`
+              : ""
+            : ""
+        }
+        defaultBody={composer.mode === "forward" ? messageForComposer?.bodyHtml || messageForComposer?.bodyText : undefined}
+        defaultThreadId={composer.mode === "reply" ? messageForComposer?.threadId : undefined}
+        defaultInReplyTo={composer.mode === "reply" ? messageForComposer?.messageId : undefined}
+        onSent={() => {
+          void loadMessages();
+          void loadFolders();
         }}
-      />
-
-      {/* Reply Dialog */}
-      <EmailComposer
-        open={isReplyOpen}
-        onOpenChange={setIsReplyOpen}
-        replyTo={replyToMessage}
-        onSend={handleSendReply}
-      />
-
-      {/* Forward Dialog */}
-      <EmailComposer
-        open={isForwardOpen}
-        onOpenChange={setIsForwardOpen}
-        forwardFrom={replyToMessage}
-        onSend={handleSendForward}
+        onClose={() => setComposer((prev) => ({ ...prev, open: false }))}
       />
     </div>
   );

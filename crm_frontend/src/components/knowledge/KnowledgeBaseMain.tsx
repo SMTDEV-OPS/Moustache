@@ -23,6 +23,7 @@ import { FactSheetsView } from "./FactSheetsView";
 import { TemplatesView } from "./TemplatesView";
 import { ResourcesView } from "./ResourcesView";
 import { KnowledgeBaseType } from "@/services/knowledgeBase";
+import { PERMISSIONS } from "@/constants/permissions";
 
 interface Property {
   _id: string;
@@ -47,7 +48,7 @@ export const KnowledgeBaseMain = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const canManage = isAdmin || permissions?.includes("knowledgebase.manage");
+  const canManage = isAdmin || permissions?.includes(PERMISSIONS.KNOWLEDGE_BASE.MANAGE);
 
   useEffect(() => {
     const fetchProperties = async () => {

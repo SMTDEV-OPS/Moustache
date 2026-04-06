@@ -32,6 +32,7 @@ import { publicIvrWebhooksRouter } from "./routes/public/ivrWebhooks";
 import { publicWhatsappWebhooksRouter } from "./routes/public/whatsappWebhooks";
 import { publicSocialWebhooksRouter } from "./routes/public/socialWebhooks";
 import { publicEmailWebhooksRouter } from "./routes/public/emailWebhooks";
+import gmailWebhookRouter from "./routes/public/gmailWebhook";
 import { knowledgeBaseRouter } from "./routes/knowledgeBase";
 import { ticketsRouter } from "./routes/tickets";
 import { conglomeratesRouter } from "./routes/conglomerates";
@@ -148,6 +149,7 @@ app.use("/api/public/ivr-webhook", publicIvrWebhooksRouter);
 app.use("/api/public/whatsapp-webhook", publicWhatsappWebhooksRouter);
 app.use("/api/public/social-webhook", publicSocialWebhooksRouter);
 app.use("/api/public/email-webhook", publicEmailWebhooksRouter);
+app.use("/api/public", gmailWebhookRouter);
 
 app.use(errorHandler);
 

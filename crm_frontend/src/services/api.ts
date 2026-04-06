@@ -42,6 +42,25 @@ export const withAuthHeaders = (headers: HeadersInit = {}): HeadersInit => {
   };
 };
 
+function requestUrlFromFetchArgs(args: Parameters<typeof fetch>): string {
+  const input = args[0];
+  if (typeof input === "string") return input;
+  if (input instanceof Request) return input.url;
+  return String(input);
+}
+
+function isAuthLoginPost(args: Parameters<typeof fetch>): boolean {
+  const url = requestUrlFromFetchArgs(args);
+  if (!/\/auth\/login(\?|$)/.test(url)) return false;
+  const input = args[0];
+  const init = args[1];
+  const method = (
+    init?.method ??
+    (input instanceof Request ? input.method : "GET")
+  ).toUpperCase();
+  return method === "POST";
+}
+
 // Global Fetch Interceptor to handle 401 Token Expired globally
 if (typeof window !== "undefined") {
   const originalFetch = window.fetch;
@@ -49,6 +68,10 @@ if (typeof window !== "undefined") {
     const response = await originalFetch(...args);
 
     if (response.status === 401) {
+      // Wrong password on POST /auth/login is also 401 — do not redirect (no /login route; breaks Login UI).
+      if (isAuthLoginPost(args)) {
+        return response;
+      }
       try {
         const clone = response.clone();
         const data = await clone.json();

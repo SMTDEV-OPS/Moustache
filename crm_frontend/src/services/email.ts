@@ -538,6 +538,7 @@ export const listEmails = async (query?: ListEmailsQuery): Promise<{ messages: E
 
   const response = await fetch(url, {
     headers: withAuthHeaders(),
+    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -722,6 +723,7 @@ export const deleteEmail = async (emailId: string): Promise<void> => {
 export const listEmailFolders = async (): Promise<EmailFolder[]> => {
   const response = await fetch(`${API_BASE_URL}/email/folders`, {
     headers: withAuthHeaders(),
+    cache: "no-store",
   });
 
   if (!response.ok) {

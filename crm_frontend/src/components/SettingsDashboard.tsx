@@ -24,6 +24,7 @@ import {
 import { PageHeader } from "@/components/shared";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useNavigate } from "react-router-dom";
+import { PERMISSIONS } from "@/constants/permissions";
 
 interface SettingsItem {
   name: string;
@@ -54,13 +55,13 @@ export function SettingsDashboard({
 }: SettingsDashboardProps) {
   const navigate = useNavigate();
   const isAdminLike = isAdmin || userRole === "admin";
-  const canManageUsers = isAdminLike || permissions.includes("users.manage");
-  const canManageAccounts = isAdminLike || permissions.includes("accounts.manage");
-  const canManageProperties = isAdminLike || permissions.includes("properties.manage");
+  const canManageUsers = isAdminLike || permissions.includes(PERMISSIONS.USERS.MANAGE);
+  const canManageAccounts = isAdminLike || permissions.includes(PERMISSIONS.ACCOUNTS.MANAGE);
+  const canManageProperties = isAdminLike || permissions.includes(PERMISSIONS.PROPERTIES.MANAGE);
   const canManageLeads =
-    isAdminLike || permissions.includes("leads.manage") || permissions.includes("leads.view.all");
-  const canManageWorkflows = isAdminLike || permissions.includes("workflows.manage");
-  const canManageTemplates = isAdminLike || permissions.includes("templates.manage");
+    isAdminLike || permissions.includes(PERMISSIONS.LEADS.MANAGE) || permissions.includes(PERMISSIONS.LEADS.READ);
+  const canManageWorkflows = isAdminLike || permissions.includes(PERMISSIONS.WORKFLOWS.MANAGE);
+  const canManageTemplates = isAdminLike || permissions.includes(PERMISSIONS.TEMPLATES.MANAGE);
 
   const categories: SettingsCategory[] = [
     {

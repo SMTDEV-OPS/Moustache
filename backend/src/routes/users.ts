@@ -4,6 +4,7 @@ import { z } from "zod";
 import { UserModel } from "../models/user";
 import { UserRoleModel } from "../models/userRole";
 import { RoleModel } from "../models/role";
+import { ProfileModel } from "../models/profile";
 import { requireAuth, requirePermissions } from "../middleware/auth";
 import { badRequest, forbidden, notFound, unauthorized } from "../utils/httpError";
 import { AccessControlService } from "../services/auth/AccessControlService";
@@ -18,6 +19,7 @@ const createUserSchema = z.object({
   password: z.string().min(6),
   regions: z.array(z.string()).nullish(),
   roleId: z.string().nullish(),
+  profileId: z.string().nullish(),
   reportsTo: z.string().nullish(), // ID of the manager
 });
 
@@ -27,6 +29,7 @@ const updateUserSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
   regions: z.array(z.string()).optional(),
   roleId: z.string().optional(),
+  profileId: z.string().optional().nullable(),
   password: z.string().min(6).optional(),
   reportsTo: z.string().optional().nullable(),
 });
@@ -116,7 +119,7 @@ usersRouter.post(
         console.error("User Validation Error:", JSON.stringify(parsed.error.format(), null, 2));
         throw badRequest(`VALIDATION FAILED: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(", ")}`);
       }
-      const { name, email, phone, regions, roleId, password, reportsTo } =
+      const { name, email, phone, regions, roleId, profileId, password, reportsTo } =
         parsed.data;
 
       const existing = await UserModel.findOne({ email });
@@ -126,6 +129,32 @@ usersRouter.post(
 
       const passwordHash = await bcrypt.hash(password, 10);
 
+      // Gap A (Part B): never create a user without a profile.
+      let finalProfileId = profileId ?? undefined;
+      if (!finalProfileId) {
+        const standardUser =
+          (await ProfileModel.findOne({ name: "Standard User" }).select("_id name").lean()) ||
+          null;
+
+        let fallback =
+          standardUser ||
+          (await ProfileModel.findOne({ isSystemProfile: false })
+            .sort({ name: 1 })
+            .select("_id name")
+            .lean());
+
+        if (!fallback) {
+          fallback = await ProfileModel.findOne({ name: "Executives" }).select("_id name").lean();
+        }
+
+        if (!fallback?._id) {
+          throw badRequest("No default profile found. Create a non-system profile first.");
+        }
+
+        finalProfileId = String(fallback._id);
+        console.warn(`User ${email} had no profile — assigned ${(fallback as any).name} as default`);
+      }
+
       // Create user first
       const user = await UserModel.create({
         name,
@@ -133,6 +162,7 @@ usersRouter.post(
         phone,
         regions,
         roleId,
+        profileId: finalProfileId,
         passwordHash,
         reportsTo,
       });
@@ -150,6 +180,7 @@ usersRouter.post(
         name: user.name,
         email: user.email,
         roleId: user.roleId,
+        profileId: user.profileId,
         reportsTo: user.reportsTo,
         hierarchyPath: user.hierarchyPath,
       });

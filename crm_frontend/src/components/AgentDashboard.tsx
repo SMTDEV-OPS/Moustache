@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, Phone, Mail, User, Eye, TrendingUp, Target, CheckCircle, Users, MessageSquare, AlertTriangle } from "lucide-react";
-import { EmailDialog } from "@/components/communication/EmailDialog";
+import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
 
 interface AgentDashboardProps {
   userName: string;
@@ -555,11 +555,12 @@ export const AgentDashboard = ({ userName, userRole }: AgentDashboardProps) => {
       </Tabs>
 
       {/* Email Dialog */}
-      <EmailDialog
-        open={isEmailDialogOpen}
-        onOpenChange={setIsEmailDialogOpen}
-        guestEmail={selectedLeadForDialog?.email || ''}
-        guestName={selectedLeadForDialog?.name || ''}
+      <SharedEmailComposer
+        isOpen={isEmailDialogOpen}
+        mode="compose"
+        defaultTo={selectedLeadForDialog?.email || ""}
+        onClose={() => setIsEmailDialogOpen(false)}
+        onSent={() => setIsEmailDialogOpen(false)}
       />
 
       {/* Call Dialog */}

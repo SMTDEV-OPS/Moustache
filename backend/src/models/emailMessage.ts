@@ -78,7 +78,7 @@ const emailMessageSchema = new Schema<IEmailMessage>(
       index: true,
     },
     threadId: { type: String, required: true, index: true },
-    messageId: { type: String, required: true, unique: true, index: true },
+    messageId: { type: String, required: true, index: true },
     inReplyTo: { type: String, index: true },
     from: { type: emailAddressSchema, required: true },
     to: { type: [emailAddressSchema], required: true, default: [] },
@@ -105,6 +105,7 @@ const emailMessageSchema = new Schema<IEmailMessage>(
 );
 
 // Indexes for efficient querying
+emailMessageSchema.index({ emailAccountId: 1, messageId: 1 }, { unique: true });
 emailMessageSchema.index({ emailAccountId: 1, folder: 1, receivedAt: -1 });
 emailMessageSchema.index({ emailAccountId: 1, isRead: 1, receivedAt: -1 });
 emailMessageSchema.index({ threadId: 1, receivedAt: 1 });

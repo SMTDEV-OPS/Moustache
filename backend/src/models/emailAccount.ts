@@ -46,6 +46,9 @@ export interface IEmailAccount extends Document {
   lastSyncAt?: Date;
   syncStatus: SyncStatus;
   syncError?: string;
+  gmailHistoryId?: string;
+  gmailWatchExpiration?: number;
+  gmailWatchResourceId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -125,6 +128,9 @@ const emailAccountSchema = new Schema<IEmailAccount>(
       default: "IDLE",
     },
     syncError: { type: String },
+    gmailHistoryId: { type: String },
+    gmailWatchExpiration: { type: Number },
+    gmailWatchResourceId: { type: String },
   },
   { timestamps: true }
 );

@@ -14,6 +14,11 @@ import { LeadModel, ILead } from "../models/lead";
 import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import { CommunicationModel } from "../models/communication";
 import { badRequest, notFound, forbidden } from "../utils/httpError";
+import {
+  canAccessLeadPatch,
+  enforceLeadFieldPermissions,
+  getEditableLeadFieldKeys,
+} from "../utils/leadFieldEditPolicy";
 import { createLead, reassignLead, validateStageMove, leadEventBus, dryRunAssignment } from "../services/leadService";
 import { assertLeadAccess } from "../utils/leadAccess";
 import { logAudit } from "../utils/auditLog";
@@ -601,7 +606,14 @@ leadsRouter.get("/:id", async (req, res, next) => {
     const itineraries = await LeadItineraryModel.find({ leadId: lead._id }).sort({ createdAt: 1 }).lean();
 
     const leadObj = spreadCustomDataToLead(lead);
-    res.json({ lead: { ...leadObj, itineraries }, activities, communications, previousCommunications });
+    const editableLeadFields = getEditableLeadFieldKeys(req.user);
+    res.json({
+      lead: { ...leadObj, itineraries },
+      activities,
+      communications,
+      previousCommunications,
+      editableLeadFields,
+    });
   } catch (err) {
     next(err);
   }
@@ -647,7 +659,10 @@ leadsRouter.patch("/:id", async (req, res, next) => {
   try {
     const parsed = leadUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw badRequest("Invalid lead update payload");
+      const issue = parsed.error.issues?.[0];
+      const path = issue?.path?.length ? issue.path.join(".") : undefined;
+      const msg = issue?.message || "Invalid lead update payload";
+      throw badRequest(path ? `Invalid lead update payload: ${path} — ${msg}` : msg);
     }
 
     const existing = await LeadModel.findById(req.params.id);
@@ -661,12 +676,11 @@ leadsRouter.patch("/:id", async (req, res, next) => {
 
     await assertLeadAccess(req.user, existing);
 
-    if (
-      !hasPermission(req.user, "leads.update") &&
-      !hasPermission(req.user, "leads.manage")
-    ) {
+    if (!canAccessLeadPatch(req.user)) {
       throw forbidden("Insufficient permissions to update leads");
     }
+
+    enforceLeadFieldPermissions(req.user, parsed.data as Record<string, unknown>);
 
     const prevStatus = existing.status;
     const prevStageId = existing.stageId?.toString();
@@ -762,55 +776,45 @@ leadsRouter.patch("/:id", async (req, res, next) => {
       };
     }
 
-    // Handle reassignment
+    // Handle reassignment (allowed keys already enforced via enforceLeadFieldPermissions + getEditableLeadFieldKeys)
     if (parsed.data.assignedToUserId) {
-      if (
-        hasPermission(req.user, "leads.assign") ||
-        hasPermission(req.user, "leads.manage")
-      ) {
-        const previousAssigneeId = existing.assignedToUserId?.toString();
-        const newAssigneeId = parsed.data.assignedToUserId;
+      const previousAssigneeId = existing.assignedToUserId?.toString();
+      const newAssigneeId = parsed.data.assignedToUserId;
 
-        // Only log reassignment if assignee actually changed
-        if (previousAssigneeId !== newAssigneeId) {
-          // Use the reassignLead service to handle notification and logging
-          await reassignLead(
-            existing._id.toString(),
-            newAssigneeId,
-            req.user.id
-          );
-          // Reload the lead to get updated data
-          const updatedLead = await LeadModel.findById(existing._id);
-          if (updatedLead) {
-            if (parsed.data.status) updatedLead.status = parsed.data.status;
+      if (previousAssigneeId !== newAssigneeId) {
+        await reassignLead(
+          existing._id.toString(),
+          newAssigneeId,
+          req.user.id
+        );
+        const updatedLead = await LeadModel.findById(existing._id);
+        if (updatedLead) {
+          if (parsed.data.status) updatedLead.status = parsed.data.status;
 
-            if (parsed.data.status && parsed.data.status !== prevStatus) {
-              await LeadActivityModel.create({
-                leadId: updatedLead._id,
-                type: LeadActivityType.STATUS_CHANGE,
-                fromStatus: prevStatus,
-                toStatus: parsed.data.status,
-                performedByUserId: req.user?.id,
-                performedAt: new Date(),
-              });
-            }
-
-            logAudit(
-              "assigned",
-              "lead",
-              existing._id.toString(),
-              { assignedToUserId: previousAssigneeId },
-              { assignedToUserId: newAssigneeId },
-              req,
-              { orgId: existing.orgId?.toString() }
-            );
-            return res.json(spreadCustomDataToLead(updatedLead));
+          if (parsed.data.status && parsed.data.status !== prevStatus) {
+            await LeadActivityModel.create({
+              leadId: updatedLead._id,
+              type: LeadActivityType.STATUS_CHANGE,
+              fromStatus: prevStatus,
+              toStatus: parsed.data.status,
+              performedByUserId: req.user?.id,
+              performedAt: new Date(),
+            });
           }
-        } else {
-          existing.assignedToUserId = newAssigneeId as any;
+
+          logAudit(
+            "assigned",
+            "lead",
+            existing._id.toString(),
+            { assignedToUserId: previousAssigneeId },
+            { assignedToUserId: newAssigneeId },
+            req,
+            { orgId: existing.orgId?.toString() }
+          );
+          return res.json(spreadCustomDataToLead(updatedLead));
         }
       } else {
-        throw forbidden("Insufficient permissions to assign leads");
+        existing.assignedToUserId = newAssigneeId as any;
       }
     }
 
@@ -1031,7 +1035,12 @@ leadsRouter.post("/:id/activities", async (req, res, next) => {
 
     await assertLeadAccess(req.user, lead);
 
-    if (
+    if (parsed.data.type === LeadActivityType.NOTE) {
+      if (!canAccessLeadPatch(req.user)) {
+        throw forbidden("Insufficient permissions to add activities for this lead");
+      }
+      enforceLeadFieldPermissions(req.user, { notes: " " });
+    } else if (
       !hasPermission(req.user, "leads.update") &&
       !hasPermission(req.user, "leads.manage")
     ) {
@@ -1104,12 +1113,10 @@ leadsRouter.patch("/:id/call-status", async (req, res, next) => {
 
     await assertLeadAccess(req.user, lead);
 
-    if (
-      !hasPermission(req.user, "leads.update") &&
-      !hasPermission(req.user, "leads.manage")
-    ) {
+    if (!canAccessLeadPatch(req.user)) {
       throw forbidden("Insufficient permissions to update call status");
     }
+    enforceLeadFieldPermissions(req.user, { callStatus: parsed.data.callStatus });
 
     lead.callStatus = parsed.data.callStatus;
     await lead.save();
@@ -1173,12 +1180,10 @@ leadsRouter.post("/:id/notes", async (req, res, next) => {
 
     await assertLeadAccess(req.user, lead);
 
-    if (
-      !hasPermission(req.user, "leads.update") &&
-      !hasPermission(req.user, "leads.manage")
-    ) {
+    if (!canAccessLeadPatch(req.user)) {
       throw forbidden("Insufficient permissions to add notes");
     }
+    enforceLeadFieldPermissions(req.user, { notes: " " });
 
     // Create activity log entry
     const activity = await LeadActivityModel.create({

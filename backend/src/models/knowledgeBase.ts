@@ -8,6 +8,40 @@ export enum KnowledgeBaseType {
   RESOURCE = "RESOURCE",
 }
 
+/** Typed content for FACTSHEET KB items (stored in `content` mixed field). */
+export interface IFactSheetContent {
+  propertyAddress?: string;
+  mapLocation?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  roomCategories?: Array<{
+    name: string;
+    capacity?: number;
+    sizesqft?: number;
+    isAC?: boolean;
+    isDorm?: boolean;
+  }>;
+  inHouseRules?: string[];
+  additionalCharges?: Array<{
+    item: string;
+    amount?: string;
+  }>;
+  propertyPolicy?: string[];
+  nearbyAttractions?: string[];
+  nearbyRestaurants?: string[];
+  pocDetails?: {
+    frontDeskPhone?: string;
+    frontDeskEmail?: string;
+    gmName?: string;
+    gmPhone?: string;
+  };
+  generalInfo?: string[];
+  roomAmenities?: string[];
+  hotelAmenities?: string[];
+  promotionsAndOffers?: string[];
+  specialRemarks?: string;
+}
+
 export interface IKnowledgeBaseFile {
   _id?: Types.ObjectId;
   filename: string;

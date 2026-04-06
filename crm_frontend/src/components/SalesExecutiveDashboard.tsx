@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Calendar as CalendarIcon, Phone, Mail, MapPin, Clock, User, Eye, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
-import { EmailDialog } from "@/components/communication/EmailDialog";
+import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
 
 interface SalesExecutiveDashboardProps {
   userName: string;
@@ -846,11 +846,12 @@ const SalesExecutiveDashboard = ({ userName, defaultTab = 'leads' }: SalesExecut
       </Dialog>
 
       {/* Email Dialog */}
-      <EmailDialog
-        open={isEmailDialogOpen}
-        onOpenChange={setIsEmailDialogOpen}
-        guestEmail={selectedLead?.email}
-        guestName={selectedLead?.name}
+      <SharedEmailComposer
+        isOpen={isEmailDialogOpen}
+        mode="compose"
+        defaultTo={selectedLead?.email || ""}
+        onClose={() => setIsEmailDialogOpen(false)}
+        onSent={() => setIsEmailDialogOpen(false)}
       />
     </div>
   );

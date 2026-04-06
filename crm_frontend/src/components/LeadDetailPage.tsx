@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { Button, Badge, PageHeader } from "@/components/shared";
 import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
+import { canEditLeadField, canReassignLeadByProfile } from "@/lib/leadFieldEdit";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
 import { listEmails, EmailMessage } from "@/services/email";
 import { ScheduleFollowUpDialog } from "@/components/ScheduleFollowUpDialog";
@@ -41,16 +42,18 @@ import { getPaymentLinksForLead, createPaymentLink, type PaymentLink } from "@/s
 import { getCommunicationTimeline, updateCallStatus, type CommunicationTimelineItem } from "@/services/communications";
 import { Textarea } from "@/components/ui/textarea";
 import { API_BASE_URL, withAuthHeaders, getAuthToken } from "@/services/api";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { EditContactDetailsDialog } from "@/components/EditContactDetailsDialog";
-import { EditLeadDetailsDialog, LeadTripDetails } from "@/components/EditLeadDetailsDialog";
+import { EditLeadDialog } from "@/components/EditLeadDialog";
 import { CreateBookingDialog } from "@/components/CreateBookingDialog";
 import { listAdminFields, AdminField } from "@/services/adminFields";
 import { listTasksForLead, Task, updateTask } from "@/services/tasks";
 import { getCallQuality, submitCallQuality, getCallQualityDimensions, type CallQualityScore, type CallQualityDimension } from "@/services/callQuality";
 import { getWorkflowLogsForLead, type WorkflowExecutionLog } from "@/services/workflowLogs";
-import LeadEmailComposer from "@/components/email/EmailComposer";
 import { EmailThreadView } from "@/components/email/EmailThreadView";
+import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
 
 interface LeadDetailPageProps {
   leadId: string;
@@ -231,7 +234,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [users, setUsers] = useState<User[]>([]);
   const [leadEmails, setLeadEmails] = useState<EmailMessage[]>([]);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
-  const [isComposeEmailOpen, setIsComposeEmailOpen] = useState(false);
+  const [emailComposerOpen, setEmailComposerOpen] = useState(false);
+  const [replyComposerOpen, setReplyComposerOpen] = useState(false);
   const [replyToEmailItem, setReplyToEmailItem] = useState<CommunicationTimelineItem | null>(null);
 
   // Custom fields state
@@ -258,8 +262,11 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [activityNote, setActivityNote] = useState("");
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [isEditContactDialogOpen, setIsEditContactDialogOpen] = useState(false);
-  const [isEditLeadDetailsDialogOpen, setIsEditLeadDetailsDialogOpen] = useState(false);
+  const [isEditLeadDialogOpen, setIsEditLeadDialogOpen] = useState(false);
   const [isCreateBookingDialogOpen, setIsCreateBookingDialogOpen] = useState(false);
+  const [isReassignDialogOpen, setIsReassignDialogOpen] = useState(false);
+  const [reassignUserId, setReassignUserId] = useState("");
+  const [isSavingReassign, setIsSavingReassign] = useState(false);
 
   const [stageMoveError, setStageMoveError] = useState<{ stageName: string; missingFields: { id: string; name: string; slug: string }[] } | null>(null);
   const [followUps, setFollowUps] = useState<Task[]>([]);
@@ -276,9 +283,17 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
 
   const canScoreCall = !!isAdmin || permissions?.includes("leads.manage") || permissions?.includes("settings.manage");
 
-  // Permission checks
-  const canUpdate = !!isAdmin || permissions?.includes("leads.update") || permissions?.includes("leads.manage");
+  // Permission checks (legacy) + per-field keys from GET /leads/:id (`editableLeadFields`)
+  const legacyLeadUpdate =
+    !!isAdmin || permissions?.includes("leads.update") || permissions?.includes("leads.manage");
+  const canEditField = (key: string) =>
+    canEditLeadField(leadDetail?.editableLeadFields, key, legacyLeadUpdate);
   const canAssign = !!isAdmin || permissions?.includes("leads.assign") || permissions?.includes("leads.manage");
+  const canReassign = canEditLeadField(
+    leadDetail?.editableLeadFields,
+    "assignedToUserId",
+    canReassignLeadByProfile(permissions, isAdmin)
+  );
 
   useEffect(() => {
     void loadLeadDetail();
@@ -596,6 +611,19 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     return stage?.name || "Unknown Stage";
   };
 
+  const canOpenEditLead =
+    canEditField("contactDetails") ||
+    canEditField("hotels") ||
+    canEditField("checkIn") ||
+    canEditField("notes") ||
+    canEditField("source") ||
+    canEditField("heatLevel") ||
+    canEditField("customData") ||
+    canEditField("budget") ||
+    canEditField("bookingWindow") ||
+    canEditField("customerType") ||
+    canEditField("estimatedRate");
+
   const handleStatusChange = async () => {
     // MANDATORY DATA VALIDATION (SOP 1.9)
     if (["PAYMENT_REQUEST", "BOOKED"].includes(localStage)) {
@@ -618,15 +646,27 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
 
     try {
       setIsSavingStatus(true);
-      const currentTerminalType = pipelineStages.find(s => s._id === localStage)?.terminalType;
+      const patch: {
+        status?: LeadStatus;
+        stageId?: string;
+        heatLevel?: HeatLevel;
+        callStatus?: string;
+      } = {};
+      if (canEditField("status")) patch.status = localStatus;
+      if (canEditField("stageId")) patch.stageId = localStage;
+      if (canEditField("heatLevel")) patch.heatLevel = localHeatLevel;
+      if (canEditField("callStatus")) patch.callStatus = localCallStatus || undefined;
 
-      await updateLead(leadId, {
-        status: localStatus,
-        stageId: localStage,
-        closedReason: currentTerminalType === "LOST" ? localClosedReason : undefined,
-        heatLevel: localHeatLevel,
-        callStatus: localCallStatus || undefined,
-      });
+      if (Object.keys(patch).length === 0) {
+        toast({
+          title: "Permission denied",
+          description: "You don't have permission to update status, stage, heat, or call disposition.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await updateLead(leadId, patch);
 
       await loadLeadDetail();
       toast({
@@ -645,6 +685,14 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   };
 
   const handleSaveNotes = async () => {
+    if (!canEditField("notes")) {
+      toast({
+        title: "Permission denied",
+        description: "You can't edit lead notes.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       setIsSavingNotes(true);
       await updateLead(leadId, {
@@ -676,6 +724,15 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       return;
     }
 
+    if (!canEditField("notes")) {
+      toast({
+        title: "Permission denied",
+        description: "You can't add notes on this lead.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsAddingNote(true);
       await addLeadNote(leadId, activityNote);
@@ -698,6 +755,14 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   };
 
   const handleSaveContactDetails = async (contactDetails: LeadContactDetails) => {
+    if (!canEditField("contactDetails")) {
+      toast({
+        title: "Permission denied",
+        description: "You can't edit contact details for this lead.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       await updateLead(leadId, { contactDetails });
       await loadLeadDetail();
@@ -712,50 +777,6 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         variant: "destructive",
       });
       throw err; // Re-throw to let dialog know it failed
-    }
-  };
-
-  const handleSaveLeadDetails = async (details: LeadTripDetails) => {
-    try {
-      setIsSavingStatus(true);
-
-      const payload: any = {
-        hotels: [{
-          checkInDate: details.checkInDate,
-          checkOutDate: details.checkOutDate,
-          numberOfGuests: details.guests
-            ? `${details.guests.adults || 0} Adults, ${details.guests.children || 0} Children`
-            : `${details.roomsRequested || 1} Rooms`,
-        }],
-        occasion: details.occasion,
-        budget: details.budget ? Number(details.budget) : undefined,
-        customerType: details.customerType || undefined,
-        bookingWindow: details.bookingWindow || undefined,
-        notes: details.notes || undefined,
-        source: details.source || undefined,
-        heatLevel: details.heatLevel || undefined,
-        customData: {
-          ...(details.customData || {}),
-          ...(details.budget != null && details.budget !== "" && { budget: String(details.budget) }),
-          ...(details.customerType && { customer_type: details.customerType }),
-          ...(details.bookingWindow && { booking_window: details.bookingWindow }),
-        },
-      };
-
-      await updateLead(lead.id, payload);
-
-      await loadLeadDetail();
-      toast({
-        title: "Trip details updated",
-        description: "Lead trip details have been updated successfully",
-      });
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to update trip details",
-        variant: "destructive",
-      });
-      throw err;
     }
   };
 
@@ -847,7 +868,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
               size="sm"
               onClick={() => {
                 setReplyToEmailItem(null);
-                setIsComposeEmailOpen(true);
+                setEmailComposerOpen(true);
               }}
             >
               New Email
@@ -860,9 +881,16 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             >
               Send Quotation
             </Button>
-            <Button variant="primary" icon={Edit2} size="sm" onClick={() => setIsEditLeadDetailsDialogOpen(true)}>
-              Edit Lead
-            </Button>
+            {canOpenEditLead && (
+              <Button
+                variant="primary"
+                icon={Edit2}
+                size="sm"
+                onClick={() => setIsEditLeadDialogOpen(true)}
+              >
+                Edit Lead
+              </Button>
+            )}
           </>
         }
       />
@@ -970,8 +998,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                   <span key={stage._id} className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => isFuture && canUpdate && handleStageMoveClick(stage._id)}
-                      disabled={!isFuture || !canUpdate}
+                      onClick={() => isFuture && canEditField("stageId") && handleStageMoveClick(stage._id)}
+                      disabled={!isFuture || !canEditField("stageId")}
                       style={{
                         fontSize: 13,
                         padding: "6px 12px",
@@ -980,7 +1008,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                         color: isCurrent ? "var(--primary)" : "var(--text-faint)",
                         fontWeight: isCurrent ? 500 : 400,
                         border: isCurrent ? "1px solid #c7d2fe" : "none",
-                        cursor: isFuture && canUpdate ? "pointer" : "default",
+                        cursor: isFuture && canEditField("stageId") ? "pointer" : "default",
                       }}
                     >
                       {isTerminal && stage.terminalType === "WON" && <CheckCircle className="w-3 h-3 inline mr-1" />}
@@ -1035,7 +1063,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                   variant="secondary"
                   onClick={() => {
                     setReplyToEmailItem(null);
-                    setIsComposeEmailOpen(true);
+                    setEmailComposerOpen(true);
                   }}
                 >
                   New Email
@@ -1045,7 +1073,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                 items={emailTimelineItems}
                 onReply={(message) => {
                   setReplyToEmailItem(message);
-                  setIsComposeEmailOpen(true);
+                  setReplyComposerOpen(true);
                 }}
               />
             </div>
@@ -1130,10 +1158,10 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                 onChange={(e) => setActivityNote(e.target.value)}
                 placeholder="Add a note..."
                 style={{ minHeight: 72, width: "100%", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px 12px", fontSize: 14, resize: "vertical" }}
-                disabled={!canUpdate || isAddingNote}
+                disabled={!canEditField("notes") || isAddingNote}
               />
               <div className="flex justify-end mt-2">
-                <Button variant="primary" size="sm" onClick={handleAddNote} loading={isAddingNote} disabled={!activityNote.trim() || !canUpdate}>
+                <Button variant="primary" size="sm" onClick={handleAddNote} loading={isAddingNote} disabled={!activityNote.trim() || !canEditField("notes")}>
                   Add Note
                 </Button>
               </div>
@@ -1290,12 +1318,35 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                     <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{(assignedUser as any).roleId || "Agent"}</div>
                   </div>
                 </div>
-                {canAssign && <Button variant="ghost" size="sm" className="mt-2">Reassign</Button>}
+                {canReassign && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => {
+                      setReassignUserId(lead.assignedToUserId ?? "");
+                      setIsReassignDialogOpen(true);
+                    }}
+                  >
+                    Reassign
+                  </Button>
+                )}
               </div>
             ) : (
               <div>
                 <div style={{ fontStyle: "italic", color: "var(--text-faint)", marginBottom: 8 }}>Unassigned</div>
-                {canAssign && <Button variant="secondary" size="sm">Assign</Button>}
+                {canReassign && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setReassignUserId("");
+                      setIsReassignDialogOpen(true);
+                    }}
+                  >
+                    Assign
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -1384,37 +1435,39 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       </div>
 
       {/* Dialogs */}
-      <Dialog open={isComposeEmailOpen} onOpenChange={setIsComposeEmailOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{replyToEmailItem ? "Reply by Email" : "New Email"}</DialogTitle>
-          </DialogHeader>
-          <LeadEmailComposer
-            leadId={leadId}
-            guestEmail={guestEmail}
-            replyTo={replyToEmailItem ? {
-              messageId: replyToEmailItem.metadata?.messageId || "",
-              threadId: replyToEmailItem.metadata?.threadId || replyToEmailItem.threadId || "",
-              from:
-                (typeof replyToEmailItem.metadata?.from === "string"
-                  ? replyToEmailItem.metadata?.from
-                  : replyToEmailItem.metadata?.from?.email) ||
-                replyToEmailItem.from?.email ||
-                guestEmail,
-              subject: replyToEmailItem.summary || "",
-              bodyHtml: replyToEmailItem.messageContent,
-              sentAt: replyToEmailItem.createdAt || replyToEmailItem.receivedAt || replyToEmailItem.sentAt,
-            } : undefined}
-            onSent={() => {
-              toast({ title: "Success", description: "Email sent successfully" });
-              setIsComposeEmailOpen(false);
-              void queryClient.invalidateQueries({ queryKey: ["communication-timeline", leadId] });
-              void loadCommunicationTimeline();
-            }}
-            onClose={() => setIsComposeEmailOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      <SharedEmailComposer
+        isOpen={emailComposerOpen}
+        mode="compose"
+        leadId={(lead as any)._id || lead.id}
+        defaultTo={lead.email || guestEmail}
+        onSent={() => {
+          setEmailComposerOpen(false);
+          void queryClient.invalidateQueries({ queryKey: ["communication-timeline", leadId] });
+          void loadCommunicationTimeline();
+        }}
+        onClose={() => setEmailComposerOpen(false)}
+      />
+
+      <SharedEmailComposer
+        isOpen={replyComposerOpen}
+        mode="reply"
+        leadId={(lead as any)._id || lead.id}
+        defaultTo={
+          (replyToEmailItem?.from?.email ||
+            (typeof replyToEmailItem?.metadata?.from === "string"
+              ? replyToEmailItem?.metadata?.from
+              : replyToEmailItem?.metadata?.from?.email)) || guestEmail
+        }
+        defaultSubject={`Re: ${replyToEmailItem?.summary || ""}`}
+        defaultThreadId={replyToEmailItem?.metadata?.threadId || replyToEmailItem?.threadId || ""}
+        defaultInReplyTo={replyToEmailItem?.metadata?.messageId || ""}
+        onSent={() => {
+          setReplyComposerOpen(false);
+          void queryClient.invalidateQueries({ queryKey: ["communication-timeline", leadId] });
+          void loadCommunicationTimeline();
+        }}
+        onClose={() => setReplyComposerOpen(false)}
+      />
 
       {/* Schedule Follow-up Dialog */}
       <ScheduleFollowUpDialog
@@ -1460,34 +1513,21 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         onSave={handleSaveContactDetails}
       />
 
-      {/* Edit Trip Details Dialog */}
-      <EditLeadDetailsDialog
-        open={isEditLeadDetailsDialogOpen}
-        onOpenChange={setIsEditLeadDetailsDialogOpen}
+      {/* Single Edit Lead Dialog (all sections) */}
+      <EditLeadDialog
+        open={isEditLeadDialogOpen}
+        onOpenChange={setIsEditLeadDialogOpen}
+        lead={lead}
         customFields={customFields}
-        currentDetails={{
-          propertyId: lead.propertyId,
-          checkInDate: primaryCheckIn,
-          checkOutDate: primaryCheckOut,
-          roomTypeId: lead.roomTypeId,
-          roomTypeName: lead.roomTypeName,
-          ratePlanId: lead.ratePlanId,
-          ratePlanName: lead.ratePlanName,
-          estimatedRate: lead.estimatedRate,
-          estimatedRoomNights: lead.estimatedRoomNights,
-          estimatedRevenue: lead.estimatedRevenue,
-          roomsRequested: (lead as any).roomsRequested,
-          guests: lead.guests,
-          occasion: (lead as any).occasion,
-          customData: lead.customData,
-          budget: lead.budget ?? getField(lead, "budget"),
-          customerType: lead.customerType ?? getField(lead, "customerType", "customer_type"),
-          bookingWindow: lead.bookingWindow ?? getField(lead, "bookingWindow", "booking_window"),
-          notes: lead.notes,
-          source: lead.source,
-          heatLevel: lead.heatLevel,
+        editableFieldKeys={leadDetail.editableLeadFields}
+        onSave={async (patch) => {
+          await updateLead(lead.id, patch as any);
+          await loadLeadDetail();
+          toast({
+            title: "Lead updated",
+            description: "Changes saved successfully",
+          });
         }}
-        onSave={handleSaveLeadDetails}
       />
       <CreateBookingDialog
         isOpen={isCreateBookingDialogOpen}
@@ -1497,6 +1537,61 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
           void loadLeadDetail();
         }}
       />
+
+      <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{lead.assignedToUserId ? "Reassign lead" : "Assign lead"}</DialogTitle>
+            <DialogDescription>
+              Choose an active user. Permissions are controlled in Setup → Role Definition (e.g. leads.reassign or leads.field.assignment).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="reassign-user">Assignee</Label>
+            <Select value={reassignUserId || undefined} onValueChange={setReassignUserId}>
+              <SelectTrigger id="reassign-user">
+                <SelectValue placeholder="Select user" />
+              </SelectTrigger>
+              <SelectContent>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name || u.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setIsReassignDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!reassignUserId || isSavingReassign}
+              onClick={async () => {
+                if (!reassignUserId) return;
+                try {
+                  setIsSavingReassign(true);
+                  await updateLead(lead.id, { assignedToUserId: reassignUserId });
+                  toast({ title: lead.assignedToUserId ? "Lead reassigned" : "Lead assigned", description: "Assignee updated." });
+                  setIsReassignDialogOpen(false);
+                  await loadLeadDetail();
+                } catch (err) {
+                  toast({
+                    variant: "destructive",
+                    title: "Could not update assignee",
+                    description: err instanceof Error ? err.message : "Try again or check your role permissions.",
+                  });
+                } finally {
+                  setIsSavingReassign(false);
+                }
+              }}
+            >
+              {isSavingReassign ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Call Quality Score Modal (TL only) */}
       {isCallQualityModalOpen && (

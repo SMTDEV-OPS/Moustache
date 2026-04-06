@@ -282,6 +282,8 @@ export interface LeadDetail {
   activities: LeadActivity[];
   communications: LeadCommunication[];
   previousCommunications?: LeadCommunication[];
+  /** Keys allowed on PATCH /leads/:id for this user (see backend leadFieldEditPolicy). */
+  editableLeadFields?: string[];
 }
 
 export interface UpdateLeadPayload {
@@ -432,7 +434,7 @@ export const getLeadDetail = async (leadId: string): Promise<LeadDetail> => {
   }
 
   const raw = (await response.json()) as any;
-  const { lead, activities, communications, previousCommunications } = raw;
+  const { lead, activities, communications, previousCommunications, editableLeadFields } = raw;
   const { _id, id, guestId, ...rest } = lead ?? {};
 
   // Handle guestId - can be string ID or populated object
@@ -456,6 +458,7 @@ export const getLeadDetail = async (leadId: string): Promise<LeadDetail> => {
     activities: activities ?? [],
     communications: communications ?? [],
     previousCommunications: previousCommunications ?? [],
+    editableLeadFields: Array.isArray(editableLeadFields) ? editableLeadFields : undefined,
   };
 };
 
@@ -475,11 +478,8 @@ export const updateLead = async (
     let message = "Unable to update lead";
     try {
       const data = await response.json();
-      if (data?.message) {
-        message = data.message;
-      } else if (data?.error?.message) {
-        message = data.error.message;
-      }
+      const extracted = extractApiErrorMessage(data);
+      if (extracted) message = extracted;
     } catch {
       // ignore
     }

@@ -20,6 +20,7 @@ import { PipelineModel } from "../models/pipeline";
 import { PipelineStageModel } from "../models/pipelineStage";
 import { syncEzeeReservations } from "./ezeeSync";
 import { logAudit } from "../utils/auditLog";
+import { GmailProvider } from "../services/email/gmailProvider";
 
 async function runAutoClosureJob() {
   const tomorrow = new Date();
@@ -269,7 +270,11 @@ async function runEmailSyncJob() {
     const activeAccounts = await EmailAccountModel.find({
       isActive: true,
       syncStatus: { $ne: "SYNCING" },
-      provider: { $ne: "SMTP_IMAP" }, // Skip IMAP accounts as they now use the real-time IDLE listener
+      provider: { $nin: ["SMTP_IMAP"] }, // Skip IMAP accounts as they now use the real-time IDLE listener
+      $or: [
+        { provider: { $ne: "GMAIL" } },
+        { gmailWatchExpiration: { $lt: Date.now() } }, // only poll Gmail if watch expired
+      ],
     }).lean();
 
     for (const account of activeAccounts) {
@@ -288,6 +293,38 @@ async function runEmailSyncJob() {
     }
   } catch (error) {
     logger.error("Error in email sync job", {}, error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+async function renewGmailWatches() {
+  try {
+    const threshold = Date.now() + (24 * 60 * 60 * 1000);
+    const accounts = await EmailAccountModel.find({
+      isActive: true,
+      provider: "GMAIL",
+      $or: [
+        { gmailWatchExpiration: { $exists: false } },
+        { gmailWatchExpiration: { $lt: threshold } },
+      ],
+    }).exec();
+
+    for (const account of accounts) {
+      try {
+        const provider = new GmailProvider(account);
+        await provider.setupWatch(process.env.GMAIL_PUBSUB_TOPIC!);
+        logger.info("Renewed Gmail watch", {
+          accountId: account._id.toString(),
+          email: account.email,
+        });
+      } catch (error) {
+        logger.error("Failed to renew Gmail watch", {
+          accountId: account._id.toString(),
+          email: account.email,
+        }, error instanceof Error ? error : new Error(String(error)));
+      }
+    }
+  } catch (error) {
+    logger.error("Error renewing Gmail watches", {}, error instanceof Error ? error : new Error(String(error)));
   }
 }
 
@@ -427,6 +464,11 @@ function setupJobs() {
   // Email sync job runs every 5 minutes to sync emails for all active accounts.
   cron.schedule("*/5 * * * *", () => {
     void runEmailSyncJob();
+  });
+
+  // Renew Gmail watches daily at 6 AM.
+  cron.schedule("0 6 * * *", () => {
+    void renewGmailWatches();
   });
 
   // SMS follow-up job runs daily at 10 AM

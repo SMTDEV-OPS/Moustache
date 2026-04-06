@@ -14,7 +14,7 @@ import { Phone, PhoneOff, User, Clock, Mail, MapPin, Star, Save, Calendar as Cal
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { EmailDialog } from "@/components/communication/EmailDialog";
+import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
 import { WhatsAppDialog } from "@/components/communication/WhatsAppDialog";
 import { SMSDialog } from "@/components/communication/SMSDialog";
 
@@ -638,11 +638,12 @@ export const EnhancedCallInterface = ({ guest, incomingCall, onCallEnd, agentNam
       </Dialog>
 
       {/* Communication Dialogs */}
-      <EmailDialog
-        open={showEmailDialog}
-        onOpenChange={setShowEmailDialog}
-        guestEmail={guest.email}
-        guestName={guest.name}
+      <SharedEmailComposer
+        isOpen={showEmailDialog}
+        mode="compose"
+        defaultTo={guest.email}
+        onClose={() => setShowEmailDialog(false)}
+        onSent={() => setShowEmailDialog(false)}
       />
 
       <WhatsAppDialog

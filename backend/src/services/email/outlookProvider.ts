@@ -1,6 +1,6 @@
 import { Client } from "@microsoft/microsoft-graph-client";
 import { logger } from "../../config/logger";
-import { IEmailAccount } from "../../models/emailAccount";
+import { IEmailAccount, EmailAccountModel } from "../../models/emailAccount";
 import { IEmailMessage, IEmailAddress } from "../../models/emailMessage";
 import { SendEmailOptions } from "./imapProvider";
 
@@ -70,6 +70,11 @@ export class OutlookProvider {
       if (data.expires_in) {
         this.account.oauth.expiresAt = new Date(Date.now() + data.expires_in * 1000);
       }
+
+      await EmailAccountModel.findByIdAndUpdate(this.account._id, {
+        "oauth.accessToken": this.account.oauth.accessToken,
+        "oauth.expiresAt": this.account.oauth.expiresAt,
+      });
     }
   }
 

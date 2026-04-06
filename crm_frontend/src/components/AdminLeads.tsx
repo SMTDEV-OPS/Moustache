@@ -17,6 +17,8 @@ import { createLead, getLeadDetail, Lead, LeadDetail, listLeads, updateLead, get
 import { listFilters, applyFilter, type SavedFilter } from "@/services/filters";
 import { listProperties } from "@/services/properties";
 import { listUsers, User } from "@/services/users";
+import { PERMISSIONS } from "@/constants/permissions";
+import { canReassignLeadByProfile } from "@/lib/leadFieldEdit";
 import { listAccounts, Account, AccountType } from "@/services/accounts";
 import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
 import { HotelBookingSection } from "@/components/leads/HotelBookingSection";
@@ -49,8 +51,7 @@ import {
 } from "@/components/ui/tabs";
 import { LeadWorkflowDisplay } from "@/components/LeadWorkflowDisplay";
 import { listEmails, EmailMessage, sendEmail } from "@/services/email";
-import { sendEmailFromLead, type SendEmailPayload } from "@/services/communications";
-import { EmailComposer } from "@/components/EmailComposer";
+import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
 import { ScheduleFollowUpDialog } from "@/components/ScheduleFollowUpDialog";
 import { SendQuotationDialog } from "@/components/SendQuotationDialog";
 import { listQuotations, Quotation } from "@/services/quotations";
@@ -359,22 +360,22 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   const canViewOwn =
     (isAdmin === true) ||
     (Array.isArray(permissions) && (
-      permissions.includes("leads.manage") ||
-      permissions.includes("leads.view.own") ||
-      permissions.includes("leads.view.all")
+      permissions.includes(PERMISSIONS.LEADS.MANAGE) ||
+      permissions.includes(PERMISSIONS.LEADS.READ)
     ));
   const canViewTeam =
     (isAdmin === true) ||
     (Array.isArray(permissions) && (
-      permissions.includes("leads.manage") ||
-      permissions.includes("leads.view.team")
+      permissions.includes(PERMISSIONS.LEADS.MANAGE) ||
+      permissions.includes(PERMISSIONS.LEADS.READ)
     ));
   const canViewAll =
     (isAdmin === true) ||
     (Array.isArray(permissions) && (
-      permissions.includes("leads.manage") ||
-      permissions.includes("leads.view.all")
+      permissions.includes(PERMISSIONS.LEADS.MANAGE)
     ));
+
+  const canReassignLeads = canReassignLeadByProfile(permissions, isAdmin);
 
   // Ensure default scope is something the user can actually view
   // Use useEffect to avoid state updates during render
@@ -1646,16 +1647,18 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                                 >
                                   Edit
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setAssigningLeadId(lead.id);
-                                    setAssignUserId(lead.assignedToUserId ?? "");
-                                    setIsAssignDialogOpen(true);
-                                  }}
-                                  style={{ fontSize: 13, height: 32, padding: "0 14px" }}
-                                >
-                                  Reassign
-                                </DropdownMenuItem>
+                                {canReassignLeads && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setAssigningLeadId(lead.id);
+                                      setAssignUserId(lead.assignedToUserId ?? "");
+                                      setIsAssignDialogOpen(true);
+                                    }}
+                                    style={{ fontSize: 13, height: 32, padding: "0 14px" }}
+                                  >
+                                    Reassign
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
                                   onClick={async () => {
                                     const lostStage = pipelineStages.find((s) => s.terminalType === "LOST" || (s.name || "").toLowerCase().includes("lost"));
@@ -2035,33 +2038,22 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       </Dialog>
 
       {/* Compose Email Dialog */}
-      <EmailComposer
-        open={isComposeEmailOpen}
-        onOpenChange={setIsComposeEmailOpen}
-        onSend={async (payload) => {
-          try {
-            // Use lead-specific endpoint if a lead is selected, otherwise use generic endpoint
-            if (selectedLeadId) {
-              await sendEmailFromLead(selectedLeadId, payload);
-            } else {
-              await sendEmail(payload);
-            }
-            toast({
-              title: "Success",
-              description: "Email sent successfully",
-            });
-            setIsComposeEmailOpen(false);
-            if (selectedLeadId) {
-              void loadLeadEmails(selectedLeadId);
-            }
-          } catch (err) {
-            toast({
-              title: "Error",
-              description: err instanceof Error ? err.message : "Failed to send email",
-              variant: "destructive",
-            });
+      <SharedEmailComposer
+        isOpen={isComposeEmailOpen}
+        mode="compose"
+        leadId={selectedLeadId || undefined}
+        defaultTo={selectedDetail ? getLeadContactInfo(selectedDetail.lead).email : undefined}
+        onSent={() => {
+          toast({
+            title: "Success",
+            description: "Email sent successfully",
+          });
+          setIsComposeEmailOpen(false);
+          if (selectedLeadId) {
+            void loadLeadEmails(selectedLeadId);
           }
         }}
+        onClose={() => setIsComposeEmailOpen(false)}
       />
 
       {/* Assign Lead Dialog */}

@@ -19,9 +19,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { EmailDialog } from "@/components/communication/EmailDialog";
+import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
 import { listLeads, createLead, Lead, getLeadContactInfo } from "@/services/leads";
 import { listUsers, User } from "@/services/users";
+import { PERMISSIONS } from "@/constants/permissions";
 import { listProperties, Property } from "@/services/properties";
 import { PipelineService, PipelineStage } from "@/services/pipelines";
 import { API_BASE_URL, withAuthHeaders } from "@/services/api";
@@ -461,8 +462,8 @@ const ProfessionalLeadManagement = ({
   const [catalogueByPropertyId, setCatalogueByPropertyId] = useState<Record<string, RoomCatalogue>>({});
 
   const canViewTeamLeads =
-    !!permissions?.includes("leads.view.team") ||
-    !!permissions?.includes("leads.manage");
+    !!permissions?.includes(PERMISSIONS.LEADS.READ) ||
+    !!permissions?.includes(PERMISSIONS.LEADS.MANAGE);
 
   const agentName = userRole === 'callcenter' ? userName : '';
 
@@ -2087,11 +2088,12 @@ const ProfessionalLeadManagement = ({
       </Dialog >
 
       {/* Email Dialog */}
-      < EmailDialog
-        open={showEmailDialog}
-        onOpenChange={setShowEmailDialog}
-        guestEmail={emailLead?.email}
-        guestName={emailLead?.name}
+      <SharedEmailComposer
+        isOpen={showEmailDialog}
+        mode="compose"
+        defaultTo={emailLead?.email || ""}
+        onClose={() => setShowEmailDialog(false)}
+        onSent={() => setShowEmailDialog(false)}
       />
 
       <SendQuotationDialog

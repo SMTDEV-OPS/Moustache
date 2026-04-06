@@ -10,6 +10,8 @@
     "dev": "ts-node src/server.ts",
     "postinstall": "npm run build",
     "seed:admin": "ts-node scripts/seedAdmin.ts",
+    "seed:properties": "ts-node src/scripts/seedMoustacheProperties.ts",
+    "seed:jaipur-factsheet": "ts-node src/scripts/applyJaipurFactSheet.ts",
     "seed:ezee-properties": "ts-node scripts/seedEzeeProperties.ts",
     "seed:newhotel": "ts-node scripts/seedNewHotel.ts",
     "seed:moustache-workflows": "ts-node scripts/seedMoustacheWorkflows.ts",
@@ -20,6 +22,7 @@
     "list:users": "ts-node scripts/listUsers.ts",
     "test:v2-allocation": "ts-node scripts/testV2Allocation.ts",
     "reset:password": "ts-node scripts/resetPassword.ts",
+    "backfill:profiles": "ts-node src/scripts/backfillProfiles.ts",
     "lint": "echo \"no linter configured yet\"",
     "test": "ts-node"
   },

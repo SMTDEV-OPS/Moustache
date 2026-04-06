@@ -43,8 +43,9 @@ leadEmailRouter.post("/:id/email/send", async (req, res, next) => {
 
     await assertLeadAccess(req.user, lead);
 
+    const userObjectId = new Types.ObjectId(req.user.id);
     const account = await EmailAccountModel.findOne({
-      userId: req.user.id,
+      userId: userObjectId,
       isActive: true,
     })
       .sort({ isPrimary: -1, createdAt: -1 })

@@ -48,7 +48,21 @@ export const PERMISSIONS = {
         DELETE: "leads.delete",
         MANAGE: "leads.manage",
         ASSIGN: "leads.assign",
+        /** Change lead assignee (reassignment); grant via role/profile in Role Definition. */
+        REASSIGN: "leads.reassign",
         CREATE: "leads.create",
+        /** Granular: which PATCH fields a role may change (used when any `leads.field.*` is assigned). */
+        FIELD_CONTACT: "leads.field.contact",
+        FIELD_NOTES: "leads.field.notes",
+        FIELD_STATUS: "leads.field.status",
+        FIELD_SOURCE: "leads.field.source",
+        FIELD_HEAT: "leads.field.heat",
+        FIELD_CALL_STATUS: "leads.field.call_status",
+        FIELD_ASSIGNMENT: "leads.field.assignment",
+        FIELD_PIPELINE: "leads.field.pipeline",
+        FIELD_BOOKING: "leads.field.booking",
+        FIELD_COMMERCIAL: "leads.field.commercial",
+        FIELD_CUSTOM: "leads.field.custom",
     },
     USERS: {
         READ: "users.read",

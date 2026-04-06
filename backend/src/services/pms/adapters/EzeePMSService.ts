@@ -32,6 +32,7 @@ export class EzeePMSService implements IPMSService {
     private hotelCode: string;
     private authCode: string;
     private baseUrl = "https://live.ipms247.com/pmsinterface";
+    private metaSearchBaseUrl = "https://live.ipms247.com/booking/reservation_api";
 
     constructor(config: { hotelCode: string; authCode: string }) {
         this.hotelCode = config.hotelCode;
@@ -152,6 +153,48 @@ export class EzeePMSService implements IPMSService {
      * Inventory XML does not include room names; we merge this into the cached catalogue on sync.
      */
     async getRoomMasterCatalog(): Promise<RoomMasterCatalog | null> {
+        const fetchRoomTypesFromMetaSearch = async (): Promise<Map<string, string>> => {
+            try {
+                const url =
+                    `${this.metaSearchBaseUrl}/listing.php` +
+                    `?request_type=RoomTypeList` +
+                    `&HotelCode=${encodeURIComponent(this.hotelCode)}` +
+                    `&APIKey=${encodeURIComponent(this.authCode)}` +
+                    `&language=en&publishtoweb=1`;
+
+                const res = await axios.get(url, { timeout: 10000 });
+                const data: any = res.data;
+
+                // Error shape: { Errors: { ErrorCode, ErrorMessage } }
+                if (data?.Errors?.ErrorMessage) {
+                    return new Map();
+                }
+
+                const rows: any[] = Array.isArray(data) ? data : [];
+                const map = new Map<string, string>();
+                for (const r of rows) {
+                    if (!r || typeof r !== "object") continue;
+                    const id = String((r as any).roomtypeunkid ?? (r as any).roomTypeUnkId ?? "").trim();
+                    const name = String((r as any).roomtype ?? (r as any).roomType ?? "").trim();
+                    if (id && name) map.set(id, name);
+                }
+                return map;
+            } catch (e) {
+                // MetaSearch is optional fallback. Never fail the master catalog because of it.
+                return new Map();
+            }
+        };
+
+        const shouldPreferMetaSearchName = (candidate: string | undefined, id: string): boolean => {
+            const name = String(candidate ?? "").trim();
+            if (!name) return true;
+            const lower = name.toLowerCase();
+            if (lower === "unknown") return true;
+            if (lower === `room ${id}`.toLowerCase()) return true;
+            if (lower === `room type ${id}`.toLowerCase()) return true;
+            return false;
+        };
+
         const payload = {
             RES_Request: {
                 Request_Type: "RoomInfo",
@@ -169,13 +212,16 @@ export class EzeePMSService implements IPMSService {
         };
 
         try {
-            const response = await axios.post(
-                `${this.baseUrl}/pms_connectivity.php`,
-                payload,
-                { headers: { "Content-Type": "application/json" } }
-            );
+            const [roomInfoResp, metaRoomTypeMap] = await Promise.all([
+                axios.post(
+                    `${this.baseUrl}/pms_connectivity.php`,
+                    payload,
+                    { headers: { "Content-Type": "application/json" } }
+                ),
+                fetchRoomTypesFromMetaSearch(),
+            ]);
 
-            let data: any = response.data;
+            let data: any = roomInfoResp.data;
             if (typeof data === "string") {
                 try {
                     data = JSON.parse(data);
@@ -202,12 +248,24 @@ export class EzeePMSService implements IPMSService {
             for (const rt of roomTypeNodes) {
                 if (!rt || typeof rt !== "object") continue;
                 const id = String((rt as any).ID ?? (rt as any).RoomTypeID ?? "").trim();
-                const name = String((rt as any).Name ?? (rt as any).RoomTypeName ?? "").trim();
+                const rawName = String((rt as any).Name ?? (rt as any).RoomTypeName ?? "").trim();
+                const metaName = id ? metaRoomTypeMap.get(id) : undefined;
+                const name =
+                    id && metaName && shouldPreferMetaSearchName(rawName, id)
+                        ? metaName
+                        : rawName;
                 if (id) {
                     roomTypes.push({
                         roomTypeId: id,
                         roomTypeName: name || `Room ${id}`,
                     });
+                }
+            }
+
+            // If RoomInfo didn't return room types at all, fall back completely to MetaSearch list.
+            if (roomTypes.length === 0 && metaRoomTypeMap.size > 0) {
+                for (const [id, name] of metaRoomTypeMap.entries()) {
+                    roomTypes.push({ roomTypeId: id, roomTypeName: name || `Room ${id}` });
                 }
             }
 

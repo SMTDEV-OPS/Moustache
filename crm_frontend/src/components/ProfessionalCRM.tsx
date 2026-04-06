@@ -25,9 +25,7 @@ import { AdminLeads } from "@/components/AdminLeads";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { MessageTemplates } from "@/components/MessageTemplates";
 import { EmailSettings } from "@/components/EmailSettings";
-import { EmailHealthDashboard } from "@/components/EmailHealthDashboard";
 import { EmailClient } from "@/components/EmailClient";
-import { EmailProviderSettings } from "@/components/EmailProviderSettings";
 import { TodaysFollowUps } from "@/components/TodaysFollowUps";
 import { PersonalCalendar } from "@/components/PersonalCalendar";
 import { LeadDetailPage } from "@/components/LeadDetailPage";
@@ -40,6 +38,7 @@ import { PipelineManagement } from "@/components/PipelineManagement";
 import { ModuleBuilder } from "@/pages/settings/ModuleBuilder";
 import { ScoringRuleManagement } from "@/components/ScoringRuleManagement";
 import { FieldBuilder } from "@/pages/setup/FieldBuilder";
+import { PERMISSIONS } from "@/constants/permissions";
 import { PipelineBuilder } from "@/pages/setup/PipelineBuilder";
 import { ScoringEngine } from "@/pages/setup/ScoringEngine";
 import { FollowupRules } from "@/pages/setup/FollowupRules";
@@ -129,18 +128,21 @@ export const ProfessionalCRM = ({
     ]
   };
 
-  const canManageUsers = !!isAdmin || permissions?.includes("users.manage");
-  const canManageAccounts = !!isAdmin || permissions?.includes("accounts.manage");
-  const canViewReports = !!isAdmin || permissions?.includes("reports.view");
+  const canManageUsers = !!isAdmin || permissions?.includes(PERMISSIONS.USERS.MANAGE);
+  const canManageAccounts = !!isAdmin || permissions?.includes(PERMISSIONS.ACCOUNTS.MANAGE);
+  const canViewReports =
+    !!isAdmin ||
+    permissions?.includes(PERMISSIONS.REPORTS.READ) ||
+    permissions?.includes(PERMISSIONS.REPORTS.MANAGE);
   const canManageLeads =
     !!isAdmin ||
-    permissions?.includes("leads.manage") ||
-    permissions?.includes("leads.view.all");
-  const canManageWorkflows = !!isAdmin || permissions?.includes("workflows.manage");
-  const canManageTemplates = !!isAdmin || permissions?.includes("templates.manage");
-  const canAssignBuddy = !!isAdmin || permissions?.includes("buddies.assign");
-  const canViewBuddyHistory = !!isAdmin || permissions?.includes("buddies.view.history");
-  const canViewBuddyReports = !!isAdmin || permissions?.includes("buddies.view.reports");
+    permissions?.includes(PERMISSIONS.LEADS.MANAGE) ||
+    permissions?.includes(PERMISSIONS.LEADS.READ);
+  const canManageWorkflows = !!isAdmin || permissions?.includes(PERMISSIONS.WORKFLOWS.MANAGE);
+  const canManageTemplates = !!isAdmin || permissions?.includes(PERMISSIONS.TEMPLATES.MANAGE);
+  const canAssignBuddy = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.MANAGE);
+  const canViewBuddyHistory = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.READ);
+  const canViewBuddyReports = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.READ);
   const canAccessBuddy = canAssignBuddy || canViewBuddyHistory || canViewBuddyReports;
 
   const renderContent = () => {
@@ -226,12 +228,10 @@ export const ProfessionalCRM = ({
         // Ticket CRM – available to any backend user with ticket view/control permissions.
         const canManageTickets =
           !!isAdmin ||
-          permissions?.includes("tickets.manage") ||
-          permissions?.includes("tickets.view.all");
+          permissions?.includes(PERMISSIONS.TICKETS.MANAGE);
         const canViewTickets =
           canManageTickets ||
-          permissions?.includes("tickets.view.own") ||
-          permissions?.includes("tickets.view.team");
+          permissions?.includes(PERMISSIONS.TICKETS.READ);
         if (!canViewTickets) {
           return (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -434,7 +434,7 @@ export const ProfessionalCRM = ({
             </div>
           );
         }
-        return <EmailProviderSettings />;
+        return <EmailSettings />;
       case 'setup/integrations':
         if (!isAdmin && !canManageUsers) {
           return (
@@ -507,8 +507,7 @@ export const ProfessionalCRM = ({
         if (
           !(
             canManageLeads ||
-            permissions?.includes("leads.view.own") ||
-            permissions?.includes("leads.view.team")
+            permissions?.includes(PERMISSIONS.LEADS.READ)
           )
         ) {
           return (
@@ -579,19 +578,8 @@ export const ProfessionalCRM = ({
           );
         }
         return <MessageTemplates />;
-      case 'email-settings':
+      case 'email-accounts':
         return <EmailSettings />;
-      case 'email-health':
-        return <EmailHealthDashboard />;
-      case 'email-provider-settings':
-        if (!canManageLeads) {
-          return (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              You do not have permission to manage email provider settings.
-            </div>
-          );
-        }
-        return <EmailProviderSettings />;
       case 'buddy-management':
         if (!canAccessBuddy) {
           return (
@@ -606,7 +594,7 @@ export const ProfessionalCRM = ({
           canViewReports={canViewBuddyReports}
           backendUserId={backendUserId}
         />;
-      case 'email-client':
+      case 'email-inbox':
         return <EmailClient />;
       case 'notifications':
         return (
@@ -631,7 +619,7 @@ export const ProfessionalCRM = ({
     'security/roles', 'security/profiles', 'security/groups', 'security/data-sharing',
     'user-management', 'account-management',
     'assignment-rules', 'workflow-management', 'message-templates',
-    'email-provider-settings', 'integration-settings', 'pipeline-management', 'module-builder', 'scoring-rules',
+    'integration-settings', 'pipeline-management', 'module-builder', 'scoring-rules',
     'setup/roles', 'setup/profiles', 'setup/groups', 'setup/data-sharing',
     'setup/users', 'setup/accounts', 'setup/fields', 'setup/pipelines',
     'setup/scoring', 'setup/allocation', 'setup/followup-rules', 'setup/workflows',

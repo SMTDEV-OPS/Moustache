@@ -2,6 +2,98 @@ import { API_BASE_URL, withAuthHeaders, getAuthToken } from "./api";
 
 export type KnowledgeBaseType = "PROPERTY" | "FACTSHEET" | "TEMPLATE" | "RESOURCE";
 
+/** Mirrors backend `IFactSheetContent` for FACTSHEET items. */
+export interface IFactSheetContent {
+  propertyAddress?: string;
+  mapLocation?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  roomCategories?: Array<{
+    name: string;
+    capacity?: number;
+    sizesqft?: number;
+    isAC?: boolean;
+    isDorm?: boolean;
+  }>;
+  inHouseRules?: string[];
+  additionalCharges?: Array<{
+    item: string;
+    amount?: string;
+  }>;
+  propertyPolicy?: string[];
+  nearbyAttractions?: string[];
+  nearbyRestaurants?: string[];
+  pocDetails?: {
+    frontDeskPhone?: string;
+    frontDeskEmail?: string;
+    gmName?: string;
+    gmPhone?: string;
+  };
+  generalInfo?: string[];
+  roomAmenities?: string[];
+  hotelAmenities?: string[];
+  promotionsAndOffers?: string[];
+  specialRemarks?: string;
+}
+
+export interface KBForQuotationResponse {
+  property: {
+    id: string;
+    name: string;
+    tier: string;
+    branding: {
+      primaryFont?: string;
+      secondaryFont?: string;
+      colorScheme?: {
+        primary?: string;
+        accent?: string;
+        background?: string;
+        text?: string;
+      };
+    };
+    contactEmail: string;
+    contactPhone: string;
+    mapLocation: string;
+  };
+  factsheet: IFactSheetContent | null;
+}
+
+function normalizeFactSheetContent(
+  raw: KBForQuotationResponse["factsheet"]
+): IFactSheetContent | null {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  return Object.keys(raw).length > 0 ? raw : null;
+}
+
+export const getKBForQuotation = async (
+  propertyId: string
+): Promise<KBForQuotationResponse> => {
+  const params = new URLSearchParams({ propertyId });
+  const response = await fetch(
+    `${API_BASE_URL}/knowledge-base/for-quotation?${params.toString()}`,
+    { headers: withAuthHeaders(), cache: "no-store" }
+  );
+
+  if (!response.ok) {
+    let message = "Unable to load property knowledge base";
+    try {
+      const data = await response.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const data = (await response.json()) as KBForQuotationResponse;
+  return {
+    ...data,
+    factsheet: normalizeFactSheetContent(data?.factsheet ?? null),
+  };
+};
+
 export interface KnowledgeBaseFile {
   _id: string;
   filename: string;
