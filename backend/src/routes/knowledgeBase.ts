@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { logger } from "../config/logger";
 import { requireAuth, requirePermissions } from "../middleware/auth";
+import { PERMISSIONS } from "../constants/permissions";
 import { badRequest, notFound } from "../utils/httpError";
 import { PropertyModel } from "../models/property";
 import { KnowledgeBaseService } from "../services/knowledgeBaseService";
@@ -9,7 +10,8 @@ import {
   KnowledgeBaseType,
   KnowledgeBaseModel,
 } from "../models/knowledgeBase";
-import { uploadKnowledgeBase } from "../middleware/upload";
+import { uploadKnowledgeBase, uploadDirectoryExcel } from "../middleware/upload";
+import { DirectoryImportService } from "../services/directoryImportService";
 import path from "path";
 import fs from "fs";
 import { Types } from "mongoose";
@@ -21,7 +23,13 @@ export const knowledgeBaseRouter = Router();
 knowledgeBaseRouter.use(requireAuth);
 
 const createKnowledgeBaseSchema = z.object({
-  type: z.enum(["PROPERTY", "FACTSHEET", "TEMPLATE", "RESOURCE"]),
+  type: z.enum([
+    "PROPERTY",
+    "FACTSHEET",
+    "TEMPLATE",
+    "RESOURCE",
+    "PROPERTY_DIRECTORY",
+  ]),
   propertyId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
@@ -120,6 +128,130 @@ knowledgeBaseRouter.get("/for-quotation", async (req, res, next) => {
   }
 });
 
+const directorySearchQuerySchema = z.object({
+  q: z.string().optional().default(""),
+});
+
+const directoryCompareQuerySchema = z.object({
+  ids: z.string().min(1),
+});
+
+// GET /knowledge-base/directory/compare?ids= — max 3 property ids (before /directory/search)
+knowledgeBaseRouter.get("/directory/compare", async (req, res, next) => {
+  try {
+    const parsed = directoryCompareQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw badRequest("ids query parameter is required (comma-separated)");
+    }
+    const ids = parsed.data.ids
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 3);
+    if (ids.length === 0) {
+      throw badRequest("At least one property id required");
+    }
+    for (const id of ids) {
+      if (!Types.ObjectId.isValid(id)) {
+        throw badRequest(`Invalid property id: ${id}`);
+      }
+    }
+    const items = await KnowledgeBaseService.getDirectoryByPropertyIds(ids);
+    res.json({ items });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /knowledge-base/directory/search?q=
+knowledgeBaseRouter.get("/directory/search", async (req, res, next) => {
+  try {
+    const parsed = directorySearchQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw badRequest("Invalid query");
+    }
+    const { results } = await KnowledgeBaseService.searchDirectory(
+      parsed.data.q ?? ""
+    );
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /knowledge-base/directory/import — Excel bulk upsert
+knowledgeBaseRouter.post(
+  "/directory/import",
+  requirePermissions([PERMISSIONS.KNOWLEDGE_BASE.MANAGE]),
+  (req, res, next) => {
+    uploadDirectoryExcel(req, res, (err) => {
+      if (err) {
+        return next(badRequest(err instanceof Error ? err.message : "Upload failed"));
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) {
+        throw badRequest("User not authenticated");
+      }
+      const file = req.file;
+      if (!file?.buffer) {
+        throw badRequest("No file uploaded (use field name: file)");
+      }
+      const summary = await DirectoryImportService.importWorkbook(
+        file.buffer,
+        req.user.id
+      );
+      res.json(summary);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// PATCH /knowledge-base/directory/:propertyId — partial directory content (manual)
+knowledgeBaseRouter.patch(
+  "/directory/:propertyId",
+  requirePermissions([PERMISSIONS.KNOWLEDGE_BASE.MANAGE]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) {
+        throw badRequest("User not authenticated");
+      }
+      const { propertyId } = req.params;
+      if (!Types.ObjectId.isValid(propertyId)) {
+        throw badRequest("Invalid propertyId");
+      }
+      const body = req.body;
+      if (body == null || typeof body !== "object" || Array.isArray(body)) {
+        throw badRequest("JSON body required");
+      }
+      const item = await KnowledgeBaseService.upsertDirectoryEntry(
+        propertyId,
+        body as Record<string, unknown>,
+        req.user.id,
+        "manual",
+        true
+      );
+      res.json(item);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// GET /knowledge-base/directory — grouped by region (before /:id)
+knowledgeBaseRouter.get("/directory", async (_req, res, next) => {
+  try {
+    const grouped = await KnowledgeBaseService.getDirectoryGroupedByRegion();
+    res.json(grouped);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /knowledge-base/:id - Get single item
 knowledgeBaseRouter.get("/:id", async (req, res, next) => {
   try {
@@ -133,7 +265,7 @@ knowledgeBaseRouter.get("/:id", async (req, res, next) => {
 // POST /knowledge-base - Create item (admin only)
 knowledgeBaseRouter.post(
   "/",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions([PERMISSIONS.KNOWLEDGE_BASE.MANAGE]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = createKnowledgeBaseSchema.safeParse(req.body);
@@ -161,7 +293,7 @@ knowledgeBaseRouter.post(
 // PATCH /knowledge-base/:id - Update item (admin only)
 knowledgeBaseRouter.patch(
   "/:id",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions([PERMISSIONS.KNOWLEDGE_BASE.MANAGE]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = updateKnowledgeBaseSchema.safeParse(req.body);
@@ -188,7 +320,7 @@ knowledgeBaseRouter.patch(
 // DELETE /knowledge-base/:id - Delete item (admin only)
 knowledgeBaseRouter.delete(
   "/:id",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions([PERMISSIONS.KNOWLEDGE_BASE.MANAGE]),
   async (req, res, next) => {
     try {
       await KnowledgeBaseService.delete(req.params.id);
@@ -202,7 +334,7 @@ knowledgeBaseRouter.delete(
 // POST /knowledge-base/:id/files - Upload files to item (admin only)
 knowledgeBaseRouter.post(
   "/:id/files",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions([PERMISSIONS.KNOWLEDGE_BASE.MANAGE]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const item = await KnowledgeBaseModel.findById(req.params.id).lean();
@@ -260,7 +392,7 @@ knowledgeBaseRouter.post(
 // DELETE /knowledge-base/:id/files/:fileId - Delete file from item (admin only)
 knowledgeBaseRouter.delete(
   "/:id/files/:fileId",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions([PERMISSIONS.KNOWLEDGE_BASE.MANAGE]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) {

@@ -6,6 +6,70 @@ export enum KnowledgeBaseType {
   FACTSHEET = "FACTSHEET",
   TEMPLATE = "TEMPLATE",
   RESOURCE = "RESOURCE",
+  /** Structured hotel directory card: contact, rooms, amenities, city guide (see `IPropertyDirectoryContent`). */
+  PROPERTY_DIRECTORY = "PROPERTY_DIRECTORY",
+}
+
+export type DirectoryTierLabel = "Hostel" | "Select" | "Luxuria" | "Cowork";
+
+/** City / area guide row (v2 directory). */
+export interface ICityInfoItem {
+  name: string;
+  distanceOrNotes?: string;
+}
+
+/** @deprecated legacy alias */
+export type IPropertyDirectoryCityEntry = ICityInfoItem;
+
+export interface IRoomCategory {
+  category: string;
+  count: number;
+  isAC: boolean;
+  isEnsuite: boolean;
+  notes?: string;
+}
+
+export interface IPropertyContact {
+  frontDesk?: string;
+  managerName?: string;
+  managerPhone?: string;
+  ownerName?: string;
+  ownerPhone?: string;
+  email?: string;
+  mapLink?: string;
+}
+
+/**
+ * PROPERTY_DIRECTORY body (v2). Stored in `content` Mixed — fields optional in DB until filled.
+ * Legacy rows may still use old `cityGuide`, `rooms[].name`, `contact.frontDeskPhone`, etc.
+ */
+export interface IPropertyDirectoryContent {
+  tier?: DirectoryTierLabel;
+  region?: string;
+  city?: string;
+  address?: string;
+  landmark?: string;
+  contact?: IPropertyContact;
+  buildingHighlights?: string[];
+  rooms?: IRoomCategory[];
+  amenities?: {
+    room?: string[];
+    hotel?: string[];
+    safety?: string[];
+    frontOffice?: string[];
+  };
+  cityInfo?: {
+    restaurants?: ICityInfoItem[];
+    shopping?: ICityInfoItem[];
+    nightlife?: ICityInfoItem[];
+    attractions?: ICityInfoItem[];
+    importantPlaces?: ICityInfoItem[];
+    streetFood?: ICityInfoItem[];
+  };
+  checkInTime?: string;
+  checkOutTime?: string;
+  lastImportedAt?: string;
+  importSource?: "excel_import" | "manual";
 }
 
 /** Typed content for FACTSHEET KB items (stored in `content` mixed field). */
@@ -109,7 +173,15 @@ const knowledgeBaseSchema = new Schema<IKnowledgeBase>(
 // Indexes for efficient querying
 knowledgeBaseSchema.index({ propertyId: 1, type: 1 });
 knowledgeBaseSchema.index({ propertyId: 1, type: 1, isActive: 1 });
-knowledgeBaseSchema.index({ title: "text", description: "text" });
+knowledgeBaseSchema.index({ type: 1, "content.city": 1 });
+knowledgeBaseSchema.index({ type: 1, "content.region": 1 });
+knowledgeBaseSchema.index({ type: 1, "content.tier": 1 });
+knowledgeBaseSchema.index({
+  title: "text",
+  description: "text",
+  "content.city": "text",
+  "content.region": "text",
+});
 
 export const KnowledgeBaseModel = model<IKnowledgeBase>(
   "KnowledgeBase",

@@ -62,7 +62,22 @@ export const uploadResource = upload;
  * Generic upload middleware that handles file uploads to memory
  */
 export const uploadKnowledgeBase = (
-  _type: "PROPERTY" | "FACTSHEET" | "TEMPLATE" | "RESOURCE"
+  _type: "PROPERTY" | "FACTSHEET" | "TEMPLATE" | "RESOURCE" | "PROPERTY_DIRECTORY"
 ) => {
   return upload.array("files", 10);
 };
+
+/** Single .xlsx for hotel directory bulk import (field name: `file`). */
+export const uploadDirectoryExcel = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const name = file.originalname?.toLowerCase() ?? "";
+    const ok =
+      file.mimetype ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      name.endsWith(".xlsx");
+    if (ok) cb(null, true);
+    else cb(new Error("Only .xlsx spreadsheets are allowed"));
+  },
+}).single("file");
