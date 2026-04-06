@@ -80,7 +80,7 @@ Several components have hardcoded “Postcard” names and property lists. These
 | `SalesRevenueDashboard.tsx`      | Property names in mock data                                  |
 | `TicketingSystem.tsx`            | Property names in mock data                                  |
 | `Index.tsx`                      | Mock guest property                                          |
-| `KnowledgeBase.tsx`              | Property names, URLs                                         |
+| `knowledge/*` (e.g. `PropertyDirectory`, `KnowledgeBaseMain`) | Property names, URLs in KB / directory                       |
 | `PropertyManagement.tsx`         | Placeholder text                                             |
 | `Reports.tsx`                    | Property names in mock data                                  |
 | `MessageTemplates.tsx`           | Placeholder sample property                                  |

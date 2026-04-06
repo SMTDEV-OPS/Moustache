@@ -105,6 +105,7 @@ export function AppSidebar({
     "reports": "Access comprehensive reports and analytics. View conversion rates, response times, lead sources, team performance, and other business metrics.",
     "buddy-management": "Manage buddy assignments for lead coverage. Assign backup team members, view buddy history, and generate buddy reports for team collaboration.",
     "ticket-management": "Create and manage support tickets. Track customer issues, assign tickets to team members, and monitor ticket resolution status.",
+    "knowledge-directory": "Hotel directory: structured cards per property with rooms, amenities, and city guide. Search, filter by tier and region, and compare properties side by side.",
     "knowledge-properties": "Access property information, fact sheets, templates, and resources. Browse the knowledge base for quick reference during customer interactions.",
     "admin-console": "Admin API console for testing and debugging API endpoints. Access backend functionality and system administration tools.",
     "role-definition": "Define and manage user roles and permissions. Create custom roles, assign permissions, and configure access levels for different user types.",
@@ -382,6 +383,23 @@ export function AppSidebar({
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => onViewChange("knowledge-directory")}
+                    isActive={activeView === "knowledge-directory"}
+                    className={`
+                        group w-full justify-start px-3 py-2.5 rounded-md transition-all duration-200
+                        ${activeView === "knowledge-directory"
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm border-l-4 border-transparent'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                      }
+                      `}
+                  >
+                    <Building2 className="mr-3 h-4 w-4" />
+                    <span className="text-sm flex-1">Hotel Directory</span>
+                    <ModuleInfoButton description={moduleDescriptions["knowledge-directory"] || "Module information"} className="opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     onClick={() => onViewChange("knowledge-properties")}

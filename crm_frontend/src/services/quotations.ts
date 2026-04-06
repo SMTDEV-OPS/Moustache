@@ -56,7 +56,17 @@ export const createQuotation = async (
     let message = "Unable to create quotation";
     try {
       const data = await response.json();
-      if (data?.message) message = data.message;
+      const err = data?.error ?? data;
+      if (typeof err?.message === "string") message = err.message;
+      const issues = err?.details?.issues;
+      if (Array.isArray(issues) && issues.length > 0) {
+        const first = issues[0] as { path?: unknown[]; message?: string };
+        const path =
+          Array.isArray(first.path) && first.path.length > 0
+            ? `${first.path.join(".")}: `
+            : "";
+        message = `${message} (${path}${first.message ?? "invalid"})`;
+      }
     } catch {
       // ignore
     }

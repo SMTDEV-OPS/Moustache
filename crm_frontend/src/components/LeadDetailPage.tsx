@@ -27,6 +27,7 @@ import {
   Zap,
   Plus,
   IndianRupee,
+  Building2,
 } from "lucide-react";
 import { Button, Badge, PageHeader } from "@/components/shared";
 import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
@@ -54,6 +55,8 @@ import { getCallQuality, submitCallQuality, getCallQualityDimensions, type CallQ
 import { getWorkflowLogsForLead, type WorkflowExecutionLog } from "@/services/workflowLogs";
 import { EmailThreadView } from "@/components/email/EmailThreadView";
 import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
+import { KBQuickDrawer } from "@/components/knowledge/directory/KBQuickDrawer";
+import { extractLeadPropertyId } from "@/lib/leadPropertyId";
 
 interface LeadDetailPageProps {
   leadId: string;
@@ -243,6 +246,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [isLoadingFields, setIsLoadingFields] = useState(false);
 
   const [isQuotationDialogOpen, setIsQuotationDialogOpen] = useState(false);
+  const [kbDrawerOpen, setKbDrawerOpen] = useState(false);
   const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);
   const [isLoadingPaymentLinks, setIsLoadingPaymentLinks] = useState(false);
   const [communicationTimeline, setCommunicationTimeline] = useState<CommunicationTimelineItem[]>([]);
@@ -601,6 +605,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   }
 
   const lead = leadDetail.lead;
+  const leadPropertyId = extractLeadPropertyId(lead);
   const assignedUser = users.find((u) => u.id === lead.assignedToUserId);
 
   // Prefer contactDetails (inquiry snapshot), fall back to guest
@@ -881,6 +886,16 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             >
               Send Quotation
             </Button>
+            {leadPropertyId ? (
+              <Button
+                variant="secondary"
+                icon={Building2}
+                size="sm"
+                onClick={() => setKbDrawerOpen(true)}
+              >
+                Property info
+              </Button>
+            ) : null}
             {canOpenEditLead && (
               <Button
                 variant="primary"
@@ -916,7 +931,24 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                 { label: "Phone", value: guestPhone || "—" },
                 { label: "Email", value: guestEmail || "—" },
                 { label: "Source", value: lead.source || "—" },
-                { label: "Property/Hotel", value: propertyName },
+                {
+                  label: "Property/Hotel",
+                  value:
+                    leadPropertyId ? (
+                      <span className="inline-flex items-center gap-2 flex-wrap">
+                        <span>{propertyName}</span>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                          onClick={() => setKbDrawerOpen(true)}
+                        >
+                          Property info
+                        </button>
+                      </span>
+                    ) : (
+                      propertyName
+                    ),
+                },
                 { label: "Budget", value: budgetValue },
                 { label: "Travel Date", value: travelDates },
                 { label: "Booking Window", value: bookingWindowValue },
@@ -1500,6 +1532,16 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
           void loadLeadDetail();
         }}
       />
+
+      {leadPropertyId ? (
+        <KBQuickDrawer
+          key={leadPropertyId}
+          propertyId={leadPropertyId}
+          isOpen={kbDrawerOpen}
+          onClose={() => setKbDrawerOpen(false)}
+          defaultTab="overview"
+        />
+      ) : null}
 
       {/* Edit Contact Details Dialog */}
       <EditContactDetailsDialog

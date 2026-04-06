@@ -17,7 +17,8 @@ import PropertyManagerDashboard from "@/components/PropertyManagerDashboard";
 import SalesRevenueDashboard from "@/components/SalesRevenueDashboard";
 import CCManagerDashboard from "@/components/CCManagerDashboard";
 import SalesExecutiveDashboard from "@/components/SalesExecutiveDashboard";
-import KnowledgeBase from "@/components/KnowledgeBase";
+// Legacy KB component — superseded by ProfessionalCRM knowledge views
+// import KnowledgeBase from "@/components/KnowledgeBase";
 
 
 const Index = () => {

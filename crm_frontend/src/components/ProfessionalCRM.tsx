@@ -8,6 +8,7 @@ import { EnhancedCallInterface } from "@/components/EnhancedCallInterface";
 import ProfessionalLeadManagement from "@/components/ProfessionalLeadManagement";
 import { ProfessionalTicketManagement } from "@/components/ProfessionalTicketManagement";
 import { KnowledgeBaseMain } from "@/components/knowledge/KnowledgeBaseMain";
+import { PropertyDirectory } from "@/components/knowledge/directory/PropertyDirectory";
 import Dashboard from "@/components/Dashboard";
 import SalesExecutiveDashboard from "@/components/SalesExecutiveDashboard";
 import Reports from "@/components/Reports";
@@ -250,6 +251,13 @@ export const ProfessionalCRM = ({
           <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             You do not have permission to view reports.
           </div>
+        );
+      case 'knowledge-directory':
+        return (
+          <PropertyDirectory
+            isAdmin={!!isAdmin}
+            permissions={permissions || []}
+          />
         );
       case 'knowledge':
       case 'knowledge-properties':

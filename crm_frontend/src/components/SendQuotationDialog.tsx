@@ -54,6 +54,8 @@ import {
 } from "@/components/ui/collapsible";
 import { getKBForQuotation, type KBForQuotationResponse } from "@/services/knowledgeBase";
 import { getPropertyEzeeRates, type EzeeRateSuggestion } from "@/services/properties";
+import { KBQuickDrawer } from "@/components/knowledge/directory/KBQuickDrawer";
+import { extractLeadPropertyId } from "@/lib/leadPropertyId";
 
 const DEFAULT_INCLUSIONS = "Breakfast included\nWi-Fi\nPool access";
 
@@ -107,6 +109,7 @@ export const SendQuotationDialog = ({
   const [ezeeLoading, setEzeeLoading] = useState(false);
   const [showAllKbRules, setShowAllKbRules] = useState(false);
   const kbInclusionsAppliedRef = useRef(false);
+  const [kbDirectoryDrawerOpen, setKbDirectoryDrawerOpen] = useState(false);
 
   // Update recipient fields when props change
   useEffect(() => {
@@ -123,25 +126,8 @@ export const SendQuotationDialog = ({
     return x.toISOString().slice(0, 10);
   };
 
-  const getLeadPropertyId = (): string | null => {
-    const candidates: unknown[] = [
-      (lead as any)?.propertyId,
-      (lead as any)?.itineraries?.[0]?.propertyId,
-      (leadDetail as any)?.lead?.propertyId,
-      (leadDetail as any)?.lead?.itineraries?.[0]?.propertyId,
-    ];
-
-    for (const raw of candidates) {
-      if (!raw) continue;
-      if (typeof raw === "string") return raw;
-      if (typeof raw === "object") {
-        const o = raw as any;
-        if (typeof o._id === "string") return o._id;
-        if (typeof o.id === "string") return o.id;
-      }
-    }
-    return null;
-  };
+  const getLeadPropertyId = (): string | null =>
+    extractLeadPropertyId(lead, leadDetail?.lead);
 
   const getLeadDates = (): { checkIn: string | null; checkOut: string | null } => {
     const checkInRaw =
@@ -165,6 +151,7 @@ export const SendQuotationDialog = ({
       setEzeeRates([]);
       kbInclusionsAppliedRef.current = false;
       setShowAllKbRules(false);
+      setKbDirectoryDrawerOpen(false);
       return;
     }
     if (open && lead?.id) {
@@ -400,6 +387,7 @@ export const SendQuotationDialog = ({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -431,6 +419,22 @@ export const SendQuotationDialog = ({
             {lead && (
               <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                 <h4 className="font-medium text-sm">Lead Details</h4>
+                {effectivePropertyId ? (
+                  <div className="flex flex-wrap items-center gap-2 pb-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-sm text-xs h-8"
+                      onClick={() => setKbDirectoryDrawerOpen(true)}
+                    >
+                      View hotel directory
+                    </Button>
+                    <span className="text-[11px] text-muted-foreground">
+                      Property KB (rooms, amenities, contacts)
+                    </span>
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   {propertyName && (
                     <div className="flex items-center gap-2">
@@ -874,6 +878,16 @@ export const SendQuotationDialog = ({
         )}
       </DialogContent>
     </Dialog>
+    {effectivePropertyId ? (
+      <KBQuickDrawer
+        key={effectivePropertyId}
+        propertyId={effectivePropertyId}
+        isOpen={kbDirectoryDrawerOpen}
+        onClose={() => setKbDirectoryDrawerOpen(false)}
+        defaultTab="rooms"
+      />
+    ) : null}
+    </>
   );
 };
 
