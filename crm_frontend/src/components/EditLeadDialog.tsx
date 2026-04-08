@@ -16,12 +16,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { HotelBookingSection } from "@/components/leads/HotelBookingSection";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 
 import type { Lead, LeadContactDetails, LeadGuests } from "@/services/leads";
 import { listProperties, type Property } from "@/services/properties";
-import { getRoomCatalogue, syncRoomCatalogue, type RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, type RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
 import { useToast } from "@/hooks/use-toast";
 
 type CustomFieldLike = {
@@ -103,6 +102,9 @@ export function EditLeadDialog({
   const [allProperties, setAllProperties] = useState<Property[]>([]);
   const [catalogueByPropertyId, setCatalogueByPropertyId] = useState<Record<string, RoomCatalogue>>({});
   const [syncingByPropertyId, setSyncingByPropertyId] = useState<Record<string, boolean>>({});
+  const [availabilityByHotelIdx, setAvailabilityByHotelIdx] = useState<
+    Record<number, { status: "idle" | "loading" | "ready" | "error"; byRoomTypeId: Record<string, number>; error?: string; key?: string }>
+  >({});
   type RoomReq = {
     roomTypeId: string;
     roomTypeName?: string;
@@ -202,6 +204,70 @@ export function EditLeadDialog({
         .then((cat) => setCatalogueByPropertyId((prev) => (prev[id] ? prev : { ...prev, [id]: cat })))
         .catch(() => setCatalogueByPropertyId((prev) => (prev[id] ? prev : { ...prev, [id]: { roomTypes: [], ratePlans: [] } })));
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, hotels]);
+
+  // Live availability for selected hotels (debounced + cached + abortable)
+  useEffect(() => {
+    if (!open) return;
+    const abort = new AbortController();
+    const t = setTimeout(() => {
+      hotels.forEach((h, hotelIdx) => {
+        if (!h.propertyId || !h.checkInDate || !h.checkOutDate) {
+          setAvailabilityByHotelIdx((prev) => {
+            if (!prev[hotelIdx] || prev[hotelIdx].status !== "idle") {
+              const copy = { ...prev };
+              copy[hotelIdx] = { status: "idle", byRoomTypeId: {} };
+              return copy;
+            }
+            return prev;
+          });
+          return;
+        }
+        if (new Date(h.checkInDate) >= new Date(h.checkOutDate)) return;
+
+        const from = h.checkInDate;
+        const to = h.checkOutDate;
+        const key = `${h.propertyId}::${from}::${to}`;
+
+        setAvailabilityByHotelIdx((prev) => {
+          const cur = prev[hotelIdx];
+          if (cur?.key === key && (cur.status === "loading" || cur.status === "ready")) return prev;
+          return { ...prev, [hotelIdx]: { status: "loading", byRoomTypeId: cur?.byRoomTypeId || {}, key } };
+        });
+
+        getLiveAvailabilityCached(h.propertyId, from, to, { signal: abort.signal, ttlMs: 30_000 })
+          .then((res) => {
+            if (abort.signal.aborted) return;
+            if (res && typeof res === "object" && !Array.isArray(res) && "available" in res && (res as any).available === false) {
+              setAvailabilityByHotelIdx((prev) => ({ ...prev, [hotelIdx]: { status: "error", byRoomTypeId: {}, error: String((res as any).error || "PMS unavailable"), key } }));
+              return;
+            }
+            const inv = Array.isArray(res) ? res : [];
+            const byRoomTypeId: Record<string, number> = {};
+            for (const row of inv) {
+              if (!row?.roomTypeId) continue;
+              byRoomTypeId[row.roomTypeId] = Number(row.availableCount ?? 0);
+            }
+            setAvailabilityByHotelIdx((prev) => ({ ...prev, [hotelIdx]: { status: "ready", byRoomTypeId, key } }));
+          })
+          .catch((err) => {
+            if (abort.signal.aborted) return;
+            const msg =
+              err && typeof err === "object" && "name" in err && (err as any).name === "AbortError"
+                ? undefined
+                : err instanceof Error
+                  ? err.message
+                  : "PMS unavailable";
+            if (!msg) return;
+            setAvailabilityByHotelIdx((prev) => ({ ...prev, [hotelIdx]: { status: "error", byRoomTypeId: {}, error: msg, key } }));
+          });
+      });
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      abort.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, hotels]);
 
@@ -341,7 +407,7 @@ export function EditLeadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[980px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Lead</DialogTitle>
           <DialogDescription>Update the lead fields you have access to.</DialogDescription>
@@ -574,13 +640,43 @@ export function EditLeadDialog({
                                   <SelectTrigger>
                                     <SelectValue placeholder={h.propertyId ? "Select room type" : "Select a hotel first"} />
                                   </SelectTrigger>
-                                  <SelectContent>
+                                  <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[min(520px,calc(100vw-2rem))]">
                                     {!!r.roomTypeId && !roomTypes.some((x) => x.roomTypeId === r.roomTypeId) && (
                                       <SelectItem value={r.roomTypeId}>{orphanLabel}</SelectItem>
                                     )}
                                     {roomTypes.map((rt) => (
-                                      <SelectItem key={rt.roomTypeId} value={rt.roomTypeId}>
-                                        {resolveRoomTypeDisplayName(rt.roomTypeId, rt.roomTypeName, roomTypes)}
+                                      <SelectItem
+                                        key={rt.roomTypeId}
+                                        value={rt.roomTypeId}
+                                        disabled={
+                                          availabilityByHotelIdx[hotelIdx]?.status === "ready" &&
+                                          typeof availabilityByHotelIdx[hotelIdx]?.byRoomTypeId?.[rt.roomTypeId] === "number" &&
+                                          (availabilityByHotelIdx[hotelIdx]?.byRoomTypeId?.[rt.roomTypeId] ?? 0) <= 0
+                                        }
+                                      >
+                                        <div className="flex w-full items-center gap-3">
+                                          <span className="min-w-0 flex-1 truncate">
+                                            {resolveRoomTypeDisplayName(rt.roomTypeId, rt.roomTypeName, roomTypes)}
+                                          </span>
+                                          {availabilityByHotelIdx[hotelIdx]?.status === "loading" && (
+                                            <span className="ml-auto text-xs text-muted-foreground">…</span>
+                                          )}
+                                          {availabilityByHotelIdx[hotelIdx]?.status === "ready" && (
+                                            <span
+                                              className={[
+                                                "ml-auto text-[11px] tabular-nums px-1.5 py-0.5 rounded border",
+                                                typeof availabilityByHotelIdx[hotelIdx]?.byRoomTypeId?.[rt.roomTypeId] === "number" &&
+                                                (availabilityByHotelIdx[hotelIdx]?.byRoomTypeId?.[rt.roomTypeId] ?? 0) <= 0
+                                                  ? "text-muted-foreground bg-muted/40 border-muted"
+                                                  : "text-muted-foreground bg-muted/60 border-muted",
+                                              ].join(" ")}
+                                            >
+                                              {typeof availabilityByHotelIdx[hotelIdx]?.byRoomTypeId?.[rt.roomTypeId] === "number"
+                                                ? `${availabilityByHotelIdx[hotelIdx]?.byRoomTypeId?.[rt.roomTypeId]}`
+                                                : "—"}
+                                            </span>
+                                          )}
+                                        </div>
                                       </SelectItem>
                                     ))}
                                   </SelectContent>

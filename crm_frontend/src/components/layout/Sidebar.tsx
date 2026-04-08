@@ -63,6 +63,8 @@ export function Sidebar({
   const isDark = theme === "dark";
 
   const isAdminLike = !!isAdmin || userRole === "admin";
+  const canAccessSetup =
+    isAdminLike || permissions.includes(PERMISSIONS.SETTINGS.MANAGE);
   const isBackendSession = Array.isArray(permissions) && permissions.length > 0;
   const canAssignBuddy = !!isAdmin || permissions.includes(PERMISSIONS.BUDDIES.MANAGE);
   const canViewBuddyHistory = !!isAdmin || permissions.includes(PERMISSIONS.BUDDIES.READ);
@@ -231,8 +233,8 @@ export function Sidebar({
           })}
         </div>
 
-        {/* Setup - shown when admin-like or has settings access */}
-        {(isAdminLike || permissions.includes(PERMISSIONS.SETTINGS.MANAGE)) && (
+        {/* Setup - shown when admin-like or profile grants settings.manage */}
+        {canAccessSetup && (
           <div>
             <div
               className="text-[10px] font-medium uppercase tracking-[0.08em] text-text-faint px-5"
@@ -383,17 +385,19 @@ export function Sidebar({
               <User size={14} strokeWidth={1.5} />
               Profile
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                onViewChange("settings");
-                setUserMenuOpen(false);
-              }}
-              className="w-full flex items-center gap-2 h-9 px-4 text-sm text-text hover:bg-hover transition-colors duration-150"
-            >
-              <Settings size={14} strokeWidth={1.5} />
-              Setup / Settings
-            </button>
+            {canAccessSetup && (
+              <button
+                type="button"
+                onClick={() => {
+                  onViewChange("settings");
+                  setUserMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2 h-9 px-4 text-sm text-text hover:bg-hover transition-colors duration-150"
+              >
+                <Settings size={14} strokeWidth={1.5} />
+                Setup / Settings
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {

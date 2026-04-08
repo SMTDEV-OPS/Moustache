@@ -29,9 +29,8 @@ import { API_BASE_URL, withAuthHeaders } from "@/services/api";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SendQuotationDialog } from "@/components/SendQuotationDialog";
-import { HotelBookingSection } from "./leads/HotelBookingSection";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
-import { getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
 import {
   COUNTRY_PHONE_OPTIONS,
   parsePhoneForForm,
@@ -117,6 +116,14 @@ const defaultRoomRequest = () => ({
   children: 0,
 });
 
+/** Parse YYYY-MM-DD as local noon to avoid UTC boundary issues with calendar fields. */
+function parseYmdToLocalDate(ymd: string): Date {
+  const day = ymd.split("T")[0];
+  const [y, m, d] = day.split("-").map(Number);
+  if (!y || !m || !d) return new Date(ymd);
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+
 function HotelItineraryCard({
   index,
   control,
@@ -133,6 +140,8 @@ function HotelItineraryCard({
   syncCatalogueForProperty: (propertyId: string) => Promise<void>;
 }) {
   const propertyId: string = useWatch({ control, name: `hotels.${index}.propertyId` }) || "";
+  const checkInDate: Date | undefined = useWatch({ control, name: `hotels.${index}.checkInDate` }) || undefined;
+  const checkOutDate: Date | undefined = useWatch({ control, name: `hotels.${index}.checkOutDate` }) || undefined;
   const roomsRequested = useFieldArray({
     control,
     name: `hotels.${index}.roomsRequested`,
@@ -141,10 +150,71 @@ function HotelItineraryCard({
   const catalogue = propertyId ? getCatalogueForProperty(propertyId) : undefined;
   const roomTypes = catalogue?.roomTypes || [];
   const [syncingCatalogue, setSyncingCatalogue] = useState(false);
+  const [availabilityState, setAvailabilityState] = useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    byRoomTypeId: Record<string, number>;
+    error?: string;
+    key?: string;
+  }>({ status: "idle", byRoomTypeId: {} });
   const roomsReqWatch = useWatch({
     control,
     name: `hotels.${index}.roomsRequested`,
   }) as { roomTypeId?: string; roomTypeName?: string }[] | undefined;
+
+  useEffect(() => {
+    if (!propertyId || !checkInDate || !checkOutDate) {
+      setAvailabilityState({ status: "idle", byRoomTypeId: {} });
+      return;
+    }
+    if (!(checkInDate instanceof Date) || !(checkOutDate instanceof Date)) {
+      setAvailabilityState({ status: "idle", byRoomTypeId: {} });
+      return;
+    }
+    if (checkInDate >= checkOutDate) {
+      setAvailabilityState({ status: "idle", byRoomTypeId: {} });
+      return;
+    }
+
+    const from = format(checkInDate, "yyyy-MM-dd");
+    const to = format(checkOutDate, "yyyy-MM-dd");
+    const requestKey = `${propertyId}::${from}::${to}`;
+
+    const abort = new AbortController();
+    const t = setTimeout(() => {
+      setAvailabilityState((prev) => (prev.key === requestKey && prev.status === "ready" ? prev : { status: "loading", byRoomTypeId: prev.byRoomTypeId, key: requestKey }));
+      getLiveAvailabilityCached(propertyId, from, to, { signal: abort.signal, ttlMs: 30_000 })
+        .then((res) => {
+          if (abort.signal.aborted) return;
+          if (res && typeof res === "object" && !Array.isArray(res) && "available" in res && (res as any).available === false) {
+            setAvailabilityState({ status: "error", byRoomTypeId: {}, error: String((res as any).error || "PMS unavailable"), key: requestKey });
+            return;
+          }
+          const inv = Array.isArray(res) ? res : [];
+          const byRoomTypeId: Record<string, number> = {};
+          for (const row of inv) {
+            if (!row?.roomTypeId) continue;
+            byRoomTypeId[row.roomTypeId] = Number(row.availableCount ?? 0);
+          }
+          setAvailabilityState({ status: "ready", byRoomTypeId, key: requestKey });
+        })
+        .catch((err) => {
+          if (abort.signal.aborted) return;
+          const msg =
+            err && typeof err === "object" && "name" in err && (err as any).name === "AbortError"
+              ? undefined
+              : err instanceof Error
+                ? err.message
+                : "PMS unavailable";
+          if (!msg) return;
+          setAvailabilityState({ status: "error", byRoomTypeId: {}, error: msg, key: requestKey });
+        });
+    }, 250);
+
+    return () => {
+      clearTimeout(t);
+      abort.abort();
+    };
+  }, [propertyId, checkInDate, checkOutDate]);
 
   return (
     <div className="relative p-4 border rounded-lg bg-gray-50/50 space-y-4">
@@ -321,7 +391,7 @@ function HotelItineraryCard({
                             <SelectValue placeholder="Select room type" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
+                        <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[min(520px,calc(100vw-2rem))]">
                           {field.value &&
                             !roomTypes.some((r) => r.roomTypeId === field.value) && (
                               <SelectItem value={field.value}>
@@ -333,8 +403,38 @@ function HotelItineraryCard({
                               </SelectItem>
                             )}
                           {roomTypes.map((rt) => (
-                            <SelectItem key={rt.roomTypeId} value={rt.roomTypeId}>
-                              {resolveRoomTypeDisplayName(rt.roomTypeId, rt.roomTypeName, roomTypes)}
+                            <SelectItem
+                              key={rt.roomTypeId}
+                              value={rt.roomTypeId}
+                              disabled={
+                                availabilityState.status === "ready" &&
+                                typeof availabilityState.byRoomTypeId[rt.roomTypeId] === "number" &&
+                                availabilityState.byRoomTypeId[rt.roomTypeId] <= 0
+                              }
+                            >
+                              <div className="flex w-full items-center gap-3">
+                                <span className="min-w-0 flex-1 truncate">
+                                  {resolveRoomTypeDisplayName(rt.roomTypeId, rt.roomTypeName, roomTypes)}
+                                </span>
+                                {availabilityState.status === "loading" && (
+                                  <span className="ml-auto text-xs text-muted-foreground">…</span>
+                                )}
+                                {availabilityState.status === "ready" && (
+                                  <span
+                                    className={[
+                                      "ml-auto text-[11px] tabular-nums px-1.5 py-0.5 rounded border",
+                                      typeof availabilityState.byRoomTypeId[rt.roomTypeId] === "number" &&
+                                      availabilityState.byRoomTypeId[rt.roomTypeId] <= 0
+                                        ? "text-muted-foreground bg-muted/40 border-muted"
+                                        : "text-muted-foreground bg-muted/60 border-muted",
+                                    ].join(" ")}
+                                  >
+                                    {typeof availabilityState.byRoomTypeId[rt.roomTypeId] === "number"
+                                      ? `${availabilityState.byRoomTypeId[rt.roomTypeId]}`
+                                      : "—"}
+                                  </span>
+                                )}
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -423,6 +523,14 @@ function HotelItineraryCard({
             </div>
           ))}
         </div>
+
+        {(availabilityState.status === "loading" || availabilityState.status === "error") && (
+          <div className="text-xs text-muted-foreground">
+            {availabilityState.status === "loading"
+              ? "Loading live inventory…"
+              : `Live inventory unavailable: ${availabilityState.error || "PMS unavailable"}`}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -592,7 +700,7 @@ const ProfessionalLeadManagement = ({
   const [callbackNotes, setCallbackNotes] = useState("");
 
   const form = useForm<LeadFormData>({
-    resolver: zodResolver(leadFormSchema),
+    resolver: zodResolver(leadFormSchema) as any,
     defaultValues: {
       firstName: "",
       middleName: "",
@@ -674,6 +782,49 @@ const ProfessionalLeadManagement = ({
   }, [watchedHotels, watchedPrimaryPropertyId]);
 
   const getCatalogueForProperty = (propertyId: string) => catalogueByPropertyId[propertyId];
+
+  /** Copy PMS availability block into hotel #1 when the row is empty or still the same property. */
+  const syncPmsAvailabilityToFirstHotel = useCallback(() => {
+    const pmsPid = form.getValues("propertyId") || "";
+    if (!pmsPid) return;
+
+    const hotelsVal = form.getValues("hotels");
+    const h0 = hotelsVal?.[0];
+    if (!h0) return;
+    if (h0.propertyId && h0.propertyId !== pmsPid) return;
+
+    const selectedProperty = hotelOptions.find((p) => p._id === pmsPid);
+    form.setValue("hotels.0.propertyId", pmsPid);
+    form.setValue("hotels.0.hotelName", selectedProperty?.name || "");
+
+    const checkIn = form.getValues("checkIn");
+    const checkOut = form.getValues("checkOut");
+    if (checkIn) {
+      form.setValue("hotels.0.checkInDate", parseYmdToLocalDate(checkIn));
+    }
+    if (checkOut) {
+      form.setValue("hotels.0.checkOutDate", parseYmdToLocalDate(checkOut));
+    }
+
+    const roomTypeId = form.getValues("roomTypeId") || "";
+    const roomTypeName = form.getValues("roomTypeName") || "";
+    const adults = form.getValues("adults");
+    const children = form.getValues("children");
+
+    const rooms = form.getValues("hotels.0.roomsRequested") || [];
+    const r0 = rooms[0] || defaultRoomRequest();
+    const nextR0 = {
+      ...r0,
+      roomTypeId: roomTypeId || r0.roomTypeId,
+      roomTypeName: roomTypeName || r0.roomTypeName,
+      adults: typeof adults === "number" ? adults : r0.adults,
+      children: typeof children === "number" ? children : r0.children,
+    };
+    form.setValue(
+      "hotels.0.roomsRequested",
+      rooms.length === 0 ? [nextR0] : [nextR0, ...rooms.slice(1)]
+    );
+  }, [form, hotelOptions]);
 
   const { fields: hotelFields, append: appendHotel, remove: removeHotel } = useFieldArray({
     control: form.control,
@@ -1075,7 +1226,7 @@ const ProfessionalLeadManagement = ({
               Add Lead
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Lead</DialogTitle>
               <DialogDescription>
@@ -1124,55 +1275,6 @@ const ProfessionalLeadManagement = ({
                       </FormItem>
                     )}
                   />
-                </div>
-
-                {/* Primary PMS: live availability check (separate from itinerary hotels below) */}
-                <div className="space-y-4 pt-4 border-t border-gray-100 mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Hotel className="h-5 w-5" />
-                    PMS availability check
-                  </h3>
-                  <div className="mb-4">
-                    <Label>Property for availability check</Label>
-                    <SearchableSelect
-                      options={[
-                        { value: "", label: "None", disabled: false },
-                        ...hotelOptions.map((property) => ({
-                          value: property._id,
-                          label: property.name,
-                        })),
-                      ]}
-                      value={form.watch("propertyId") || ""}
-                      placeholder="Select a Property..."
-                      onValueChange={(val) =>
-                        form.setValue("propertyId", val ? val : "")
-                      }
-                    />
-                  </div>
-
-                  {form.watch("propertyId") && (
-                    <HotelBookingSection
-                      propertyId={form.watch("propertyId")!}
-                      value={{
-                        checkIn: form.watch("checkIn"),
-                        checkOut: form.watch("checkOut"),
-                        roomTypeId: form.watch("roomTypeId"),
-                        roomTypeName: form.watch("roomTypeName"),
-                        ratePlanId: form.watch("ratePlanId"),
-                        ratePlanName: form.watch("ratePlanName"),
-                        adults: form.watch("adults"),
-                        children: form.watch("children"),
-                        estimatedRate: form.watch("estimatedRate"),
-                        estimatedRoomNights: form.watch("estimatedRoomNights"),
-                        estimatedRevenue: form.watch("estimatedRevenue"),
-                      }}
-                      onChange={(patch) => {
-                        Object.entries(patch).forEach(([key, value]) => {
-                          form.setValue(key as any, value);
-                        });
-                      }}
-                    />
-                  )}
                 </div>
 
                 {/* Multiple Hotels Section */}

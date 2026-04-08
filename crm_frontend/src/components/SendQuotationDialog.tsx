@@ -59,6 +59,13 @@ import { extractLeadPropertyId } from "@/lib/leadPropertyId";
 
 const DEFAULT_INCLUSIONS = "Breakfast included\nWi-Fi\nPool access";
 
+type RateLineDraft = {
+  roomTypeName: string;
+  quantity: number;
+  ratePerNight: number;
+  hotelName?: string;
+};
+
 interface SendQuotationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -97,6 +104,7 @@ export const SendQuotationDialog = ({
   );
   const [rate, setRate] = useState<string>("");
   const [taxes, setTaxes] = useState<string>("");
+  const [rateLines, setRateLines] = useState<RateLineDraft[]>([]);
   const [inclusions, setInclusions] = useState<string>(DEFAULT_INCLUSIONS);
   const [specialPackages, setSpecialPackages] = useState<string>("");
   const [recipientName, setRecipientName] = useState<string>(guestName || "");
@@ -260,7 +268,14 @@ export const SendQuotationDialog = ({
     const taxesNum = parseFloat(taxes) || 0;
     const roomsNum = parseInt(rooms) || 1;
     const nights = calculateNights();
-    return (rateNum * roomsNum * nights) + taxesNum;
+    const subtotalFromLines =
+      rateLines.length > 0
+        ? rateLines.reduce(
+            (sum, l) => sum + (l.ratePerNight || 0) * (l.quantity || 1) * nights,
+            0
+          )
+        : null;
+    return ((subtotalFromLines ?? rateNum * roomsNum * nights) + taxesNum);
   };
 
   const calculateNights = () => {
@@ -295,10 +310,10 @@ export const SendQuotationDialog = ({
       return;
     }
 
-    if (!rate) {
+    if (!rate && rateLines.length === 0) {
       toast({
         title: "Rate Required",
-        description: "Please enter the room rate",
+        description: "Please enter a room rate or add at least one room-rate line",
         variant: "destructive",
       });
       return;
@@ -307,10 +322,24 @@ export const SendQuotationDialog = ({
     try {
       setIsSending(true);
 
+      const effectiveRoomsFromLines =
+        rateLines.length > 0
+          ? rateLines.reduce((sum, l) => sum + (l.quantity || 0), 0) || 1
+          : undefined;
+
       const payload: CreateQuotationPayload = {
-        rooms: parseInt(rooms) || 1,
-        rate: parseFloat(rate) || 0,
+        rooms: effectiveRoomsFromLines ?? (parseInt(rooms) || 1),
+        rate: rateLines.length > 0 ? undefined : (parseFloat(rate) || 0),
         taxes: parseFloat(taxes) || 0,
+        rateLines:
+          rateLines.length > 0
+            ? rateLines.map((l) => ({
+                roomTypeName: l.roomTypeName,
+                quantity: l.quantity,
+                ratePerNight: l.ratePerNight,
+                hotelName: l.hotelName,
+              }))
+            : undefined,
         inclusions,
         specialPackages,
         sentVia: sendVia,
@@ -622,7 +651,39 @@ export const SendQuotationDialog = ({
                         variant="secondary"
                         size="sm"
                         className="h-auto w-full justify-start whitespace-normal break-words py-1.5 text-left text-xs font-normal"
-                        onClick={() => setRate(String(Math.round(r.rate)))}
+                        onClick={() => {
+                          const roomTypeName = (r.roomType || "Room").trim() || "Room";
+                          const existingQtyFromLead =
+                            leadDetail?.lead?.itineraries?.[0]?.roomsRequested?.find(
+                              (x) =>
+                                (x.roomTypeName || "").trim().toLowerCase() ===
+                                roomTypeName.toLowerCase()
+                            )?.quantity ?? 1;
+                          setRateLines((prev) => {
+                            const idx = prev.findIndex(
+                              (l) =>
+                                l.roomTypeName.trim().toLowerCase() ===
+                                  roomTypeName.toLowerCase() &&
+                                (l.hotelName || "").trim().toLowerCase() ===
+                                  ((leadDetail?.lead?.itineraries?.[0]?.hotelName || "") as string)
+                                    .trim()
+                                    .toLowerCase()
+                            );
+                            const hotelName = leadDetail?.lead?.itineraries?.[0]?.hotelName;
+                            const nextLine: RateLineDraft = {
+                              roomTypeName,
+                              quantity: existingQtyFromLead || 1,
+                              ratePerNight: Math.round(r.rate || 0),
+                              hotelName: hotelName || undefined,
+                            };
+                            if (idx >= 0) {
+                              const out = [...prev];
+                              out[idx] = nextLine;
+                              return out;
+                            }
+                            return [...prev, nextLine];
+                          });
+                        }}
                       >
                         Click to use: {formatCurrency(r.rate)} — {r.roomType}
                       </Button>
@@ -631,6 +692,102 @@ export const SendQuotationDialog = ({
                   </div>
                 </div>
               )}
+
+              {/* Multi-room rate lines */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-sm">Selected room rates (optional)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-sm text-xs"
+                    onClick={() =>
+                      setRateLines((prev) => [
+                        ...prev,
+                        { roomTypeName: "", quantity: 1, ratePerNight: 0 },
+                      ])
+                    }
+                  >
+                    Add line
+                  </Button>
+                </div>
+                {rateLines.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    If you’re quoting multiple room types/rates, add them here. Otherwise, use the single “Rate per Room/Night”.
+                  </p>
+                ) : (
+                  <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 p-2">
+                    {rateLines.map((l, idx) => (
+                      <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-6 space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Room type</Label>
+                          <Input
+                            value={l.roomTypeName}
+                            onChange={(e) =>
+                              setRateLines((prev) => {
+                                const out = [...prev];
+                                out[idx] = { ...out[idx], roomTypeName: e.target.value };
+                                return out;
+                              })
+                            }
+                            placeholder="Deluxe Room"
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Qty</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={String(l.quantity ?? 1)}
+                            onChange={(e) =>
+                              setRateLines((prev) => {
+                                const out = [...prev];
+                                out[idx] = {
+                                  ...out[idx],
+                                  quantity: Math.max(1, parseInt(e.target.value || "1") || 1),
+                                };
+                                return out;
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="col-span-3 space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">₹ / night</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={String(l.ratePerNight ?? 0)}
+                            onChange={(e) =>
+                              setRateLines((prev) => {
+                                const out = [...prev];
+                                out[idx] = {
+                                  ...out[idx],
+                                  ratePerNight: Math.max(0, parseFloat(e.target.value || "0") || 0),
+                                };
+                                return out;
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="col-span-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-9 px-2"
+                            onClick={() =>
+                              setRateLines((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {kbLoading && !kbData && lead?.propertyId && (
                 <p className="text-xs text-muted-foreground">Loading property knowledge…</p>
@@ -833,6 +990,20 @@ export const SendQuotationDialog = ({
                           </span>
                         </div>
                       </div>
+
+                      {quote.rateLines && quote.rateLines.length > 0 && (
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">Room rates:</span>
+                          <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                            {quote.rateLines.map((l, i) => (
+                              <li key={i}>
+                                {l.quantity} × {l.roomTypeName} — {formatCurrency(l.ratePerNight)} / night
+                                {l.hotelName ? ` · ${l.hotelName}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
 
                       {quote.sentTo && (
                         <div className="text-sm">

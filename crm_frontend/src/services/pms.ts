@@ -173,3 +173,63 @@ export const getLiveAvailability = async (
   if (!res.ok) return { available: false, error: "API Error" };
   return res.json();
 };
+
+type AvailabilityInventoryRow = {
+  roomTypeId: string;
+  availableCount?: number;
+  roomTypeName?: string;
+};
+
+type LiveAvailabilityResponse =
+  | { available: false; error?: string }
+  | AvailabilityInventoryRow[];
+
+const liveAvailabilityCache = new Map<
+  string,
+  { expiresAt: number; promise?: Promise<LiveAvailabilityResponse>; value?: LiveAvailabilityResponse }
+>();
+
+function liveAvailabilityKey(propertyId: string, from: string, to: string) {
+  return `${propertyId}::${from}::${to}`;
+}
+
+/**
+ * Cached wrapper around GET /pms/:propertyId/availability.
+ * - TTL cache (default 30s) to keep room dropdown snappy while editing.
+ * - De-dupes in-flight requests for same (propertyId, from, to).
+ * - Supports aborting on fast user edits (signal only cancels the caller fetch).
+ */
+export async function getLiveAvailabilityCached(
+  propertyId: string,
+  from: string,
+  to: string,
+  opts?: { signal?: AbortSignal; ttlMs?: number }
+): Promise<LiveAvailabilityResponse> {
+  const ttlMs = opts?.ttlMs ?? 30_000;
+  const key = liveAvailabilityKey(propertyId, from, to);
+  const now = Date.now();
+
+  const cached = liveAvailabilityCache.get(key);
+  if (cached && cached.value && cached.expiresAt > now) return cached.value;
+  if (cached && cached.promise) return cached.promise;
+
+  const promise = (async () => {
+    const res = await fetch(
+      `${API_BASE_URL}/pms/${propertyId}/availability?from=${from}&to=${to}`,
+      { headers: withAuthHeaders(), signal: opts?.signal }
+    );
+    if (!res.ok) return { available: false, error: "API Error" } as const;
+    return (await res.json()) as LiveAvailabilityResponse;
+  })()
+    .then((value) => {
+      liveAvailabilityCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+      return value;
+    })
+    .catch((err) => {
+      liveAvailabilityCache.delete(key);
+      throw err;
+    });
+
+  liveAvailabilityCache.set(key, { promise, expiresAt: now + ttlMs });
+  return promise;
+}

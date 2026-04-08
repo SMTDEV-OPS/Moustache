@@ -197,12 +197,42 @@ export type LeadScope = "own" | "team" | "all";
 
 export interface LeadListQuery {
   status?: string;
+  source?: string;
   assigneeId?: string;
   propertyId?: string;
   fromDate?: string;
   toDate?: string;
   heat?: string;
+  assignmentSource?: string;
+  stageId?: string;
+  /** Server-side match on lead number / contact name / email / phone */
+  search?: string;
   scope?: LeadScope;
+  page?: number;
+  limit?: number;
+}
+
+export interface LeadListPageResult {
+  items: Lead[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+function mapLeadRow(l: Record<string, unknown>): Lead {
+  const { _id, id, ...rest } = l;
+  return {
+    id: (id ?? _id) as string,
+    ...rest,
+  } as Lead;
+}
+
+function appendLeadListQuery(params: URLSearchParams, query: LeadListQuery & { page?: number; limit?: number }) {
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    params.append(key, String(value));
+  });
 }
 
 export type AssignmentMode = "auto" | "manual";
@@ -305,23 +335,19 @@ export interface UpdateLeadPayload {
   customData?: Record<string, any>;
 }
 
-export const listLeads = async (
-  query?: LeadListQuery
-): Promise<Lead[]> => {
+/**
+ * One page of leads (preferred for list UIs). Backend returns `{ items, total, page, limit, hasMore }`.
+ */
+export const listLeadsPage = async (
+  query: LeadListQuery & { page: number; limit?: number }
+): Promise<LeadListPageResult> => {
   const params = new URLSearchParams();
-  if (query) {
-    Object.entries(query).forEach(([key, value]) => {
-      if (value) params.append(key, value);
-    });
-  }
+  appendLeadListQuery(params, query);
 
-  const url =
-    `${API_BASE_URL}/leads` +
-    (params.toString() ? `?${params.toString()}` : "");
-
-  const response = await fetch(url, {
-    headers: withAuthHeaders(),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/leads${params.toString() ? `?${params.toString()}` : ""}`,
+    { headers: withAuthHeaders() }
+  );
 
   if (!response.ok) {
     let message = "Unable to fetch leads";
@@ -334,15 +360,58 @@ export const listLeads = async (
     throw new Error(message);
   }
 
-  const raw = (await response.json()) as any[];
-  return raw.map((l) => {
-    const { _id, id, ...rest } = l;
+  const raw = (await response.json()) as
+    | Lead[]
+    | {
+        items?: unknown[];
+        total?: number;
+        page?: number;
+        limit?: number;
+        hasMore?: boolean;
+      };
+
+  if (Array.isArray(raw)) {
+    const items = raw.map((l) => mapLeadRow(l as Record<string, unknown>));
     return {
-      id: id ?? _id,
-      ...rest,
-    } as Lead;
-  });
+      items,
+      total: items.length,
+      page: 1,
+      limit: items.length,
+      hasMore: false,
+    };
+  }
+
+  const items = (raw.items || []).map((l) => mapLeadRow(l as Record<string, unknown>));
+  return {
+    items,
+    total: typeof raw.total === "number" ? raw.total : items.length,
+    page: typeof raw.page === "number" ? raw.page : query.page,
+    limit: typeof raw.limit === "number" ? raw.limit : query.limit ?? items.length,
+    hasMore: Boolean(raw.hasMore),
+  };
 };
+
+/**
+ * Fetch all leads matching the query by paging through the API (for dropdowns, legacy screens).
+ * Stops when `hasMore` is false or after `maxPages` (default 100 × pageSize rows).
+ */
+export const listAllLeads = async (
+  query: LeadListQuery = {},
+  opts?: { pageSize?: number; maxPages?: number }
+): Promise<Lead[]> => {
+  const pageSize = Math.min(opts?.pageSize ?? 200, 200);
+  const maxPages = opts?.maxPages ?? 100;
+  const acc: Lead[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const r = await listLeadsPage({ ...query, page, limit: pageSize });
+    acc.push(...r.items);
+    if (!r.hasMore || r.items.length === 0) break;
+  }
+  return acc;
+};
+
+/** @deprecated Prefer listLeadsPage (UI lists) or listAllLeads (full export). */
+export const listLeads = listAllLeads;
 
 export const createLead = async (
   payload: CreateLeadPayload

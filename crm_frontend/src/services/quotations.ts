@@ -19,6 +19,12 @@ export interface Quotation {
   rooms?: number;
   rate?: number;
   taxes?: number;
+  rateLines?: {
+    roomTypeName: string;
+    quantity: number;
+    ratePerNight: number;
+    hotelName?: string;
+  }[];
   inclusions?: string;
   specialPackages?: string;
   sentVia?: SendVia;
@@ -33,6 +39,12 @@ export interface CreateQuotationPayload {
   rooms?: number;
   rate?: number;
   taxes?: number;
+  rateLines?: {
+    roomTypeName: string;
+    quantity: number;
+    ratePerNight: number;
+    hotelName?: string;
+  }[];
   inclusions?: string;
   specialPackages?: string;
   sentVia?: SendVia;

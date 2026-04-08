@@ -89,6 +89,8 @@ export function AppSidebar({
   const hasUsersManagePermission = permissions?.includes(PERMISSIONS.USERS.MANAGE);
   const canManageAccounts = !!isAdmin || permissions?.includes(PERMISSIONS.ACCOUNTS.MANAGE);
   const isAdminLike = !!isAdmin || userRole === "admin";
+  const canAccessSetup =
+    isAdminLike || !!permissions?.includes(PERMISSIONS.SETTINGS.MANAGE);
   const isBackendSession = Array.isArray(permissions) && permissions.length > 0;
   const canAssignBuddy = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.MANAGE);
   const canViewBuddyHistory = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.READ);
@@ -532,10 +534,12 @@ export function AppSidebar({
                   <User className="mr-2 h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange("settings")}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Setup / Settings</span>
-                </DropdownMenuItem>
+                {canAccessSetup && (
+                  <DropdownMenuItem onClick={() => onViewChange("settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Setup / Settings</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
                   <LogOut className="mr-2 h-4 w-4" />
@@ -573,10 +577,12 @@ export function AppSidebar({
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange("settings")}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Setup / Settings
-                </DropdownMenuItem>
+                {canAccessSetup && (
+                  <DropdownMenuItem onClick={() => onViewChange("settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Setup / Settings
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onLogout} className="text-destructive">
                   <LogOut className="mr-2 h-4 w-4" />

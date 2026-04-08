@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { backendLogin, backendLogout, BackendLoginResult } from "../services/auth";
-import { setAuthToken, getAuthToken } from "../services/api";
+import { setAuthToken, getAuthToken, API_BASE_URL } from "../services/api";
 import { useToast } from "@/hooks/use-toast";
 
 interface User {
@@ -46,7 +46,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     // reusing backendLogin logic might be tricky without password
                     // So we should probably add a "fetchMe" to services/auth
                     // For now, let's assume we fetch /auth/me
-                    const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:4000"}/auth/me`, {
+                    const response = await fetch(`${API_BASE_URL}/auth/me`, {
                         headers: { Authorization: `Bearer ${token}` }
                     });
 

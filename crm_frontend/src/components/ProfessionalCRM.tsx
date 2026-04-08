@@ -145,6 +145,8 @@ export const ProfessionalCRM = ({
   const canViewBuddyHistory = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.READ);
   const canViewBuddyReports = !!isAdmin || permissions?.includes(PERMISSIONS.BUDDIES.READ);
   const canAccessBuddy = canAssignBuddy || canViewBuddyHistory || canViewBuddyReports;
+  const canAccessSetup =
+    !!isAdmin || permissions?.includes(PERMISSIONS.SETTINGS.MANAGE);
 
   const renderContent = () => {
     switch (activeView) {
@@ -271,6 +273,13 @@ export const ProfessionalCRM = ({
           />
         );
       case 'settings':
+        if (!canAccessSetup) {
+          return (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              You do not have permission to open Setup. An administrator can enable it under your profile&apos;s Setup Permissions.
+            </div>
+          );
+        }
         return (
           <SettingsDashboard
             onViewChange={setActiveView}
@@ -669,11 +678,11 @@ export const ProfessionalCRM = ({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setActiveView("settings")}
+            onClick={() => setActiveView(canAccessSetup ? "settings" : "dashboard")}
             className="text-text-muted hover:text-text"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Settings
+            {canAccessSetup ? "Back to Settings" : "Back to Dashboard"}
           </Button>
         </div>
       )}

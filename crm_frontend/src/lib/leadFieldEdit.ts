@@ -23,9 +23,5 @@ export function canReassignLeadByProfile(
   if (perms.includes("leads.manage")) return true;
   if (perms.includes("leads.reassign")) return true;
   if (perms.includes("leads.field.assignment")) return true;
-  if (perms.includes("leads.update")) {
-    const hasGranular = perms.some((p) => p.startsWith("leads.field."));
-    if (!hasGranular) return true;
-  }
   return false;
 }

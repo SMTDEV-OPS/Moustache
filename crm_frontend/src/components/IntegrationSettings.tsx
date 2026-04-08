@@ -20,10 +20,10 @@ export function IntegrationSettings() {
     const backendBase = (API_BASE_URL.startsWith('http') ? API_BASE_URL : origin + '/api');
 
     const webhooks = {
-        ivr: `${backendBase}/public/ivr-webhook`,
-        whatsapp: `${backendBase}/public/whatsapp-webhook`,
-        social: `${backendBase}/public/social-webhook`,
-        website: `${backendBase}/public/website-leads`,
+        ivr: `${backendBase}/api/public/ivr-webhook`,
+        whatsapp: `${backendBase}/api/public/whatsapp-webhook`,
+        social: `${backendBase}/api/public/social-webhook`,
+        website: `${backendBase}/api/public/website-leads`,
     };
 
     const copyToClipboard = (text: string, id: string) => {

@@ -25,6 +25,8 @@ const ALL_SETUP_KEYS = [
   "workflows.manage", "templates.manage", "knowledge-base.manage",
   "pms.manage", "notifications.manage", "buddies.manage",
   "conglomerates.manage", "account-potentials.manage", "hotel-brands.manage",
+  /** Operational: grant without full leads.manage; pairs with Leads → Edit in Module Permissions. */
+  "leads.reassign",
 ];
 
 function mergeModulePermissions(saved: ModulePermission[] | undefined): ModulePermission[] {
@@ -465,7 +467,11 @@ export function ProfilesManager() {
                     <TabsContent value="setup" className="p-0 m-0">
                         <div className="p-6">
                             <h3 className="text-lg font-medium mb-4">Admin & Setup Permissions</h3>
-                            <p className="text-sm text-muted-foreground mb-6">Control access to system configuration and administration features.</p>
+                            <p className="text-sm text-muted-foreground mb-6">
+                              Control access to system configuration and administration features. Use{" "}
+                              <span className="font-medium text-foreground">Leads Reassign</span> to allow changing lead assignee
+                              (users still need <span className="font-medium text-foreground">Leads → View + Edit</span> in Module Permissions).
+                            </p>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12 max-w-4xl">
                                 {(formData.setupPermissions || []).map(perm => (

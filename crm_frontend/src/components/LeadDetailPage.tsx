@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { io, type Socket } from "socket.io-client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -228,6 +228,111 @@ const getCommunicationIcon = (channel: string) => {
       return <MessageCircle className="h-4 w-4 text-gray-500" />;
   }
 };
+
+type NormalizedRoomReq = {
+  roomTypeId?: string;
+  roomTypeName?: string;
+  quantity?: number;
+  adults?: number;
+  children?: number;
+  notes?: string;
+};
+
+type NormalizedItinerary = {
+  propertyId?: string;
+  propertyName?: string;
+  hotelName?: string;
+  checkInDate?: string;
+  checkOutDate?: string;
+  roomsRequested: NormalizedRoomReq[];
+};
+
+function toYmd(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") return value.split("T")[0];
+  try {
+    if (value instanceof Date) return value.toISOString().split("T")[0];
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+function formatYmdForDisplay(ymd?: string): string {
+  if (!ymd) return "—";
+  try {
+    return new Date(ymd).toLocaleDateString("en-IN");
+  } catch {
+    return ymd;
+  }
+}
+
+function normalizeItineraries(lead: any): NormalizedItinerary[] {
+  const raw = Array.isArray(lead?.itineraries) ? lead.itineraries : [];
+  const fromItins: NormalizedItinerary[] = raw
+    .map((it: any) => {
+      const propertyId =
+        (it?.propertyId && typeof it.propertyId === "object" ? it.propertyId?._id : it?.propertyId) || undefined;
+      const propertyName =
+        (it?.propertyId && typeof it.propertyId === "object" ? it.propertyId?.name : undefined) || undefined;
+      const rooms: any[] = Array.isArray(it?.roomsRequested) ? it.roomsRequested : [];
+      const roomsRequested: NormalizedRoomReq[] = rooms.map((r) => ({
+        roomTypeId: r?.roomTypeId ? String(r.roomTypeId) : undefined,
+        roomTypeName: r?.roomTypeName ? String(r.roomTypeName) : undefined,
+        quantity: r?.quantity != null ? Number(r.quantity) : undefined,
+        adults: r?.adults != null ? Number(r.adults) : undefined,
+        children: r?.children != null ? Number(r.children) : undefined,
+        notes: r?.notes ? String(r.notes) : undefined,
+      }));
+
+      return {
+        propertyId,
+        propertyName,
+        hotelName: it?.hotelName ? String(it.hotelName) : propertyName,
+        checkInDate: toYmd(it?.checkInDate),
+        checkOutDate: toYmd(it?.checkOutDate),
+        roomsRequested,
+      };
+    })
+    .filter((x) => x.propertyId || x.hotelName || x.checkInDate || x.checkOutDate || x.roomsRequested.length);
+
+  if (fromItins.length) return fromItins;
+
+  // Fallback for older leads: single "primary" booking fields
+  const fallbackHotel =
+    (lead?.propertyId && typeof lead.propertyId === "object" ? lead.propertyId?.name : undefined) ||
+    lead?.hotelName ||
+    lead?.propertyName;
+
+  const fallbackRooms: NormalizedRoomReq[] =
+    lead?.roomTypeId || lead?.roomTypeName
+      ? [
+          {
+            roomTypeId: lead?.roomTypeId ? String(lead.roomTypeId) : undefined,
+            roomTypeName: lead?.roomTypeName ? String(lead.roomTypeName) : undefined,
+            quantity: lead?.roomsRequested != null ? Number(lead.roomsRequested) : undefined,
+            adults: lead?.adults != null ? Number(lead.adults) : undefined,
+            children: lead?.children != null ? Number(lead.children) : undefined,
+          },
+        ]
+      : [];
+
+  const fallback: NormalizedItinerary = {
+    propertyId:
+      (lead?.propertyId && typeof lead.propertyId === "object" ? lead.propertyId?._id : lead?.propertyId) || undefined,
+    propertyName:
+      (lead?.propertyId && typeof lead.propertyId === "object" ? lead.propertyId?.name : undefined) || undefined,
+    hotelName: fallbackHotel ? String(fallbackHotel) : undefined,
+    checkInDate: toYmd(lead?.checkIn),
+    checkOutDate: toYmd(lead?.checkOut),
+    roomsRequested: fallbackRooms,
+  };
+
+  if (fallback.propertyId || fallback.hotelName || fallback.checkInDate || fallback.checkOutDate || fallback.roomsRequested.length) {
+    return [fallback];
+  }
+  return [];
+}
 
 export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDetailPageProps) => {
   const { toast } = useToast();
@@ -527,39 +632,50 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
 
 
   // Always include activities, and merge with communications if available
-  const timelineItems = leadDetail
-    ? [
-      // Always include activities from leadDetail
-      ...leadDetail.activities
-        .filter((a) => a.type !== "REMINDER_TRIGGERED")
-        .map((activity) => ({
-          type: "activity" as const,
-          data: activity,
-          timestamp: activity.performedAt ? new Date(activity.performedAt).getTime() : 0,
-        })),
-      // Include communications from communicationTimeline if available, otherwise from leadDetail
-      ...(communicationTimeline.length > 0
+  const timelineItems = useMemo(() => {
+    if (!leadDetail) return [];
+    const activities = leadDetail.activities
+      .filter((a) => a.type !== "REMINDER_TRIGGERED")
+      .map((activity) => ({
+        type: "activity" as const,
+        data: activity,
+        timestamp: activity.performedAt ? new Date(activity.performedAt).getTime() : 0,
+      }));
+    const comms =
+      communicationTimeline.length > 0
         ? communicationTimeline.map((item) => ({
-          type: item.type as "communication" | "email",
-          data: item,
-          timestamp: item.createdAt || item.receivedAt || item.sentAt
-            ? new Date(item.createdAt || item.receivedAt || item.sentAt || "").getTime()
-            : 0,
-        }))
+            type: item.type as "communication" | "email",
+            data: item,
+            timestamp:
+              item.createdAt || item.receivedAt || item.sentAt
+                ? new Date(item.createdAt || item.receivedAt || item.sentAt || "").getTime()
+                : 0,
+          }))
         : leadDetail.communications.map((comm) => ({
-          type: "communication" as const,
-          data: comm,
-          timestamp: comm.createdAt ? new Date(comm.createdAt).getTime() : 0,
-        }))),
-    ].sort((a, b) => b.timestamp - a.timestamp)
-    : [];
-  const emailTimelineItems = (communicationTimeline.length > 0 ? communicationTimeline : [])
-    .filter((item) => (item.channel || "").toUpperCase() === "EMAIL");
-  const nonEmailTimelineItems = timelineItems.filter((item) => {
-    if (item.type === "activity") return true;
-    const comm = item.data as LeadCommunication & { channel?: string };
-    return (comm.channel || "").toUpperCase() !== "EMAIL";
-  });
+            type: "communication" as const,
+            data: comm,
+            timestamp: comm.createdAt ? new Date(comm.createdAt).getTime() : 0,
+          }));
+    return [...activities, ...comms].sort((a, b) => b.timestamp - a.timestamp);
+  }, [leadDetail, communicationTimeline]);
+
+  const emailTimelineItems = useMemo(() => {
+    return (communicationTimeline.length > 0 ? communicationTimeline : []).filter(
+      (item) => (item.channel || "").toUpperCase() === "EMAIL"
+    );
+  }, [communicationTimeline]);
+
+  const nonEmailTimelineItems = useMemo(() => {
+    return timelineItems.filter((item) => {
+      if (item.type === "activity") return true;
+      const comm = item.data as LeadCommunication & { channel?: string };
+      return (comm.channel || "").toUpperCase() !== "EMAIL";
+    });
+  }, [timelineItems]);
+
+  // Must be defined before any early returns to preserve Hook order.
+  const leadForMemos = (leadDetail?.lead ?? null) as any;
+  const itineraries = useMemo(() => normalizeItineraries(leadForMemos), [leadForMemos]);
 
   const statusBadgeVariant = (status: string) => {
     switch (status) {
@@ -819,22 +935,23 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     el?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const propertyName = (lead?.propertyId as any)?.name ?? lead?.itineraries?.[0]?.hotelName ?? '—';
+  const propertyName =
+    (lead?.propertyId as any)?.name ?? lead?.itineraries?.[0]?.hotelName ?? itineraries?.[0]?.hotelName ?? "—";
 
-  const checkIn = lead?.itineraries?.[0]?.checkInDate ?? getField(lead, 'checkInDate', 'travelDate', 'travel_date');
-  const travelDates = checkIn ? new Date(checkIn).toLocaleDateString('en-IN') : 'Not specified';
+  const checkIn = lead?.itineraries?.[0]?.checkInDate ?? getField(lead, "checkInDate", "travelDate", "travel_date");
+  const travelDates = checkIn ? new Date(checkIn).toLocaleDateString("en-IN") : "Not specified";
 
   const primaryCheckIn = checkIn;
-  const primaryCheckOut = lead?.itineraries?.[0]?.checkOutDate ?? getField(lead, 'checkOutDate', 'check_out_date');
+  const primaryCheckOut = lead?.itineraries?.[0]?.checkOutDate ?? getField(lead, "checkOutDate", "check_out_date");
 
-  const budget = getField(lead, 'budget', 'estimatedValue');
-  const budgetValue = budget ? `₹${Number(budget).toLocaleString('en-IN')}` : '—';
+  const budget = getField(lead, "budget", "estimatedValue");
+  const budgetValue = budget ? `₹${Number(budget).toLocaleString("en-IN")}` : "—";
 
-  const customerType = getField(lead, 'customerType', 'customer_type', 'leadType');
-  const customerTypeValue = customerType || '—';
+  const customerType = getField(lead, "customerType", "customer_type", "leadType");
+  const customerTypeValue = customerType || "—";
 
-  const bookingWindow = getField(lead, 'bookingWindow', 'booking_window');
-  const bookingWindowValue = bookingWindow || '—';
+  const bookingWindow = getField(lead, "bookingWindow", "booking_window");
+  const bookingWindowValue = bookingWindow || "—";
 
   const primaryGuests = lead?.itineraries?.[0]?.numberOfGuests;
   const occupancy = primaryGuests
@@ -1007,6 +1124,103 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                 return null;
               })()}
             </div>
+          </div>
+
+          {/* Travel / Hotel bookings */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: 20,
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Travel</div>
+            {itineraries.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No hotel bookings added yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {itineraries.map((it, idx) => {
+                  const title = it.hotelName || it.propertyName || "Hotel";
+                  const dateLine = `${formatYmdForDisplay(it.checkInDate)} → ${formatYmdForDisplay(it.checkOutDate)}`;
+                  const rooms = it.roomsRequested || [];
+                  const showRooms = rooms.length > 0;
+                  return (
+                    <div
+                      key={`${it.propertyId || it.hotelName || "it"}-${idx}`}
+                      style={{
+                        border: "1px solid var(--border-light)",
+                        borderRadius: "var(--radius-md)",
+                        padding: 12,
+                        background: "transparent",
+                      }}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }} className="truncate">
+                            {title}
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{dateLine}</div>
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>
+                          {showRooms ? `${rooms.length} room type${rooms.length === 1 ? "" : "s"}` : "No rooms"}
+                        </div>
+                      </div>
+
+                      {showRooms && (
+                        <div
+                          className="mt-3 overflow-hidden rounded-md"
+                          style={{ border: "1px solid var(--border-light)" }}
+                        >
+                          <div
+                            className="grid grid-cols-12 gap-2 px-3 py-2"
+                            style={{ background: "var(--surface-2)", fontSize: 11, color: "var(--text-faint)" }}
+                          >
+                            <div className="col-span-6">Room type</div>
+                            <div className="col-span-2 text-right">Qty</div>
+                            <div className="col-span-2 text-right">Adults</div>
+                            <div className="col-span-2 text-right">Children</div>
+                          </div>
+                          {rooms.map((r, rIdx) => (
+                            <div
+                              key={`${r.roomTypeId || r.roomTypeName || "room"}-${rIdx}`}
+                              className="px-3 py-2 border-t"
+                              style={{ borderColor: "var(--border-light)" }}
+                            >
+                              <div className="grid grid-cols-12 gap-2 items-start">
+                                <div className="col-span-6 min-w-0">
+                                  <div style={{ fontSize: 13, color: "var(--text)" }} className="truncate">
+                                    {r.roomTypeName || r.roomTypeId || "—"}
+                                  </div>
+                                  {r.notes ? (
+                                    <div
+                                      style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}
+                                      className="break-words"
+                                    >
+                                      {r.notes}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <div className="col-span-2 text-right" style={{ fontSize: 13, color: "var(--text)" }}>
+                                  {r.quantity ?? "—"}
+                                </div>
+                                <div className="col-span-2 text-right" style={{ fontSize: 13, color: "var(--text)" }}>
+                                  {r.adults ?? "—"}
+                                </div>
+                                <div className="col-span-2 text-right" style={{ fontSize: 13, color: "var(--text)" }}>
+                                  {r.children ?? "—"}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Pipeline Stage Bar */}
@@ -1471,7 +1685,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         isOpen={emailComposerOpen}
         mode="compose"
         leadId={(lead as any)._id || lead.id}
-        defaultTo={lead.email || guestEmail}
+        defaultTo={guestEmail}
         onSent={() => {
           setEmailComposerOpen(false);
           void queryClient.invalidateQueries({ queryKey: ["communication-timeline", leadId] });
@@ -1585,7 +1799,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
           <DialogHeader>
             <DialogTitle>{lead.assignedToUserId ? "Reassign lead" : "Assign lead"}</DialogTitle>
             <DialogDescription>
-              Choose an active user. Permissions are controlled in Setup → Role Definition (e.g. leads.reassign or leads.field.assignment).
+              Choose an active user. Admins grant this in Setup → Profiles: open the user&apos;s profile, enable &quot;Leads Reassign&quot; under Setup Permissions, and ensure Leads has View + Edit under Module Permissions.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -1604,7 +1818,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             </Select>
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setIsReassignDialogOpen(false)}>
+            <Button type="button" variant="secondary" onClick={() => setIsReassignDialogOpen(false)}>
               Cancel
             </Button>
             <Button

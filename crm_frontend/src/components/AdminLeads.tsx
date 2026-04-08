@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { createLead, getLeadDetail, Lead, LeadDetail, listLeads, updateLead, getEligibleAssignees, EligibleAssignee, AssignmentMode, getLeadContactInfo } from "@/services/leads";
+import { createLead, getLeadDetail, Lead, LeadDetail, listLeadsPage, updateLead, getEligibleAssignees, EligibleAssignee, AssignmentMode, getLeadContactInfo } from "@/services/leads";
 import { listFilters, applyFilter, type SavedFilter } from "@/services/filters";
 import { listProperties } from "@/services/properties";
 import { listUsers, User } from "@/services/users";
@@ -21,8 +21,7 @@ import { PERMISSIONS } from "@/constants/permissions";
 import { canReassignLeadByProfile } from "@/lib/leadFieldEdit";
 import { listAccounts, Account, AccountType } from "@/services/accounts";
 import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
-import { HotelBookingSection } from "@/components/leads/HotelBookingSection";
-import { getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import {
   COUNTRY_PHONE_OPTIONS,
@@ -325,6 +324,8 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [clientPage, setClientPage] = useState(1);
+  const [listTotal, setListTotal] = useState(0);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const PAGE_SIZE = 25;
 
   // Strict permission checks - users must have explicit permissions
@@ -438,6 +439,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   };
 
   const [catalogueByPropertyId, setCatalogueByPropertyId] = useState<Record<string, RoomCatalogue>>({});
+  const [availabilityByHotelIdx, setAvailabilityByHotelIdx] = useState<
+    Record<number, { status: "idle" | "loading" | "ready" | "error"; byRoomTypeId: Record<string, number>; error?: string; key?: string }>
+  >({});
 
   useEffect(() => {
     const ids = hotels.map((h) => h.propertyId).filter((id) => !!id);
@@ -453,6 +457,58 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
           )
         );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hotels]);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    const t = setTimeout(() => {
+      hotels.forEach((h, idx) => {
+        if (!h.propertyId || !h.checkInDate || !h.checkOutDate) {
+          setAvailabilityByHotelIdx((prev) => ({ ...prev, [idx]: { status: "idle", byRoomTypeId: {} } }));
+          return;
+        }
+        if (new Date(h.checkInDate) >= new Date(h.checkOutDate)) return;
+
+        const key = `${h.propertyId}::${h.checkInDate}::${h.checkOutDate}`;
+        setAvailabilityByHotelIdx((prev) => {
+          const cur = prev[idx];
+          if (cur?.key === key && (cur.status === "loading" || cur.status === "ready")) return prev;
+          return { ...prev, [idx]: { status: "loading", byRoomTypeId: cur?.byRoomTypeId || {}, key } };
+        });
+
+        getLiveAvailabilityCached(h.propertyId, h.checkInDate, h.checkOutDate, { signal: abort.signal, ttlMs: 30_000 })
+          .then((res) => {
+            if (abort.signal.aborted) return;
+            if (res && typeof res === "object" && !Array.isArray(res) && "available" in res && (res as any).available === false) {
+              setAvailabilityByHotelIdx((prev) => ({ ...prev, [idx]: { status: "error", byRoomTypeId: {}, error: String((res as any).error || "PMS unavailable"), key } }));
+              return;
+            }
+            const inv = Array.isArray(res) ? res : [];
+            const byRoomTypeId: Record<string, number> = {};
+            for (const row of inv) {
+              if (!row?.roomTypeId) continue;
+              byRoomTypeId[row.roomTypeId] = Number(row.availableCount ?? 0);
+            }
+            setAvailabilityByHotelIdx((prev) => ({ ...prev, [idx]: { status: "ready", byRoomTypeId, key } }));
+          })
+          .catch((err) => {
+            if (abort.signal.aborted) return;
+            const msg =
+              err && typeof err === "object" && "name" in err && (err as any).name === "AbortError"
+                ? undefined
+                : err instanceof Error
+                  ? err.message
+                  : "PMS unavailable";
+            if (!msg) return;
+            setAvailabilityByHotelIdx((prev) => ({ ...prev, [idx]: { status: "error", byRoomTypeId: {}, error: msg, key } }));
+          });
+      });
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      abort.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hotels]);
 
@@ -577,6 +633,69 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pmsBooking.propertyId]);
 
+  // When the user fills the PMS availability block, mirror into the first hotel row (same property or empty row).
+  useEffect(() => {
+    const pid = pmsBooking.propertyId;
+    if (!pid) return;
+
+    setHotels((prev) => {
+      const h0 = prev[0];
+      if (!h0) return prev;
+      if (h0.propertyId && h0.propertyId !== pid) return prev;
+
+      const prop = allProperties.find((p) => p._id === pid);
+      const r0 = h0.roomsRequested?.[0] || {
+        roomTypeId: "",
+        roomTypeName: "",
+        quantity: "1",
+        adults: "1",
+        children: "0",
+      };
+
+      const checkIn =
+        pmsBooking.checkIn && pmsBooking.checkIn.length > 0
+          ? pmsBooking.checkIn.split("T")[0]
+          : h0.checkInDate;
+      const checkOut =
+        pmsBooking.checkOut && pmsBooking.checkOut.length > 0
+          ? pmsBooking.checkOut.split("T")[0]
+          : h0.checkOutDate;
+
+      const newH0: HotelEntry = {
+        ...h0,
+        propertyId: pid,
+        hotelName: prop?.name || h0.hotelName,
+        checkInDate: checkIn,
+        checkOutDate: checkOut,
+        roomsRequested: [
+          {
+            ...r0,
+            roomTypeId: pmsBooking.roomTypeId || r0.roomTypeId,
+            roomTypeName: pmsBooking.roomTypeName || r0.roomTypeName,
+            quantity: r0.quantity || "1",
+            adults: pmsBooking.adults != null ? String(pmsBooking.adults) : r0.adults,
+            children: pmsBooking.children != null ? String(pmsBooking.children) : r0.children,
+          },
+          ...(h0.roomsRequested?.slice(1) || []),
+        ],
+      };
+
+      const unchanged =
+        newH0.propertyId === h0.propertyId &&
+        newH0.hotelName === h0.hotelName &&
+        newH0.checkInDate === h0.checkInDate &&
+        newH0.checkOutDate === h0.checkOutDate &&
+        newH0.roomsRequested[0]?.roomTypeId === h0.roomsRequested[0]?.roomTypeId &&
+        newH0.roomsRequested[0]?.roomTypeName === h0.roomsRequested[0]?.roomTypeName &&
+        newH0.roomsRequested[0]?.adults === h0.roomsRequested[0]?.adults &&
+        newH0.roomsRequested[0]?.children === h0.roomsRequested[0]?.children;
+
+      if (unchanged) return prev;
+
+      return [newH0, ...prev.slice(1)];
+    });
+  }, [pmsBooking, allProperties]);
+
   // Lead types for dropdown
   const LEAD_TYPES = [
     { value: "STAY", label: "Stay" },
@@ -622,21 +741,31 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
   };
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  useEffect(() => {
     setUseSavedFilter(false);
     setActiveFilterId(null);
-    void loadLeads();
+    setClientPage(1);
+  }, [activeScope]);
+
+  useEffect(() => {
+    setClientPage(1);
+  }, [statusFilter, stageFilter, heatFilter, sourceFilter, assigneeFilter, debouncedSearch]);
+
+  useEffect(() => {
     if (canManageUsers) {
       void loadUsers();
     }
-    // Load accounts on mount, but don't fail if it errors
     loadAccounts().catch((err) => {
       console.error("Failed to load accounts on mount:", err);
       setAccounts([]);
     });
     void loadCustomFields();
-    // Load properties for PMS booking dropdown
     listProperties().then(setAllProperties).catch(() => setAllProperties([]));
-  }, [canManageUsers, activeScope]);
+  }, [canManageUsers]);
 
   // Derive orgId for saved filters: from first lead or first property
   useEffect(() => {
@@ -729,12 +858,23 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     }
   }, [accounts, form.source]);
 
-  const loadLeads = async () => {
+  const loadLeads = useCallback(async () => {
+    if (useSavedFilter) return;
     try {
       setIsLoadingList(true);
-      const data = await listLeads({ scope: activeScope });
-      setLeads(data);
-      // Don't auto-select the first lead - let user choose which lead to view
+      const r = await listLeadsPage({
+        scope: activeScope,
+        page: clientPage,
+        limit: PAGE_SIZE,
+        ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+        ...(stageFilter !== "ALL" ? { stageId: stageFilter } : {}),
+        ...(heatFilter !== "ALL" ? { heat: heatFilter } : {}),
+        ...(sourceFilter !== "ALL" ? { source: sourceFilter } : {}),
+        ...(assigneeFilter !== "ALL" ? { assigneeId: assigneeFilter } : {}),
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      });
+      setLeads(r.items);
+      setListTotal(r.total);
     } catch (err) {
       const description =
         err instanceof Error ? err.message : "Unable to load leads";
@@ -746,7 +886,23 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     } finally {
       setIsLoadingList(false);
     }
-  };
+  }, [
+    useSavedFilter,
+    activeScope,
+    clientPage,
+    statusFilter,
+    stageFilter,
+    heatFilter,
+    sourceFilter,
+    assigneeFilter,
+    debouncedSearch,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (useSavedFilter) return;
+    void loadLeads();
+  }, [useSavedFilter, loadLeads]);
 
   const loadUsers = async () => {
     try {
@@ -766,50 +922,6 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       setIsLoadingUsers(false);
     }
   };
-
-  const filteredLeads = useMemo(() => {
-    return leads.filter((lead) => {
-      if (statusFilter !== "ALL" && lead.status !== statusFilter) {
-        return false;
-      }
-      if (stageFilter !== "ALL" && lead.stageId !== stageFilter) {
-        return false;
-      }
-      if (heatFilter !== "ALL" && lead.heatLevel !== heatFilter) {
-        return false;
-      }
-      if (sourceFilter !== "ALL" && lead.source !== sourceFilter) {
-        return false;
-      }
-      if (assigneeFilter !== "ALL" && lead.assignedToUserId !== assigneeFilter) {
-        return false;
-      }
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.trim().toLowerCase();
-        const assignedUser = users.find((u) => u.id === lead.assignedToUserId);
-        const assignedName = assignedUser?.name || assignedUser?.email || "";
-        const { name: guestName, phone: guestPhone, email: guestEmail } = getLeadContactInfo(lead);
-
-        const haystack = [
-          lead.leadNumber ?? lead.id,
-          lead.source,
-          lead.leadType,
-          lead.propertyId ?? "",
-          assignedName,
-          guestName,
-          guestPhone,
-          guestEmail,
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        return haystack.includes(q);
-      }
-
-      return true;
-    });
-  }, [leads, users, statusFilter, stageFilter, heatFilter, sourceFilter, assigneeFilter, searchQuery]);
 
   const resetFilters = () => {
     setStatusFilter("ALL");
@@ -1048,7 +1160,31 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       };
 
       const newLead = await createLead(payload);
-      setLeads((prev) => [newLead, ...prev]);
+      if (useSavedFilter && activeFilterId) {
+        void handleApplySavedFilter(activeFilterId);
+      } else {
+        setClientPage(1);
+        try {
+          setIsLoadingList(true);
+          const r = await listLeadsPage({
+            scope: activeScope,
+            page: 1,
+            limit: PAGE_SIZE,
+            ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+            ...(stageFilter !== "ALL" ? { stageId: stageFilter } : {}),
+            ...(heatFilter !== "ALL" ? { heat: heatFilter } : {}),
+            ...(sourceFilter !== "ALL" ? { source: sourceFilter } : {}),
+            ...(assigneeFilter !== "ALL" ? { assigneeId: assigneeFilter } : {}),
+            ...(debouncedSearch ? { search: debouncedSearch } : {}),
+          });
+          setLeads(r.items);
+          setListTotal(r.total);
+        } catch {
+          void loadLeads();
+        } finally {
+          setIsLoadingList(false);
+        }
+      }
       toast({
         title: "Lead created",
         description: `Lead ${newLead.leadNumber} created successfully.`,
@@ -1204,11 +1340,9 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
     return "stage_active";
   };
 
-  const displayLeads = useSavedFilter ? filterResultData : filteredLeads;
-  const totalLeads = useSavedFilter ? filterResultTotal : filteredLeads.length;
-  const paginatedLeads = useSavedFilter
-    ? displayLeads
-    : displayLeads.slice((clientPage - 1) * PAGE_SIZE, clientPage * PAGE_SIZE);
+  const displayLeads = useSavedFilter ? filterResultData : leads;
+  const totalLeads = useSavedFilter ? filterResultTotal : listTotal;
+  const paginatedLeads = displayLeads;
   const totalPages = Math.ceil(totalLeads / PAGE_SIZE);
   const currentPageNum = useSavedFilter ? filterResultPage : clientPage;
   const paginationStart = totalLeads === 0 ? 0 : (currentPageNum - 1) * PAGE_SIZE + 1;
@@ -1665,8 +1799,11 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                                     try {
                                       await updateLead(lead.id, lostStage ? { stageId: lostStage._id } : { status: "LOST" as const });
                                       toast({ title: "Lead updated", description: "Lead marked as lost." });
-                                      void loadLeads();
-                                      if (useSavedFilter) clearSavedFilter();
+                                      if (useSavedFilter && activeFilterId) {
+                                        void handleSavedFilterPage(filterResultPage);
+                                      } else {
+                                        void loadLeads();
+                                      }
                                     } catch (err) {
                                       toast({ title: "Error", description: err instanceof Error ? err.message : "Unable to update lead", variant: "destructive" });
                                     }
@@ -1734,7 +1871,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
       {/* Lead Details Dialog */}
       <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {selectedDetail
@@ -2148,7 +2285,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
 
       {/* Create Lead Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Lead</DialogTitle>
             <DialogDescription>
@@ -2182,42 +2319,6 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                   placeholder="Guest Last Name"
                 />
               </div>
-            </div>
-
-            {/* Primary PMS: live availability check */}
-            <div className="space-y-4 pt-4 border-t border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                <Hotel className="h-4 w-4" />
-                PMS availability check
-              </h3>
-              <div className="space-y-2">
-                <label className="text-xs font-medium">Property for availability check</label>
-                <SearchableSelect
-                  options={[
-                    { value: "none", label: "None" },
-                    ...allProperties
-                      .filter((p) => p.status === "ACTIVE")
-                      .map((p) => ({ value: p._id, label: p.name })),
-                  ]}
-                  value={pmsBooking.propertyId || "none"}
-                  placeholder="Select a Property..."
-                  onValueChange={(val) =>
-                    setPmsBooking((prev) => ({
-                      ...prev,
-                      propertyId: val === "none" ? "" : val,
-                    }))
-                  }
-                />
-              </div>
-              {pmsBooking.propertyId && (
-                <HotelBookingSection
-                  propertyId={pmsBooking.propertyId}
-                  value={pmsBooking}
-                  onChange={(patch) =>
-                    setPmsBooking((prev) => ({ ...prev, ...patch }))
-                  }
-                />
-              )}
             </div>
 
             {/* Multiple Hotels Section */}
@@ -2359,7 +2460,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                               <SelectTrigger>
                                 <SelectValue placeholder="Select Room Type" />
                               </SelectTrigger>
-                              <SelectContent>
+                              <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[min(520px,calc(100vw-2rem))]">
                                 {r.roomTypeId &&
                                   !(catalogueByPropertyId[hotel.propertyId]?.roomTypes || []).some(
                                     (x) => x.roomTypeId === r.roomTypeId
@@ -2372,11 +2473,39 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                                       )}
                                     </SelectItem>
                                   )}
-                                {(catalogueByPropertyId[hotel.propertyId]?.roomTypes || []).map((rt) => (
-                                  <SelectItem key={rt.roomTypeId} value={rt.roomTypeId}>
-                                    {resolveRoomTypeDisplayName(rt.roomTypeId, rt.roomTypeName, catalogueByPropertyId[hotel.propertyId]?.roomTypes)}
-                                  </SelectItem>
-                                ))}
+                                {(catalogueByPropertyId[hotel.propertyId]?.roomTypes || []).map((rt) => {
+                                  const avail = (availabilityByHotelIdx[index]?.byRoomTypeId || {})[rt.roomTypeId];
+                                  const status = availabilityByHotelIdx[index]?.status;
+                                  const isZero = status === "ready" && typeof avail === "number" && avail <= 0;
+                                  return (
+                                    <SelectItem key={rt.roomTypeId} value={rt.roomTypeId} disabled={isZero}>
+                                      <div className="flex w-full items-center gap-3">
+                                        <span className="min-w-0 flex-1 truncate">
+                                          {resolveRoomTypeDisplayName(
+                                            rt.roomTypeId,
+                                            rt.roomTypeName,
+                                            catalogueByPropertyId[hotel.propertyId]?.roomTypes
+                                          )}
+                                        </span>
+                                        {status === "loading" && (
+                                          <span className="ml-auto text-xs text-muted-foreground">…</span>
+                                        )}
+                                        {status === "ready" && (
+                                          <span
+                                            className={[
+                                              "ml-auto text-[11px] tabular-nums px-1.5 py-0.5 rounded border",
+                                              typeof avail === "number" && avail <= 0
+                                                ? "text-muted-foreground bg-muted/40 border-muted"
+                                                : "text-muted-foreground bg-muted/60 border-muted",
+                                            ].join(" ")}
+                                          >
+                                            {typeof avail === "number" ? `${avail}` : "—"}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </SelectItem>
+                                  );
+                                })}
                               </SelectContent>
                             </Select>
                           </div>
@@ -2426,6 +2555,14 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                         </div>
                       ))}
                     </div>
+
+                    {(availabilityByHotelIdx[index]?.status === "loading" || availabilityByHotelIdx[index]?.status === "error") && (
+                      <div className="text-xs text-muted-foreground">
+                        {availabilityByHotelIdx[index]?.status === "loading"
+                          ? "Loading live inventory…"
+                          : `Live inventory unavailable: ${availabilityByHotelIdx[index]?.error || "PMS unavailable"}`}
+                      </div>
+                    )}
                   </div>
 
                 </div>
