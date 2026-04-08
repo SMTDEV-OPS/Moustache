@@ -1,7 +1,7 @@
 import type { ILead } from "../models/lead";
 import type { ILeadItinerary } from "../models/leadItinerary";
 import type { QuotationTier } from "../constants/quotationVisualBranding";
-import { coerceTier } from "../constants/quotationVisualBranding";
+import { resolveQuotationTierForProperty } from "../constants/quotationVisualBranding";
 
 /** Lean itinerary shape (from .lean()) — avoids Document typing issues */
 export type QuotationItineraryLean = Pick<
@@ -29,7 +29,7 @@ function formatLongDate(d: Date): string {
   });
 }
 
-function firstItinerary(
+export function firstItinerary(
   itineraries: QuotationItineraryLean[] | null | undefined
 ): QuotationItineraryLean | undefined {
   if (!itineraries?.length) return undefined;
@@ -134,8 +134,12 @@ export function buildQuotationStayContext(
   } | null,
   quoteRooms: number
 ): QuotationStayContext {
-  const tier = coerceTier(property?.tier);
   const it = firstItinerary(itineraries ?? []);
+  const tier = resolveQuotationTierForProperty(
+    property?.tier,
+    property?.name,
+    it?.hotelName
+  );
   const { in: dIn, out: dOut } = resolveCheckInOut(lead, it);
 
   const checkInDisplay = dIn ? formatLongDate(dIn) : "To be confirmed";

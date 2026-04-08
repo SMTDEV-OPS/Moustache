@@ -17,6 +17,37 @@ export function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Strip PMS-supplied HTML to plain text for safe quotation emails. */
+export function pmsPolicyFieldToPlainText(raw: string): string {
+  if (!raw?.trim()) return "";
+  return raw
+    .replace(/\r\n/g, "\n")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function pmsPolicyFieldToEmailBodyHtml(raw: string): string {
+  const plain = pmsPolicyFieldToPlainText(raw);
+  return escapeHtml(plain).replace(/\n/g, "<br>");
+}
+
 function buildPocFooterHtml(factsheet: IFactSheetContent, accent: string): string {
   const p = factsheet.pocDetails;
   if (!p) return "";
@@ -88,6 +119,13 @@ export interface GenerateQuotationEmailOptions {
     rooms?: number;
     rate?: number;
     taxes?: number;
+    nights?: number;
+    rateLines?: {
+      roomTypeName: string;
+      quantity: number;
+      ratePerNight: number;
+      hotelName?: string;
+    }[];
     inclusions?: string;
     specialPackages?: string;
     sentTo?: { name?: string; email?: string; phone?: string };
@@ -96,6 +134,8 @@ export interface GenerateQuotationEmailOptions {
   leadNumber: string;
   versionNumber: number;
   factsheet: IFactSheetContent | null;
+  /** From eZee HotelList policy fields — titles plain, bodies escaped with &lt;br&gt; only */
+  pmsPolicySections?: { title: string; bodyHtml: string }[];
   fontFaceCss: string;
   primaryFont: string;
   secondaryFont: string;
@@ -106,7 +146,19 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
   const rooms = o.quote.rooms || 1;
   const rate = o.quote.rate || 0;
   const taxes = o.quote.taxes || 0;
-  const total = rate * rooms + taxes;
+  const nights = o.quote.nights && o.quote.nights > 0 ? o.quote.nights : 1;
+  const rateLines = (o.quote.rateLines ?? []).filter(
+    (l) => (l.quantity ?? 0) > 0 && (l.ratePerNight ?? 0) >= 0 && (l.roomTypeName ?? "").trim()
+  );
+  const subtotalFromLines =
+    rateLines.length > 0
+      ? rateLines.reduce(
+          (sum, l) => sum + (l.ratePerNight || 0) * (l.quantity || 1) * nights,
+          0
+        )
+      : null;
+  const subtotal = subtotalFromLines ?? rate * rooms * nights;
+  const total = subtotal + taxes;
 
   const p = o.palette;
   const stay = o.stay;
@@ -149,12 +201,63 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
   const legacyExtra =
     o.factsheet && !hasPillContent ? legacyHighlightsBlock(o.factsheet, p) : "";
 
+  const pmsPoliciesBlock =
+    o.pmsPolicySections && o.pmsPolicySections.length > 0
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${p.borderColor};border-radius:8px;margin:24px 0 0 0;background:${p.contentBg};">
+      <tr>
+        <td style="padding:18px;">
+          <p style="margin:0 0 12px 0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${p.accentDark};font-weight:700;">Hotel policies (from booking system)</p>
+          <p style="margin:0 0 14px 0;font-size:12px;line-height:1.5;color:#666;">The following is provided by our property management system for this hotel. Please read before confirming.</p>
+          ${o.pmsPolicySections
+            .map(
+              (s) => `<div style="margin-top:14px;">
+            <p style="margin:0 0 6px 0;font-size:14px;font-weight:600;color:${p.accentDark};font-family:${o.primaryFont};">${escapeHtml(s.title)}</p>
+            <div style="margin:0;font-size:13px;line-height:1.55;color:#333;font-family:${o.secondaryFont};">${s.bodyHtml}</div>
+          </div>`
+            )
+            .join("")}
+        </td>
+      </tr>
+    </table>`
+      : "";
+
   const pocFooter = o.factsheet ? buildPocFooterHtml(o.factsheet, "#666") : "";
 
   const headerBgStyle =
     stay.tier === "LUXURIA"
       ? `background:${p.headerBackgroundCss};`
       : `background-color:${p.headerBackgroundSolid};`;
+
+  const rateLinesTable =
+    rateLines.length > 0
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 0 0;border-top:1px solid ${p.borderColor};">
+          <tr>
+            <td style="padding:12px 0 0 0;">
+              <p style="margin:0 0 8px 0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:${p.accentDark};font-weight:700;font-family:${o.secondaryFont};">Room rates</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-family:${o.secondaryFont};font-size:14px;">
+                ${rateLines
+                  .map((l) => {
+                    const lineTotal = (l.ratePerNight || 0) * (l.quantity || 1) * nights;
+                    const label = `${l.quantity} × ${escapeHtml(l.roomTypeName)}${
+                      l.hotelName?.trim() ? ` · ${escapeHtml(l.hotelName.trim())}` : ""
+                    }`;
+                    return `<tr>
+                      <td style="padding:8px 0;color:#333;">${label}</td>
+                      <td align="right" style="padding:8px 0;color:#555;">${formatCurrency(
+                        l.ratePerNight || 0
+                      )}<span style="font-size:12px;color:#777;"> /night</span></td>
+                      <td align="right" style="padding:8px 0;font-weight:600;color:#111;">${formatCurrency(
+                        lineTotal
+                      )}</td>
+                    </tr>`;
+                  })
+                  .join("")}
+              </table>
+              <p style="margin:10px 0 0 0;font-size:12px;color:#666;">Nights: <strong>${nights}</strong></p>
+            </td>
+          </tr>
+        </table>`
+      : "";
 
   return `<!DOCTYPE html>
 <html>
@@ -219,15 +322,32 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
           <tr>
             <td style="padding:12px 18px;border-top:1px solid ${p.borderColor};">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-family:${o.secondaryFont};font-size:14px;">
-                <tr>
+                ${
+                  rateLines.length === 0
+                    ? `<tr>
                   <td style="padding:8px 0;color:#555;">Rate per room / night</td>
                   <td align="right" style="font-weight:600;color:#111;">${formatCurrency(rate)}</td>
                 </tr>
+                <tr>
+                  <td style="padding:8px 0;color:#555;">Nights</td>
+                  <td align="right" style="font-weight:600;color:#111;">${escapeHtml(
+                    String(nights)
+                  )}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0;color:#555;">Subtotal</td>
+                  <td align="right" style="font-weight:600;color:#111;">${formatCurrency(
+                    subtotal
+                  )}</td>
+                </tr>`
+                    : ""
+                }
                 <tr>
                   <td style="padding:8px 0;color:#555;">Taxes &amp; fees</td>
                   <td align="right" style="font-weight:600;color:#111;">${formatCurrency(taxes)}</td>
                 </tr>
               </table>
+              ${rateLinesTable}
             </td>
           </tr>
           <tr>
@@ -246,6 +366,7 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
         ${specialHtml}
         ${pills}
         ${legacyExtra}
+        ${pmsPoliciesBlock}
 
         <p style="margin:20px 0 0 0;font-size:14px;line-height:1.6;color:#333;">This quotation is valid for 7 days. To confirm your booking or if you have any questions, please contact us.</p>
         <p style="margin:12px 0 0 0;font-size:14px;color:#333;">We look forward to welcoming you!</p>

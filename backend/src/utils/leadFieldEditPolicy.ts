@@ -83,7 +83,12 @@ export function getEditableLeadFieldKeys(user: AuthUser | undefined): LeadPatchK
   const hasGranular = userHasAnyGranularFieldPermission(user);
 
   if (hasUpdate && !hasGranular) {
-    return [...ALL_LEAD_PATCH_KEYS];
+    // Legacy behaviour: `leads.update` used to unlock all patch keys.
+    // Security tightening: assignee changes must be explicitly granted via `leads.reassign`
+    // (or `leads.field.assignment`) even when the user has broad update access.
+    return ALL_LEAD_PATCH_KEYS.filter(
+      (k) => k !== "assignedToUserId"
+    ) as LeadPatchKey[];
   }
 
   const allowed = new Set<LeadPatchKey>();

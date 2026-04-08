@@ -9,6 +9,7 @@ import { UserModel } from "../../models/user";
 import { LeadModel } from "../../models/lead";
 import { LeadStatus } from "../../models/common";
 import util from "util";
+import { normalizePhone } from "../../utils/phoneUtils";
 
 export const publicIvrWebhooksRouter = Router();
 
@@ -41,6 +42,9 @@ const customIvrPayloadSchema = z.object({
             z
                 .object({
                     name: z.string().optional(),
+                    number: z.string().optional(),
+                    num: z.string().optional(),
+                    agent_number: z.string().optional(),
                 })
                 .passthrough(),
         ])
@@ -129,6 +133,26 @@ function sanitizeHeaders(headers: Record<string, any> | undefined): Record<strin
         }
     }
     return out;
+}
+
+function extractAnsweredAgentPhone(value: unknown): string | undefined {
+    if (!value) return undefined;
+    if (typeof value === "string") return undefined;
+    if (typeof value === "object" && !Array.isArray(value)) {
+        const obj = value as any;
+        return (
+            normalizeSingle(obj.agent_number) ||
+            normalizeSingle(obj.number) ||
+            normalizeSingle(obj.num)
+        );
+    }
+    return undefined;
+}
+
+function digitsOnly(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    const d = value.replace(/\D/g, "");
+    return d.length ? d : undefined;
 }
 
 /**
@@ -243,29 +267,44 @@ publicIvrWebhooksRouter.post("/", async (req, res, next) => {
         // Custom payload: create lead and attempt to assign to answered_agent (case-insensitive match)
         const data = customParsed.success ? customParsed.data : (customIvrPayloadSchema.parse(mergedPayload) as any);
 
-        const callerPhone = normalizeSingle((data as any).caller_id_number) || "UNKNOWN";
+        const callerPhoneRaw = normalizeSingle((data as any).caller_id_number) || "UNKNOWN";
+        const callerPhoneNormalized = callerPhoneRaw !== "UNKNOWN" ? normalizePhone(callerPhoneRaw) : null;
+        const callerPhone = callerPhoneNormalized || callerPhoneRaw;
         const answeredAgentName = extractAnsweredAgentName((data as any).answered_agent);
+        const answeredAgentPhoneRaw = extractAnsweredAgentPhone((data as any).answered_agent);
+        const answeredAgentPhoneNormalized = normalizePhone(answeredAgentPhoneRaw || undefined);
         const digitsDialed = normalizeDigitsDialed((data as any).digits_dialed);
 
         let assignedToUserId: string | undefined;
-        if (answeredAgentName) {
+        if (answeredAgentPhoneNormalized || answeredAgentName) {
+            const agentLast10 = digitsOnly(answeredAgentPhoneNormalized || answeredAgentPhoneRaw)?.slice(-10);
+
             const user = await UserModel.findOne({
-                name: { $regex: new RegExp(`^${escapeRegex(answeredAgentName)}$`, "i") },
                 status: "ACTIVE",
+                $or: [
+                    ...(answeredAgentPhoneNormalized ? [{ phone: answeredAgentPhoneNormalized }] : []),
+                    ...(agentLast10 ? [{ phone: { $regex: new RegExp(`${escapeRegex(agentLast10)}$`) } }] : []),
+                    ...(answeredAgentName
+                        ? [{ name: { $regex: new RegExp(`^${escapeRegex(answeredAgentName)}$`, "i") } }]
+                        : []),
+                ],
             })
-                .select("_id name email status")
+                .select("_id name email status phone")
                 .lean();
 
             if (user?._id) {
                 assignedToUserId = String(user._id);
                 logger.info("IVR webhook matched answered_agent to user", {
                     answeredAgentName,
+                    answeredAgentPhone: answeredAgentPhoneNormalized || answeredAgentPhoneRaw,
                     matchedUserId: assignedToUserId,
                     matchedUserName: (user as any).name,
+                    matchedUserPhone: (user as any).phone,
                 });
             } else {
                 logger.warn("IVR webhook could not match answered_agent to any ACTIVE user", {
                     answeredAgentName,
+                    answeredAgentPhone: answeredAgentPhoneNormalized || answeredAgentPhoneRaw,
                 });
             }
         } else {
@@ -307,6 +346,9 @@ publicIvrWebhooksRouter.post("/", async (req, res, next) => {
                         (data as any).uuid ? `UUID: ${(data as any).uuid}` : null,
                         digitsDialed ? `Digits: ${digitsDialed}` : null,
                         answeredAgentName ? `Answered Agent: ${answeredAgentName}` : null,
+                        (answeredAgentPhoneNormalized || answeredAgentPhoneRaw)
+                            ? `Agent Phone: ${answeredAgentPhoneNormalized || answeredAgentPhoneRaw}`
+                            : null,
                         normalizeSingle((data as any).recording_url) ? `Recording: ${normalizeSingle((data as any).recording_url)}` : null,
                         normalizeSingle((data as any).hangup_cause) ? `Hangup: ${normalizeSingle((data as any).hangup_cause)}` : null,
                     ]
@@ -365,6 +407,7 @@ publicIvrWebhooksRouter.post("/", async (req, res, next) => {
                 digits_dialed: digitsDialed,
                 answered_agent: (data as any).answered_agent,
                 answered_agent_name: answeredAgentName,
+                answered_agent_phone: answeredAgentPhoneNormalized || answeredAgentPhoneRaw,
                 missed_agent: (data as any).missed_agent,
                 recording_url: (data as any).recording_url,
                 call_status: (data as any).call_status,

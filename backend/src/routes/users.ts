@@ -9,13 +9,14 @@ import { requireAuth, requirePermissions } from "../middleware/auth";
 import { badRequest, forbidden, notFound, unauthorized } from "../utils/httpError";
 import { AccessControlService } from "../services/auth/AccessControlService";
 import { PERMISSIONS } from "../constants/permissions";
+import { normalizePhone } from "../utils/phoneUtils";
 
 export const usersRouter = Router();
 
 const createUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  phone: z.string().nullish(),
+  phone: z.string().trim().min(1, "Phone number is required"),
   password: z.string().min(6),
   regions: z.array(z.string()).nullish(),
   roleId: z.string().nullish(),
@@ -25,7 +26,7 @@ const createUserSchema = z.object({
 
 const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
-  phone: z.string().optional(),
+  phone: z.string().trim().min(1, "Phone number cannot be empty").optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
   regions: z.array(z.string()).optional(),
   roleId: z.string().optional(),
@@ -127,6 +128,11 @@ usersRouter.post(
         throw badRequest("User with this email already exists");
       }
 
+      const normalizedPhone = normalizePhone(phone);
+      if (!normalizedPhone) {
+        throw badRequest("Invalid phone number");
+      }
+
       const passwordHash = await bcrypt.hash(password, 10);
 
       // Gap A (Part B): never create a user without a profile.
@@ -159,7 +165,7 @@ usersRouter.post(
       const user = await UserModel.create({
         name,
         email,
-        phone,
+        phone: normalizedPhone,
         regions,
         roleId,
         profileId: finalProfileId,
@@ -201,6 +207,14 @@ usersRouter.patch(
         throw badRequest(`Invalid update payload: ${parsed.error.issues.map(i => i.message).join(", ")}`);
       }
       const update: Record<string, unknown> = { ...parsed.data };
+
+      if (parsed.data.phone !== undefined) {
+        const normalizedPhone = normalizePhone(parsed.data.phone);
+        if (!normalizedPhone) {
+          throw badRequest("Invalid phone number");
+        }
+        update.phone = normalizedPhone;
+      }
 
       if (parsed.data.password) {
         update.passwordHash = await bcrypt.hash(parsed.data.password, 10);

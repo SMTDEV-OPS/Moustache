@@ -28,6 +28,13 @@ export interface EzeeReservation {
     rooms: EzeeReservationRoom[];
 }
 
+/** Hotel-level policy text from eZee reservation `HotelList` (MetaSearch listing API). */
+export interface EzeeQuotationPolicySection {
+    title: string;
+    /** May contain HTML from PMS — sanitize before putting in email */
+    body: string;
+}
+
 export class EzeePMSService implements IPMSService {
     private hotelCode: string;
     private authCode: string;
@@ -37,6 +44,124 @@ export class EzeePMSService implements IPMSService {
     constructor(config: { hotelCode: string; authCode: string }) {
         this.hotelCode = config.hotelCode;
         this.authCode = config.authCode;
+    }
+
+    private humanizePolicyFieldKey(key: string): string {
+        return key
+            .replace(/_/g, " ")
+            .replace(/([a-z])([A-Z])/g, "$1 $2")
+            .replace(/\s+/g, " ")
+            .trim()
+            .replace(/^./, (c) => c.toUpperCase());
+    }
+
+    /** Keys on HotelList rows that look like policies / terms (not marketing address fields). */
+    private isPolicyLikeFieldKey(key: string): boolean {
+        if (
+            /^(hotel_name|hotel_description|hotel_code|hotelunkid|bookingengineurl|city|state|zipcode|country|country_isocode|countryalias|grade|property_type|latitude|longitude|email|phone|fax|website)$/i.test(
+                key
+            )
+        ) {
+            return false;
+        }
+        const k = key.toLowerCase();
+        return /policy|terms|cancel|child|pet|deposit|payment|rule|disclaimer|remark|instruction|check.?in|check.?out|early|late|smoking|restrict|occupancy|extra|damage|liability|guideline|fine|penalty|important|general.?condition/i.test(
+            k
+        );
+    }
+
+    private sectionSortKey(title: string): number {
+        const t = title.toLowerCase();
+        if (t.includes("cancel")) return 0;
+        if (t.includes("term") || t.includes("condition")) return 1;
+        if (t.includes("payment") || t.includes("deposit")) return 2;
+        if (t.includes("check")) return 3;
+        return 10;
+    }
+
+    /**
+     * Fetches `request_type=HotelList` and extracts policy-like string fields for the configured hotel.
+     * Shape varies by property; unknown keys are skipped unless they match policy heuristics.
+     */
+    async getQuotationPolicySections(): Promise<EzeeQuotationPolicySection[]> {
+        const url =
+            `${this.metaSearchBaseUrl}/listing.php` +
+            `?request_type=HotelList` +
+            `&HotelCode=${encodeURIComponent(this.hotelCode)}` +
+            `&APIKey=${encodeURIComponent(this.authCode)}` +
+            `&language=en`;
+
+        try {
+            const res = await axios.post(url, null, { timeout: 15000 });
+            const raw = res.data;
+            if (raw?.Errors?.ErrorMessage) {
+                return [];
+            }
+
+            let rows: unknown[] = [];
+            if (Array.isArray(raw)) {
+                rows = raw;
+            } else if (raw && typeof raw === "object" && Array.isArray((raw as any).Hotels)) {
+                rows = (raw as any).Hotels;
+            } else if (raw && typeof raw === "object" && (raw as any).Hotel) {
+                const h = (raw as any).Hotel;
+                rows = Array.isArray(h) ? h : [h];
+            }
+
+            const codeNorm = String(this.hotelCode).trim();
+            const codeLo = codeNorm.toLowerCase();
+            let hotel = rows.find((r) => {
+                if (!r || typeof r !== "object") return false;
+                const o = r as Record<string, unknown>;
+                const c = String(o.Hotel_Code ?? o.hotelcode ?? o.HotelCode ?? "").trim();
+                return c === codeNorm || c.toLowerCase() === codeLo;
+            }) as Record<string, unknown> | undefined;
+
+            if (!hotel && rows.length === 1 && rows[0] && typeof rows[0] === "object") {
+                hotel = rows[0] as Record<string, unknown>;
+            }
+
+            if (!hotel) {
+                return [];
+            }
+
+            const seen = new Set<string>();
+            const out: EzeeQuotationPolicySection[] = [];
+            const maxLen = 4500;
+
+            for (const [key, val] of Object.entries(hotel)) {
+                if (!this.isPolicyLikeFieldKey(key)) continue;
+                const body =
+                    typeof val === "string"
+                        ? val.trim()
+                        : val != null
+                          ? String(val).trim()
+                          : "";
+                if (body.length < 12) continue;
+
+                const title = this.humanizePolicyFieldKey(key);
+                const dedupe = `${title.toLowerCase()}:${body.slice(0, 120)}`;
+                if (seen.has(dedupe)) continue;
+                seen.add(dedupe);
+
+                out.push({
+                    title,
+                    body: body.length > maxLen ? `${body.slice(0, maxLen)}…` : body,
+                });
+            }
+
+            out.sort(
+                (a, b) =>
+                    this.sectionSortKey(a.title) - this.sectionSortKey(b.title) ||
+                    a.title.localeCompare(b.title)
+            );
+
+            return out.slice(0, 12);
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error("eZee getQuotationPolicySections error:", e);
+            return [];
+        }
     }
 
     async getInventory(

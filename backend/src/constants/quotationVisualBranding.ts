@@ -221,3 +221,47 @@ export function coerceTier(tier: string | undefined | null): QuotationTier {
   if (tier === "HOSTEL" || tier === "SELECT" || tier === "LUXURIA") return tier;
   return "SELECT";
 }
+
+/**
+ * When Property.tier is unset (e.g. PMS sync), infer from display name so quotation
+ * emails use the correct palette (Luxuria vs Select vs Hostel).
+ */
+export function inferTierFromPropertyName(
+  name: string | undefined | null
+): QuotationTier | null {
+  const n = (name ?? "").trim().toLowerCase();
+  if (!n) return null;
+  if (n.includes("luxuria")) return "LUXURIA";
+  if (n.includes("select")) return "SELECT";
+  if (n.includes("hostel")) return "HOSTEL";
+  return null;
+}
+
+/**
+ * Resolve tier for quotation email visuals.
+ * PMS / CRM often stores `SELECT` for every hotel; product line is still in the
+ * property or itinerary name (e.g. "Luxuria"). When DB tier is missing or SELECT,
+ * infer from name hints. Strong LUXURIA in the name also upgrades a wrong HOSTEL.
+ */
+export function resolveQuotationTierForProperty(
+  tier: string | undefined | null,
+  ...nameHints: (string | undefined | null)[]
+): QuotationTier {
+  const combined = nameHints
+    .map((s) => (s ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  const fromName = inferTierFromPropertyName(combined);
+
+  const db =
+    tier === "HOSTEL" || tier === "SELECT" || tier === "LUXURIA" ? tier : null;
+
+  if (!db || db === "SELECT") {
+    if (fromName) return fromName;
+    return db ?? "SELECT";
+  }
+
+  if (db === "HOSTEL" && fromName === "LUXURIA") return "LUXURIA";
+
+  return db;
+}

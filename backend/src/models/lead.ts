@@ -219,6 +219,8 @@ leadSchema.set("toObject", { virtuals: true });
 
 leadSchema.index({ assignedToUserId: 1, status: 1 });
 leadSchema.index({ createdAt: -1 });
+/** Common list query: scope + recency */
+leadSchema.index({ assignedToUserId: 1, createdAt: -1 });
 
 export const LeadModel = model<ILead>("Lead", leadSchema);
 

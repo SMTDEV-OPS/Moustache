@@ -19,6 +19,7 @@ const ALL_SETUP_KEYS = [
   PERMISSIONS.CONGLOMERATES.MANAGE,
   PERMISSIONS.ACCOUNT_POTENTIALS.MANAGE,
   PERMISSIONS.HOTEL_BRANDS.MANAGE,
+  PERMISSIONS.LEADS.REASSIGN,
 ];
 
 const ALL_MODULES = [
@@ -80,7 +81,7 @@ export async function ensureDefaultProfiles() {
   const noSetupKeys = ALL_SETUP_KEYS.map((k) => ({ key: k, enabled: false }));
   const managerSetupKeys = ALL_SETUP_KEYS.map((k) => ({
     key: k,
-    enabled: ["settings.manage", "users.manage", "reports.manage"].includes(k),
+    enabled: ["settings.manage", "users.manage", "reports.manage", PERMISSIONS.LEADS.REASSIGN].includes(k),
   }));
   const tlSetupKeys = ALL_SETUP_KEYS.map((k) => ({
     key: k,

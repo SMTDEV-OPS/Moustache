@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Types } from "mongoose";
 import { z } from "zod";
 import { requireAuth, hasPermission } from "../middleware/auth";
 import { RoleModel } from "../models/role";
@@ -74,6 +75,115 @@ async function getTeamMemberIdsForRoleOwner(userId: string): Promise<string[]> {
     console.error("Error fetching team member IDs:", error);
     return [];
   }
+}
+
+const DEFAULT_LEAD_PAGE_SIZE = 50;
+const MAX_LEAD_PAGE_SIZE = 200;
+
+function parseLeadListPage(query: Record<string, unknown>): number {
+  const raw = query.page;
+  const n = typeof raw === "string" ? parseInt(raw, 10) : typeof raw === "number" ? raw : NaN;
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return n;
+}
+
+function parseLeadListLimit(query: Record<string, unknown>): number {
+  const raw = query.limit;
+  const n = typeof raw === "string" ? parseInt(raw, 10) : typeof raw === "number" ? raw : NaN;
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_LEAD_PAGE_SIZE;
+  return Math.min(n, MAX_LEAD_PAGE_SIZE);
+}
+
+type LeadsIndexQuery = {
+  status?: string;
+  source?: string;
+  assigneeId?: string;
+  propertyId?: string;
+  fromDate?: string;
+  toDate?: string;
+  heat?: string;
+  assignmentSource?: string;
+  stageId?: string;
+  search?: string;
+};
+
+/**
+ * Build Mongo filter for lead index (list + summary). Caller must resolve `effectiveScope` and permissions first.
+ */
+async function buildLeadsIndexFilter(
+  user: AccessUser,
+  query: LeadsIndexQuery,
+  effectiveScope: LeadScope
+): Promise<{ filter: Record<string, unknown>; earlyEmpty: boolean }> {
+  const filter: Record<string, unknown> = {};
+
+  if (query.status) filter.status = query.status;
+  if (query.source) filter.source = query.source;
+  if (query.assigneeId) filter.assignedToUserId = query.assigneeId;
+  if (query.propertyId) filter.propertyId = query.propertyId;
+  if (query.heat) filter.heatLevel = query.heat;
+  if (
+    query.assignmentSource &&
+    ["v2_rule", "legacy_rule", "round_robin_fallback", "manual", "overflow", "none"].includes(
+      String(query.assignmentSource)
+    )
+  ) {
+    filter.assignmentSource = query.assignmentSource;
+  }
+
+  if (query.stageId && query.stageId !== "ALL" && Types.ObjectId.isValid(String(query.stageId))) {
+    filter.stageId = new Types.ObjectId(String(query.stageId));
+  }
+
+  if (query.fromDate || query.toDate) {
+    filter.createdAt = {};
+    if (query.fromDate) (filter.createdAt as Record<string, Date>).$gte = new Date(String(query.fromDate));
+    if (query.toDate) (filter.createdAt as Record<string, Date>).$lte = new Date(String(query.toDate));
+  }
+
+  const trimmedSearch = query.search ? String(query.search).trim() : "";
+  if (trimmedSearch.length > 0) {
+    const esc = trimmedSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(esc, "i");
+    filter.$or = [
+      { leadNumber: re },
+      { "contactDetails.name": re },
+      { "contactDetails.email": re },
+      { "contactDetails.phone": re },
+    ];
+  }
+
+  if (effectiveScope === "own") {
+    filter.assignedToUserId = user.id;
+  } else if (effectiveScope === "team") {
+    const teamMemberIds = await getTeamMemberIdsForRoleOwner(user.id);
+    if (teamMemberIds.length === 0) {
+      return { filter: {}, earlyEmpty: true };
+    }
+    filter.assignedToUserId = { $in: teamMemberIds };
+  }
+
+  return { filter, earlyEmpty: false };
+}
+
+async function attachItinerariesToLeads(leads: Record<string, unknown>[]): Promise<unknown[]> {
+  if (leads.length === 0) return [];
+  const { LeadItineraryModel } = await import("../models/leadItinerary");
+  const leadIds = leads.map((l) => l._id);
+  const allItins = await LeadItineraryModel.find({ leadId: { $in: leadIds } })
+    .select("leadId checkInDate checkOutDate hotelName")
+    .lean();
+  const byLead = new Map<string, any[]>();
+  for (const it of allItins) {
+    const k = String(it.leadId);
+    if (!byLead.has(k)) byLead.set(k, []);
+    byLead.get(k)!.push(it);
+  }
+  return leads.map((l) => {
+    const obj = spreadCustomDataToLead(l);
+    const itineraries = byLead.get(String(l._id)) ?? [];
+    return { ...obj, itineraries };
+  });
 }
 
 const roomRequestSchema = z.object({
@@ -406,35 +516,11 @@ leadsRouter.get("/", async (req, res, next) => {
       throw badRequest("Missing authenticated user");
     }
 
-    const { status, assigneeId, propertyId, fromDate, toDate, heat, scope, assignmentSource } =
-      req.query;
-    const filter: Record<string, unknown> = {};
-
-    if (status) filter.status = status;
-    if (assigneeId) filter.assignedToUserId = assigneeId;
-    if (propertyId) filter.propertyId = propertyId;
-    if (heat) filter.heatLevel = heat;
-    if (assignmentSource && ["v2_rule", "legacy_rule", "round_robin_fallback", "manual", "overflow", "none"].includes(String(assignmentSource))) {
-      filter.assignmentSource = assignmentSource;
-    }
-
-    if (fromDate || toDate) {
-      filter.createdAt = {};
-      if (fromDate)
-        (filter.createdAt as any).$gte = new Date(
-          String(fromDate)
-        );
-      if (toDate) (filter.createdAt as any).$lte = new Date(String(toDate));
-    }
-
-    const requestedScope = scope as string | undefined;
+    const q = req.query as Record<string, string | undefined>;
+    const requestedScope = q.scope as string | undefined;
     let effectiveScope: LeadScope;
 
-    // Determine effective scope based on request and permissions
     if (requestedScope === "team") {
-      // In the new model, "leads.read" generally allows reading subordinates' data.
-      // We accept requests for "team" if they have leads.read or leads.manage.
-      // (The actual data filter below enforces the hierarchy).
       if (
         hasPermission(req.user, PERMISSIONS.LEADS.READ) ||
         hasPermission(req.user, PERMISSIONS.LEADS.MANAGE) ||
@@ -445,17 +531,12 @@ leadsRouter.get("/", async (req, res, next) => {
         throw forbidden("Insufficient permissions for team leads");
       }
     } else if (requestedScope === "all") {
-      // Global read access requires admin or manage, or a specific profile configuration
-      if (
-        req.user.isAdmin ||
-        hasPermission(req.user, PERMISSIONS.LEADS.MANAGE)
-      ) {
+      if (req.user.isAdmin || hasPermission(req.user, PERMISSIONS.LEADS.MANAGE)) {
         effectiveScope = "all";
       } else {
         throw forbidden("Insufficient permissions for all leads");
       }
     } else {
-      // Default or explicit "own" 
       if (
         !(
           hasPermission(req.user, PERMISSIONS.LEADS.READ) ||
@@ -468,43 +549,59 @@ leadsRouter.get("/", async (req, res, next) => {
       effectiveScope = "own";
     }
 
-    // Apply scope-based filtering - this is critical for permission enforcement
-    if (effectiveScope === "own") {
-      // Strictly filter to only leads assigned to this user
-      filter.assignedToUserId = req.user.id;
-    } else if (effectiveScope === "team") {
-      const teamMemberIds = await getTeamMemberIdsForRoleOwner(req.user.id);
-      if (teamMemberIds.length === 0) {
-        // No team members – return empty result quickly.
-        return res.json([]);
-      }
-      filter.assignedToUserId = { $in: teamMemberIds };
-    } else {
-      // "all" scope - only for admins or users with explicit "all" permission
-      // No additional assignee filter, but make sure explicit assigneeId query param doesn't conflict
-      // If assigneeId is specified in query, it should take precedence
-      if (!assigneeId) {
-        // No explicit assignee filter - user can see all leads
-      }
+    const indexQuery: LeadsIndexQuery = {
+      status: q.status,
+      source: q.source,
+      assigneeId: q.assigneeId,
+      propertyId: q.propertyId,
+      fromDate: q.fromDate,
+      toDate: q.toDate,
+      heat: q.heat,
+      assignmentSource: q.assignmentSource,
+      stageId: q.stageId,
+      search: q.search,
+    };
+
+    const { filter, earlyEmpty } = await buildLeadsIndexFilter(
+      req.user as AccessUser,
+      indexQuery,
+      effectiveScope
+    );
+
+    const page = parseLeadListPage(req.query as Record<string, unknown>);
+    const limit = parseLeadListLimit(req.query as Record<string, unknown>);
+    const skip = (page - 1) * limit;
+
+    if (earlyEmpty) {
+      return res.json({
+        items: [],
+        total: 0,
+        page,
+        limit,
+        hasMore: false,
+      });
     }
 
-    const leads = await LeadModel.find(filter)
-      .populate("guestId", "name phone email")
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .lean();
+    const [total, leads] = await Promise.all([
+      LeadModel.countDocuments(filter),
+      LeadModel.find(filter)
+        .populate("guestId", "name phone email")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
 
-    const { LeadItineraryModel } = await import("../models/leadItinerary");
-    const leadsWithCustomData = await Promise.all(
-      leads.map(async (l) => {
-        const obj = spreadCustomDataToLead(l);
-        const itineraries = await LeadItineraryModel.find({ leadId: l._id })
-          .select("checkInDate checkOutDate hotelName")
-          .lean();
-        return { ...obj, itineraries };
-      })
-    );
-    res.json(leadsWithCustomData);
+    const items = await attachItinerariesToLeads(leads as Record<string, unknown>[]);
+    const hasMore = skip + items.length < total;
+
+    res.json({
+      items,
+      total,
+      page,
+      limit,
+      hasMore,
+    });
   } catch (err) {
     next(err);
   }
@@ -544,6 +641,246 @@ leadsRouter.get("/assignment-stats", async (req, res, next) => {
   }
 });
 
+/** Aggregated counts + recent leads + alerts for dashboard (same scope rules as GET /leads). */
+leadsRouter.get("/summary", async (req, res, next) => {
+  try {
+    if (!req.user) throw badRequest("Missing authenticated user");
+
+    const q = req.query as Record<string, string | undefined>;
+    const requestedScope = q.scope as string | undefined;
+    let effectiveScope: LeadScope;
+
+    if (requestedScope === "team") {
+      if (
+        hasPermission(req.user, PERMISSIONS.LEADS.READ) ||
+        hasPermission(req.user, PERMISSIONS.LEADS.MANAGE) ||
+        req.user.isAdmin
+      ) {
+        effectiveScope = "team";
+      } else {
+        throw forbidden("Insufficient permissions for team leads");
+      }
+    } else if (requestedScope === "all") {
+      if (req.user.isAdmin || hasPermission(req.user, PERMISSIONS.LEADS.MANAGE)) {
+        effectiveScope = "all";
+      } else {
+        throw forbidden("Insufficient permissions for all leads");
+      }
+    } else {
+      if (
+        !(
+          hasPermission(req.user, PERMISSIONS.LEADS.READ) ||
+          hasPermission(req.user, PERMISSIONS.LEADS.MANAGE) ||
+          req.user.isAdmin
+        )
+      ) {
+        throw forbidden("Insufficient permissions for own leads");
+      }
+      effectiveScope = "own";
+    }
+
+    const indexQuery: LeadsIndexQuery = {
+      status: q.status,
+      source: q.source,
+      assigneeId: q.assigneeId,
+      propertyId: q.propertyId,
+      fromDate: q.fromDate,
+      toDate: q.toDate,
+      heat: q.heat,
+      assignmentSource: q.assignmentSource,
+      stageId: q.stageId,
+      search: q.search,
+    };
+
+    const { filter, earlyEmpty } = await buildLeadsIndexFilter(
+      req.user as AccessUser,
+      indexQuery,
+      effectiveScope
+    );
+
+    const emptyPayload = {
+      stats: {
+        totalLeads: 0,
+        todayLeads: 0,
+        hotLeads: 0,
+        warmLeads: 0,
+        coldLeads: 0,
+        confirmed: 0,
+        newLeads: 0,
+        contacted: 0,
+        conversionRate: 0,
+        leadsBySource: {} as Record<string, number>,
+      },
+      recentLeads: [] as unknown[],
+      alerts: [] as unknown[],
+    };
+
+    if (earlyEmpty) {
+      return res.json(emptyPayload);
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const nowMs = Date.now();
+    const threeDaysMs = 3 * 86400000;
+
+    const checkInWindow = {
+      checkIn: {
+        $gte: new Date(nowMs),
+        $lte: new Date(nowMs + threeDaysMs),
+      },
+    };
+
+    const [total, agg, recentDocs, checkInLeads, staleNew] = await Promise.all([
+      LeadModel.countDocuments(filter),
+      LeadModel.aggregate([
+        { $match: filter },
+        {
+          $facet: {
+            heat: [{ $group: { _id: "$heatLevel", count: { $sum: 1 } } }],
+            status: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+            source: [{ $group: { _id: "$source", count: { $sum: 1 } } }],
+            today: [{ $match: { createdAt: { $gte: todayStart } } }, { $count: "c" }],
+          },
+        },
+      ]),
+      LeadModel.find(filter)
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate("guestId", "name phone email")
+        .lean(),
+      LeadModel.find({ ...filter, ...checkInWindow })
+        .select("leadNumber checkIn createdAt")
+        .limit(400)
+        .lean(),
+      LeadModel.find({
+        ...filter,
+        status: LeadStatus.NEW,
+        createdAt: { $lt: new Date(nowMs - 3600000) },
+      })
+        .select("leadNumber createdAt")
+        .limit(400)
+        .lean(),
+    ]);
+
+    const facet = (agg[0] as Record<string, { _id?: string; count?: number; c?: number }[]>) || {
+      heat: [],
+      status: [],
+      source: [],
+      today: [],
+    };
+
+    const statusRows = facet.status || [];
+    const statusCount = (s: string) =>
+      statusRows.find((x) => x._id === s)?.count ?? 0;
+
+    const heatRows = facet.heat || [];
+    const heatCount = (h: string) => heatRows.find((x) => x._id === h)?.count ?? 0;
+
+    const leadsBySource: Record<string, number> = {};
+    for (const row of facet.source || []) {
+      if (row._id) leadsBySource[String(row._id)] = row.count ?? 0;
+    }
+
+    const todayLeads = facet.today?.[0]?.c ?? 0;
+    const confirmed = statusCount(LeadStatus.CONFIRMED);
+    const conversionRate = total > 0 ? Math.round((confirmed / total) * 100) : 0;
+
+    const alerts: Array<{
+      leadId: string;
+      message: string;
+      minutesOld: number;
+      type: "checkin_urgent" | "checkin_critical" | "followup_overdue" | "no_response";
+    }> = [];
+
+    for (const l of checkInLeads) {
+      if (!l.checkIn) continue;
+      const checkInTime = new Date(l.checkIn).getTime();
+      const daysUntilCheckIn = Math.floor((checkInTime - nowMs) / (1000 * 60 * 60 * 24));
+      if (daysUntilCheckIn < 0 || daysUntilCheckIn > 3) continue;
+      const hoursSinceCreated = l.createdAt
+        ? Math.floor((nowMs - new Date(l.createdAt).getTime()) / (1000 * 60 * 60))
+        : 0;
+      if (daysUntilCheckIn <= 1) {
+        alerts.push({
+          leadId: String(l._id),
+          message: `Check-in in ${daysUntilCheckIn} day(s) - ${l.leadNumber}`,
+          minutesOld: hoursSinceCreated * 60,
+          type: "checkin_critical",
+        });
+      } else {
+        alerts.push({
+          leadId: String(l._id),
+          message: `Check-in in ${daysUntilCheckIn} days - ${l.leadNumber}`,
+          minutesOld: hoursSinceCreated * 60,
+          type: "checkin_urgent",
+        });
+      }
+    }
+
+    for (const l of staleNew) {
+      if (!l.createdAt) continue;
+      const hoursSinceCreated = Math.floor(
+        (nowMs - new Date(l.createdAt).getTime()) / (1000 * 60 * 60)
+      );
+      if (hoursSinceCreated >= 1) {
+        alerts.push({
+          leadId: String(l._id),
+          message: `New lead without response - ${l.leadNumber}`,
+          minutesOld: hoursSinceCreated * 60,
+          type: "no_response",
+        });
+      }
+    }
+
+    alerts.sort((a, b) => {
+      const priorityOrder: Record<string, number> = {
+        checkin_critical: 0,
+        checkin_urgent: 1,
+        followup_overdue: 2,
+        no_response: 3,
+      };
+      return (
+        (priorityOrder[a.type] ?? 99) - (priorityOrder[b.type] ?? 99) ||
+        a.minutesOld - b.minutesOld
+      );
+    });
+
+    const recentLeads = recentDocs.map((l) => {
+      const o = spreadCustomDataToLead(l) as Record<string, unknown>;
+      const id = o._id ? String(o._id) : "";
+      let checkInDate: string | undefined;
+      if (o.checkIn) {
+        checkInDate = new Date(o.checkIn as Date).toISOString().slice(0, 10);
+      }
+      return { ...o, id, checkInDate };
+    });
+
+    res.json({
+      stats: {
+        totalLeads: total,
+        todayLeads,
+        hotLeads: heatCount(HeatLevel.HOT),
+        warmLeads: heatCount(HeatLevel.WARM),
+        coldLeads: heatCount(HeatLevel.COLD),
+        confirmed,
+        newLeads: statusCount(LeadStatus.NEW),
+        contacted: statusCount(LeadStatus.CONTACTED),
+        conversionRate,
+        leadsBySource,
+      },
+      recentLeads,
+      alerts: alerts.slice(0, 10),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const LEAD_DETAIL_ACTIVITIES_LIMIT = 150;
+const LEAD_DETAIL_COMMUNICATIONS_LIMIT = 150;
+const LEAD_DETAIL_PREVIOUS_COMM_LIMIT = 50;
+
 leadsRouter.get("/:id", async (req, res, next) => {
   try {
     const lead = await LeadModel.findById(req.params.id)
@@ -568,38 +905,37 @@ leadsRouter.get("/:id", async (req, res, next) => {
         .populate("fromUserId", "name email")
         .populate("toUserId", "name email")
         .sort({ performedAt: -1 })
+        .limit(LEAD_DETAIL_ACTIVITIES_LIMIT)
         .lean(),
       CommunicationModel.find({ leadId: lead._id })
         .populate("performedByUserId", "name email")
+        .select("-rawPayload")
         .sort({ createdAt: -1 })
+        .limit(LEAD_DETAIL_COMMUNICATIONS_LIMIT)
         .lean(),
     ]);
 
-    // Get previous communications from other leads of the same guest (last 30 days)
+    // Previous communications for same guest (last 30 days) — single query on guestId when available
     let previousCommunications: any[] = [];
-    if (lead.guestId) {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // Find all other leads for the same guest
-      const otherLeadIds = await LeadModel.find({
-        guestId: lead.guestId,
-        _id: { $ne: lead._id }, // Exclude current lead
+    const guestObjectId =
+      lead.guestId && typeof lead.guestId === "object" && "_id" in (lead.guestId as object)
+        ? (lead.guestId as { _id: Types.ObjectId })._id
+        : (lead.guestId as Types.ObjectId | undefined);
+
+    if (guestObjectId) {
+      previousCommunications = await CommunicationModel.find({
+        guestId: guestObjectId,
+        leadId: { $ne: lead._id },
+        createdAt: { $gte: thirtyDaysAgo },
       })
-        .select("_id")
+        .select("-rawPayload")
+        .populate("performedByUserId", "name email")
+        .sort({ createdAt: -1 })
+        .limit(LEAD_DETAIL_PREVIOUS_COMM_LIMIT)
         .lean();
-
-      if (otherLeadIds.length > 0) {
-        const otherLeadIdArray = otherLeadIds.map((l) => l._id);
-
-        // Get communications from those leads within last 30 days
-        previousCommunications = await CommunicationModel.find({
-          leadId: { $in: otherLeadIdArray },
-          createdAt: { $gte: thirtyDaysAgo },
-        })
-          .sort({ createdAt: -1 })
-          .lean();
-      }
     }
 
     const { LeadItineraryModel } = await import("../models/leadItinerary");

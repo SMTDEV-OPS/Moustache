@@ -19,11 +19,19 @@ import {
   TIER_VISUAL_PALETTE,
   buildQuotationFontFaceCss,
   resolveQuotationFontStacks,
+  resolveQuotationTierForProperty,
 } from "../constants/quotationVisualBranding";
-import { buildQuotationStayContext } from "../utils/quotationLeadContext";
+import {
+  buildQuotationStayContext,
+  firstItinerary,
+} from "../utils/quotationLeadContext";
+import { EzeePMSService } from "../services/pms/adapters/EzeePMSService";
 import {
   generateQuotationEmailHtml,
   buildQuotationEmailSubject,
+  pmsPolicyFieldToEmailBodyHtml,
+  pmsPolicyFieldToPlainText,
+  type GenerateQuotationEmailOptions,
 } from "../utils/quotationEmailTemplate";
 
 export const quotationsRouter = Router();
@@ -61,6 +69,23 @@ const quotationSchema = z.object({
     if (n === undefined) return undefined;
     return Math.trunc(n);
   }, z.number().int().optional()),
+  rateLines: z
+    .array(
+      z.object({
+        roomTypeName: z.preprocess(
+          (v) => (typeof v === "string" ? v.trim() : v),
+          z.string().min(1).max(200)
+        ),
+        quantity: z.preprocess((v) => {
+          const n = numberOrUndef(v);
+          if (n === undefined) return undefined;
+          return Math.max(1, Math.trunc(n));
+        }, z.number().int().min(1)),
+        ratePerNight: z.preprocess(numberOrUndef, z.number().min(0)),
+        hotelName: optionalTrimmed(300),
+      })
+    )
+    .optional(),
   rate: z.preprocess(numberOrUndef, z.number().optional()),
   taxes: z.preprocess(numberOrUndef, z.number().optional()),
   inclusions: z.preprocess(emptyToUndefined, z.string().optional()),
@@ -108,12 +133,16 @@ quotationsRouter.post(
         property = await PropertyModel.findById(lead.propertyId).lean();
       }
 
-      const propertyTier =
-        property?.tier === "HOSTEL" ||
-        property?.tier === "SELECT" ||
-        property?.tier === "LUXURIA"
-          ? property.tier
-          : "SELECT";
+      const itineraries = await LeadItineraryModel.find({ leadId: lead._id })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      const firstItin = firstItinerary(itineraries);
+      const propertyTier = resolveQuotationTierForProperty(
+        property?.tier,
+        property?.name,
+        firstItin?.hotelName
+      );
 
       let fsRecord: Awaited<
         ReturnType<typeof KnowledgeBaseService.getFactSheetRecordForProperty>
@@ -144,20 +173,56 @@ quotationsRouter.post(
 
       const factsheetForEmail: IFactSheetContent | null = fsRecord?.content ?? null;
 
-      const itineraries = await LeadItineraryModel.find({ leadId: lead._id })
-        .sort({ createdAt: 1 })
-        .lean();
-
       const stay = buildQuotationStayContext(
         lead,
         itineraries,
         property,
-        parsed.data.rooms ?? 1
+        parsed.data.rooms ??
+          (parsed.data.rateLines?.reduce((sum, l) => sum + (l.quantity ?? 0), 0) || 1)
       );
 
       const palette = TIER_VISUAL_PALETTE[stay.tier];
       const fontStacks = resolveQuotationFontStacks(stay.propertyLabel, stay.tier);
       const fontFaceCss = buildQuotationFontFaceCss(config.quotationFontCdnBase);
+
+      let pmsPolicySections:
+        | { title: string; bodyHtml: string }[]
+        | undefined;
+      let pmsPolicyPlainAppend = "";
+      if (
+        property &&
+        property.pmsProvider === "EZEE" &&
+        property.pmsConfig?.hotelCode?.trim() &&
+        property.pmsConfig?.authCode?.trim()
+      ) {
+        try {
+          const ezee = new EzeePMSService({
+            hotelCode: property.pmsConfig.hotelCode.trim(),
+            authCode: property.pmsConfig.authCode.trim(),
+          });
+          const rawPolicies = await ezee.getQuotationPolicySections();
+          if (rawPolicies.length > 0) {
+            pmsPolicySections = rawPolicies.map((s) => ({
+              title: s.title,
+              bodyHtml: pmsPolicyFieldToEmailBodyHtml(s.body),
+            }));
+            pmsPolicyPlainAppend =
+              "\n\n--- Hotel policies (from booking system) ---\n" +
+              rawPolicies
+                .map(
+                  (s) =>
+                    `${s.title}:\n${pmsPolicyFieldToPlainText(s.body)}`
+                )
+                .join("\n\n");
+          }
+        } catch (polErr) {
+          logger.warn("Quotation: could not load PMS hotel policies", {
+            leadId: lead._id,
+            propertyId: lead.propertyId,
+            error: polErr instanceof Error ? polErr.message : polErr,
+          });
+        }
+      }
 
       // Send email if sentVia is EMAIL and we have an email address
       if (parsed.data.sentVia === "EMAIL" && parsed.data.sentTo?.email) {
@@ -165,12 +230,32 @@ quotationsRouter.post(
           const primaryAccount = await getPrimaryEmailAccount(userId);
           if (primaryAccount) {
             const propertyName = stay.propertyLabel;
+            const nights = (() => {
+              const cin =
+                itineraries?.[0]?.checkInDate ??
+                (lead.checkIn ? new Date(lead.checkIn) : undefined);
+              const cout =
+                itineraries?.[0]?.checkOutDate ??
+                (lead.checkOut ? new Date(lead.checkOut) : undefined);
+              if (!cin || !cout) return 1;
+              const diff = Math.ceil(
+                (new Date(cout).getTime() - new Date(cin).getTime()) /
+                  (1000 * 60 * 60 * 24)
+              );
+              return diff > 0 ? diff : 1;
+            })();
+            const quoteForEmail: GenerateQuotationEmailOptions["quote"] = {
+              ...parsed.data,
+              sentTo: parsed.data.sentTo,
+              nights,
+            };
             const emailHtml = generateQuotationEmailHtml({
-              quote: { ...parsed.data, sentTo: parsed.data.sentTo },
+              quote: quoteForEmail,
               stay,
               leadNumber: lead.leadNumber,
               versionNumber,
               factsheet: factsheetForEmail,
+              pmsPolicySections,
               fontFaceCss,
               primaryFont: fontStacks.primaryStack,
               secondaryFont: fontStacks.secondaryStack,
@@ -191,7 +276,18 @@ quotationsRouter.post(
               }],
               subject,
               bodyHtml: emailHtml,
-              bodyText: `Dear ${parsed.data.sentTo.name || "Guest"},\n\nPlease find your quotation for ${propertyName}.\n\nQuotation Reference: QT-${lead.leadNumber}-V${versionNumber}\nProperty: ${propertyName}\nCheck-in: ${stay.checkInDisplay}\nCheck-out: ${stay.checkOutDisplay}\nRooms: ${stay.roomsLine}\nGuests: ${stay.guestsLine}\nRate: ₹${parsed.data.rate || 0}\nTaxes: ₹${parsed.data.taxes || 0}\n\nWarm regards,\nThe ${propertyName} Team`,
+              bodyText: `Dear ${parsed.data.sentTo.name || "Guest"},\n\nPlease find your quotation for ${propertyName}.\n\nQuotation Reference: QT-${lead.leadNumber}-V${versionNumber}\nProperty: ${propertyName}\nCheck-in: ${stay.checkInDisplay}\nCheck-out: ${stay.checkOutDisplay}\nRooms: ${stay.roomsLine}\nGuests: ${stay.guestsLine}\n${
+                parsed.data.rateLines?.length
+                  ? `Room rates:\n${parsed.data.rateLines
+                      .map(
+                        (l) =>
+                          `- ${l.quantity} x ${l.roomTypeName}: ₹${Math.round(
+                            l.ratePerNight || 0
+                          )}/night`
+                      )
+                      .join("\n")}\nNights: ${nights}`
+                  : `Rate: ₹${parsed.data.rate || 0}`
+              }\nTaxes: ₹${parsed.data.taxes || 0}${pmsPolicyPlainAppend}\n\nWarm regards,\nThe ${propertyName} Team`,
             });
 
             logger.info("Quotation email sent successfully", {
@@ -219,10 +315,34 @@ quotationsRouter.post(
 
       // Auto-create 50% advance payment link when quotation is shared
       try {
-        const rooms = parsed.data.rooms || 1;
+        const nights = (() => {
+          const cin =
+            itineraries?.[0]?.checkInDate ??
+            (lead.checkIn ? new Date(lead.checkIn) : undefined);
+          const cout =
+            itineraries?.[0]?.checkOutDate ??
+            (lead.checkOut ? new Date(lead.checkOut) : undefined);
+          if (!cin || !cout) return 1;
+          const diff = Math.ceil(
+            (new Date(cout).getTime() - new Date(cin).getTime()) /
+              (1000 * 60 * 60 * 24)
+          );
+          return diff > 0 ? diff : 1;
+        })();
+        const rooms =
+          parsed.data.rooms ||
+          parsed.data.rateLines?.reduce((sum, l) => sum + (l.quantity ?? 0), 0) ||
+          1;
         const rate = parsed.data.rate || 0;
         const taxes = parsed.data.taxes || 0;
-        const totalAmount = (rate * rooms) + taxes;
+        const subtotalFromLines = parsed.data.rateLines?.length
+          ? parsed.data.rateLines.reduce(
+              (sum, l) => sum + (l.ratePerNight || 0) * (l.quantity || 1) * nights,
+              0
+            )
+          : undefined;
+        const totalAmount =
+          (subtotalFromLines ?? rate * rooms * nights) + taxes;
         const advanceAmount = totalAmount * 0.5; // 50% advance
 
         if (advanceAmount > 0) {
