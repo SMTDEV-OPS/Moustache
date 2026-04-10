@@ -25,6 +25,31 @@ export interface Quotation {
     ratePerNight: number;
     hotelName?: string;
   }[];
+  hotelQuotes?: {
+    propertyId?: string;
+    hotelName?: string;
+    hotelAddress?: string;
+    checkInDate?: string;
+    checkOutDate?: string;
+    nights?: number;
+    rows: {
+      roomTypeName?: string;
+      mealPlanName?: string;
+      ratePlanName?: string;
+      roomNo?: string;
+      adults?: number;
+      children?: number;
+      baseRate: number;
+      discountPercent: number;
+      discountedRate: number;
+      taxPercent: number;
+      taxAmount: number;
+      total: number;
+    }[];
+    subtotal?: number;
+    totalTax?: number;
+    grandTotal?: number;
+  }[];
   inclusions?: string;
   specialPackages?: string;
   sentVia?: SendVia;
@@ -44,6 +69,34 @@ export interface CreateQuotationPayload {
     quantity: number;
     ratePerNight: number;
     hotelName?: string;
+  }[];
+  hotelQuotes?: {
+    propertyId?: string;
+    hotelName?: string;
+    hotelAddress?: string;
+    checkInDate?: string;
+    checkOutDate?: string;
+    nights?: number;
+    rows: {
+      roomTypeId?: string;
+      roomTypeName?: string;
+      mealPlanId?: string;
+      mealPlanName?: string;
+      ratePlanId?: string;
+      ratePlanName?: string;
+      roomNo?: string;
+      adults?: number;
+      children?: number;
+      baseRate: number;
+      discountPercent: number;
+      discountedRate: number;
+      taxPercent: number;
+      taxAmount: number;
+      total: number;
+    }[];
+    subtotal?: number;
+    totalTax?: number;
+    grandTotal?: number;
   }[];
   inclusions?: string;
   specialPackages?: string;

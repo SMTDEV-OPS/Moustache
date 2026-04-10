@@ -9,6 +9,10 @@ dist-ssr/
 build/
 *.local
 
+# Backend runs TypeScript directly in dev (ts-node). Prevent stale compiled JS
+# artifacts from co-existing with source files under backend/src.
+backend/src/**/*.js
+
 # Logs
 logs
 *.log

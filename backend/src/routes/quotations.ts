@@ -101,6 +101,53 @@ const quotationSchema = z.object({
     .optional(),
   kbFactsheetId: z.string().optional(),
   propertyTier: z.enum(["HOSTEL", "SELECT", "LUXURIA"]).optional(),
+  hotelQuotes: z
+    .array(
+      z.object({
+        propertyId: optionalTrimmed(200),
+        hotelName: optionalTrimmed(300),
+        hotelAddress: optionalTrimmed(500),
+        checkInDate: z.preprocess(
+          (v) => (typeof v === "string" || v instanceof Date ? new Date(v as any) : v),
+          z.date().optional()
+        ),
+        checkOutDate: z.preprocess(
+          (v) => (typeof v === "string" || v instanceof Date ? new Date(v as any) : v),
+          z.date().optional()
+        ),
+        nights: z.preprocess((v) => {
+          const n = numberOrUndef(v);
+          if (n === undefined) return undefined;
+          return Math.max(1, Math.trunc(n));
+        }, z.number().int().min(1).optional()),
+        rows: z
+          .array(
+            z.object({
+              roomTypeId: optionalTrimmed(200),
+              roomTypeName: optionalTrimmed(300),
+              mealPlanId: optionalTrimmed(200),
+              mealPlanName: optionalTrimmed(300),
+              /** Resolved PMS rate plan (internal reference; not required). */
+              ratePlanId: optionalTrimmed(200),
+              ratePlanName: optionalTrimmed(300),
+              roomNo: optionalTrimmed(100),
+              adults: z.preprocess((v) => numberOrUndef(v) ?? undefined, z.number().min(0).optional()),
+              children: z.preprocess((v) => numberOrUndef(v) ?? undefined, z.number().min(0).optional()),
+              baseRate: z.preprocess(numberOrUndef, z.number().min(0)),
+              discountPercent: z.preprocess(numberOrUndef, z.number().min(0).max(100)),
+              discountedRate: z.preprocess(numberOrUndef, z.number().min(0)),
+              taxPercent: z.preprocess(numberOrUndef, z.number().refine((n) => n === 5 || n === 18, "taxPercent must be 5 or 18")),
+              taxAmount: z.preprocess(numberOrUndef, z.number().min(0)),
+              total: z.preprocess(numberOrUndef, z.number().min(0)),
+            })
+          )
+          .min(1),
+        subtotal: z.preprocess(numberOrUndef, z.number().min(0).optional()),
+        totalTax: z.preprocess(numberOrUndef, z.number().min(0).optional()),
+        grandTotal: z.preprocess(numberOrUndef, z.number().min(0).optional()),
+      })
+    )
+    .optional(),
 });
 
 quotationsRouter.post(
@@ -120,6 +167,27 @@ quotationsRouter.post(
       const userId = (req as any).user?.id;
       if (!userId) {
         throw badRequest("User not authenticated");
+      }
+
+      const discountCap = (() => {
+        if (req.user?.isAdmin) return 20;
+        // Heuristic: team leads/managers typically have manage permissions.
+        const perms = req.user?.permissions ?? [];
+        if (perms.includes("leads.manage") || perms.includes("quotations.manage") || perms.includes("settings.manage")) {
+          return 20;
+        }
+        return 15;
+      })();
+
+      if (parsed.data.hotelQuotes?.length) {
+        for (const h of parsed.data.hotelQuotes) {
+          for (const row of h.rows || []) {
+            const d = row.discountPercent ?? 0;
+            if (d > discountCap) {
+              throw badRequest(`Discount % exceeds allowed max (${discountCap}%).`);
+            }
+          }
+        }
       }
 
       const lead = await LeadModel.findById(req.params.leadId);

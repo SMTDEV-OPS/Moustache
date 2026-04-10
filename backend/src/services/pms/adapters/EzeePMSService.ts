@@ -1,5 +1,6 @@
 import axios from "axios";
 import { parseStringPromise, Builder } from "xml2js";
+import { logger } from "../../../config/logger";
 import {
     IPMSService,
     RoomAvailability,
@@ -8,6 +9,44 @@ import {
     BookingResponse,
     RoomMasterCatalog,
 } from "../IPMSService";
+
+/** xml2js often omits `[]` when a node appears once — normalize so we always iterate arrays. */
+function ezeeXml2jsArray<T>(x: T | T[] | undefined | null): T[] {
+    if (x == null) return [];
+    return Array.isArray(x) ? x : [x];
+}
+
+/**
+ * Rate XML (`getdataAPI.php`, Request_Type Rate): entries are under
+ * `RES_Response.RoomInfo → Source[*] → RoomTypes → RateType[*]`.
+ * Never use `RoomInfo.RoomTypes` without going through `Source` first when sources exist.
+ */
+function collectEzeeRateTypeXmlNodes(parsed: unknown): any[] {
+    const r = parsed as Record<string, any> | null | undefined;
+    if (!r || typeof r !== "object") return [];
+
+    const resFirst = ezeeXml2jsArray(r.RES_Response ?? r.Res_Response ?? r.res_response)[0];
+    if (!resFirst || typeof resFirst !== "object") return [];
+
+    const roomInfoFirst = ezeeXml2jsArray(resFirst.RoomInfo)[0];
+    if (!roomInfoFirst || typeof roomInfoFirst !== "object") return [];
+
+    const out: any[] = [];
+    const sources = ezeeXml2jsArray(roomInfoFirst.Source);
+    if (sources.length > 0) {
+        for (const source of sources) {
+            if (!source || typeof source !== "object") continue;
+            const roomTypesHead = ezeeXml2jsArray(source.RoomTypes)[0];
+            if (!roomTypesHead) continue;
+            out.push(...ezeeXml2jsArray(roomTypesHead.RateType));
+        }
+    }
+    if (out.length === 0) {
+        const roomTypesHead = ezeeXml2jsArray(roomInfoFirst.RoomTypes)[0];
+        if (roomTypesHead) out.push(...ezeeXml2jsArray(roomTypesHead.RateType));
+    }
+    return out;
+}
 
 export interface EzeeReservationRoom {
     roomTypeCode?: string;
@@ -246,30 +285,251 @@ export class EzeePMSService implements IPMSService {
             const result = await parseStringPromise(response.data);
             const rateList: RoomRate[] = [];
 
-            if (
-                result.RES_Response &&
-                result.RES_Response.RoomInfo &&
-                result.RES_Response.RoomInfo[0].Source
-            ) {
-                const sources = result.RES_Response.RoomInfo[0].Source;
-                for (const source of sources) {
-                    if (source.RoomTypes && source.RoomTypes[0].RateType) {
-                        for (const rt of source.RoomTypes[0].RateType) {
-                            rateList.push({
-                                roomTypeId: rt.RoomTypeID[0],
-                                ratePlanId: rt.RateTypeID[0],
-                                date: rt.FromDate[0],
-                                baseRate: parseFloat(rt.RoomRate[0].Base[0]),
-                            });
-                        }
-                    }
-                }
+            const rateNodes = collectEzeeRateTypeXmlNodes(result);
+            for (const rt of rateNodes) {
+                const roomTypeId = rt?.RoomTypeID?.[0];
+                const ratePlanId = rt?.RateTypeID?.[0];
+                if (!roomTypeId || !ratePlanId) continue;
+                const baseRaw = rt?.RoomRate?.[0]?.Base?.[0];
+                rateList.push({
+                    roomTypeId,
+                    ratePlanId,
+                    date: rt?.FromDate?.[0] ?? "",
+                    baseRate: parseFloat(String(baseRaw ?? "0")),
+                });
             }
 
             return rateList;
         } catch (error) {
             console.error("Error fetching rates from eZee:", error);
             throw new Error("Failed to fetch rates");
+        }
+    }
+
+    /**
+     * Date-based rates lookup (Rate XML API).
+     * Returns a flat map: `${roomTypeId}_${ratePlanId}` -> { base, extraAdult, extraChild }.
+     *
+     * Notes:
+     * - API returns one RateType row per date segment; we aggregate by averaging across returned rows.
+     * - This is safe for quotation "suggested base rate" (field remains editable).
+     *
+     * IMPORTANT:
+     * - In eZee Rate XML (getdataAPI.php), the element name is `<RateTypeID>`, but in practice it maps to
+     *   the PMS "RatePlanID" space (as used in Separatesourcemapping RatePlans). Treat it as ratePlanId.
+     */
+    async getRatesLookup(
+        startDate: string,
+        endDate: string
+    ): Promise<Record<string, { base: number; extraAdult?: number; extraChild?: number }>> {
+        const xmlBuilder = new Builder();
+        const requestBody = xmlBuilder.buildObject({
+            RES_Request: {
+                Request_Type: "Rate",
+                Authentication: {
+                    HotelCode: this.hotelCode,
+                    AuthCode: this.authCode,
+                },
+                FromDate: startDate,
+                ToDate: endDate,
+            },
+        });
+
+        const response = await axios.post(`${this.baseUrl}/getdataAPI.php`, requestBody, {
+            headers: { "Content-Type": "text/xml" },
+            timeout: 15000,
+        });
+
+        const result = await parseStringPromise(response.data);
+        const out: Record<string, { base: number; extraAdult?: number; extraChild?: number }> = {};
+
+        const rateNodes = collectEzeeRateTypeXmlNodes(result);
+
+        const buckets = new Map<
+            string,
+            { baseSum: number; baseN: number; eaSum: number; eaN: number; ecSum: number; ecN: number }
+        >();
+
+        const toNum = (v: any): number | undefined => {
+            if (v === null || v === undefined) return undefined;
+            const s = Array.isArray(v) ? v[0] : v;
+            const n = Number(s);
+            return Number.isFinite(n) ? n : undefined;
+        };
+
+        // Include every XML row in the lookup map — do not filter by ID suffix (real RatePlanIDs can end in ...0000001).
+        for (const rt of rateNodes) {
+            const roomTypeId = String(rt?.RoomTypeID?.[0] ?? "").trim();
+            const ratePlanId = String(rt?.RateTypeID?.[0] ?? "").trim();
+            if (!roomTypeId || !ratePlanId) continue;
+
+            const base = toNum(rt?.RoomRate?.[0]?.Base);
+            const extraAdult = toNum(rt?.RoomRate?.[0]?.ExtraAdult);
+            const extraChild = toNum(rt?.RoomRate?.[0]?.ExtraChild);
+
+            const key = `${roomTypeId}_${ratePlanId}`;
+            const b = buckets.get(key) ?? { baseSum: 0, baseN: 0, eaSum: 0, eaN: 0, ecSum: 0, ecN: 0 };
+            if (base !== undefined) {
+                b.baseSum += base;
+                b.baseN += 1;
+            }
+            if (extraAdult !== undefined) {
+                b.eaSum += extraAdult;
+                b.eaN += 1;
+            }
+            if (extraChild !== undefined) {
+                b.ecSum += extraChild;
+                b.ecN += 1;
+            }
+            buckets.set(key, b);
+        }
+
+        for (const [key, b] of buckets.entries()) {
+            if (b.baseN <= 0) continue;
+            const base = b.baseSum / b.baseN;
+            const row: { base: number; extraAdult?: number; extraChild?: number } = {
+                base: Math.round(base * 100) / 100,
+            };
+            if (b.eaN > 0) row.extraAdult = Math.round((b.eaSum / b.eaN) * 100) / 100;
+            if (b.ecN > 0) row.extraChild = Math.round((b.ecSum / b.ecN) * 100) / 100;
+            out[key] = row;
+        }
+
+        logger.debug("eZee rate map built", {
+            hotelCode: this.hotelCode,
+            rawXmlRateRows: rateNodes.length,
+            entryCount: Object.keys(out).length,
+            sampleKeys: Object.keys(out).slice(0, 3),
+        });
+
+        return out;
+    }
+
+    /**
+     * eZee PMS Connectivity JSON:
+     * - Request_Type = "Separatesourcemapping" returns RoomTypes, RateTypes (meal plan names), and RatePlans mapping.
+     * This is the authoritative mapping for RateTypeID -> meal plan label.
+     *
+     * Safe to cache at the caller layer (rarely changes).
+     */
+    async getSeparateSourceMapping(): Promise<{
+        roomTypes: { id: string; name: string }[];
+        rateTypes: { id: string; name: string }[];
+        ratePlans: { id: string; roomTypeId?: string; rateTypeId?: string; name?: string }[];
+    }> {
+        const payload = {
+            RES_Request: {
+                Request_Type: "Separatesourcemapping",
+                Authentication: {
+                    HotelCode: this.hotelCode,
+                    AuthCode: this.authCode,
+                },
+            },
+        };
+
+        const normalizeArray = <T,>(x: T | T[] | undefined | null): T[] => {
+            if (x == null) return [];
+            return Array.isArray(x) ? x : [x];
+        };
+
+        const getId = (o: any, ...keys: string[]) => {
+            for (const k of keys) {
+                const v = o?.[k];
+                if (v == null) continue;
+                const s = String(v).trim();
+                if (s) return s;
+            }
+            return "";
+        };
+
+        const getName = (o: any, ...keys: string[]) => {
+            for (const k of keys) {
+                const v = o?.[k];
+                if (v == null) continue;
+                const s = String(v).trim();
+                if (s) return s;
+            }
+            return "";
+        };
+
+        /** eZee JSON often includes HTML entities in names (e.g. &amp;). */
+        const decodeEzeeText = (s: string) =>
+            s
+                .replace(/&amp;/gi, "&")
+                .replace(/&quot;/gi, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/&lt;/gi, "<")
+                .replace(/&gt;/gi, ">");
+
+        /** Postman + live API: success still includes Errors: { ErrorCode: "0", ErrorMessage: "Success" }. */
+        const isFatalEzeeEnvelope = (d: any): boolean => {
+            const errBag = d?.Errors ?? d?.RES_Response?.Errors;
+            if (errBag && typeof errBag === "object" && !Array.isArray(errBag)) {
+                const code = String(errBag.ErrorCode ?? errBag.errorcode ?? "").trim();
+                const bagMsg = String(errBag.ErrorMessage ?? errBag.errormessage ?? "").trim();
+                if (code !== "" && code !== "0") return true;
+                if (bagMsg !== "" && !/^success$/i.test(bagMsg)) return true;
+            }
+            const msg = typeof d?.ErrorMessage === "string" ? d.ErrorMessage.trim() : "";
+            if (msg && !/^success$/i.test(msg)) return true;
+            return typeof d?.Error === "string" && d.Error.trim() !== "";
+        };
+
+        try {
+            const res = await axios.post(`${this.baseUrl}/pms_connectivity.php`, payload, {
+                headers: { "Content-Type": "application/json" },
+                timeout: 15000,
+            });
+
+            let data: any = res.data;
+            if (typeof data === "string") {
+                try {
+                    data = JSON.parse(data);
+                } catch {
+                    return { roomTypes: [], rateTypes: [], ratePlans: [] };
+                }
+            }
+
+            if (isFatalEzeeEnvelope(data)) {
+                return { roomTypes: [], rateTypes: [], ratePlans: [] };
+            }
+
+            const top = data?.RES_Response ?? data;
+            /** Separatesourcemapping returns RoomTypes / RateTypes / RatePlans under RoomInfo (see Postman "Retrieve Room Rates with Source details"). */
+            const block = top?.RoomInfo ?? top;
+
+            const rtNodes = normalizeArray(block?.RoomTypes?.RoomType ?? block?.RoomTypes ?? block?.RoomType);
+            const rateTypeNodes = normalizeArray(block?.RateTypes?.RateType ?? block?.RateTypes ?? block?.RateType);
+            const planNodes = normalizeArray(block?.RatePlans?.RatePlan ?? block?.RatePlans ?? block?.RatePlan);
+
+            const roomTypes = rtNodes
+                .map((x: any) => ({
+                    id: getId(x, "RoomTypeID", "RoomTypeId", "ID", "Id"),
+                    name: decodeEzeeText(getName(x, "RoomTypeName", "Name", "RoomType", "roomtype")),
+                }))
+                .filter((x: any) => x.id);
+
+            const rateTypes = rateTypeNodes
+                .map((x: any) => ({
+                    id: getId(x, "RateTypeID", "RateTypeId", "ID", "Id"),
+                    name: decodeEzeeText(getName(x, "RateTypeName", "Name", "RateType")),
+                }))
+                .filter((x: any) => x.id);
+
+            const ratePlans = planNodes
+                .map((x: any) => ({
+                    id: getId(x, "RatePlanID", "RatePlanId", "ID", "Id"),
+                    roomTypeId: getId(x, "RoomTypeID", "RoomTypeId"),
+                    rateTypeId: getId(x, "RateTypeID", "RateTypeId"),
+                    name: decodeEzeeText(getName(x, "Name", "RatePlanName", "RatePlan")),
+                }))
+                .filter((x: any) => x.id);
+
+            return { roomTypes, rateTypes, ratePlans };
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error("eZee getSeparateSourceMapping error:", e);
+            return { roomTypes: [], rateTypes: [], ratePlans: [] };
         }
     }
 

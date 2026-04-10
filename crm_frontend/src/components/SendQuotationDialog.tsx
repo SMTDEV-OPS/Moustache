@@ -1,69 +1,240 @@
-import { useState, useEffect, useRef } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { useEffect, useMemo, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import {
-  createQuotation,
-  listQuotations,
-  Quotation,
-  SendVia,
-  CreateQuotationPayload,
-} from "@/services/quotations";
-import { Lead, LeadDetail } from "@/services/leads";
-import { listEmailAccounts, EmailAccount } from "@/services/email";
-import { useToast } from "@/hooks/use-toast";
-import {
-  Mail,
-  MessageCircle,
-  FileText,
-  Send,
-  Clock,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  IndianRupee,
-  Hotel,
-  CalendarDays,
-  Users,
-  AlertTriangle,
-  ChevronDown,
-} from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { createQuotation, listQuotations, type Quotation, type SendVia } from "@/services/quotations";
+import type { Lead, LeadDetail } from "@/services/leads";
+import { listEmailAccounts, type EmailAccount } from "@/services/email";
+import { API_BASE_URL, withAuthHeaders } from "@/services/api";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { getKBForQuotation, type KBForQuotationResponse } from "@/services/knowledgeBase";
-import { getPropertyEzeeRates, type EzeeRateSuggestion } from "@/services/properties";
-import { KBQuickDrawer } from "@/components/knowledge/directory/KBQuickDrawer";
-import { extractLeadPropertyId } from "@/lib/leadPropertyId";
+  type EzeeSeparateSourceMapping,
+} from "@/services/pms";
+import { FileText, Mail, MessageCircle, Send, Clock, CheckCircle, Hotel, AlertTriangle } from "lucide-react";
 
-const DEFAULT_INCLUSIONS = "Breakfast included\nWi-Fi\nPool access";
-
-type RateLineDraft = {
-  roomTypeName: string;
-  quantity: number;
-  ratePerNight: number;
+type ItineraryLike = {
+  propertyId?: string | { _id: string; name?: string };
   hotelName?: string;
+  hotelAddress?: string;
+  checkInDate?: string;
+  checkOutDate?: string;
+  roomsRequested?: {
+    roomTypeId?: string;
+    roomTypeName?: string;
+    quantity?: number;
+    adults?: number;
+    children?: number;
+  }[];
+};
+
+type MealPlanOption = { id: string; name: string };
+type EzeeRatesLookupMap = Record<string, { base: number; extraAdult?: number; extraChild?: number }>;
+
+function isDefaultUnmappedName(name: unknown): boolean {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .includes("default unmapped");
+}
+
+/** Exclude only the PMS "Default Unmapped" rate type by label — do not use ID suffix (Room Only can share ...0001 on some properties). */
+function isEzeeDefaultUnmappedRateType(mapping: EzeeSeparateSourceMapping | undefined, rateTypeId: string | undefined): boolean {
+  const id = String(rateTypeId || "").trim();
+  if (!id || !mapping) return false;
+  const rt = (mapping.rateTypes ?? []).find((x) => String(x.id || "").trim() === id);
+  return isDefaultUnmappedName(rt?.name);
+}
+
+function normName(s?: string) {
+  const raw = String(s || "")
+    .trim()
+    .toLowerCase()
+    // normalize common eZee formatting differences
+    .replace(/\(a\/c\)|a\/c|a\\\/c/gi, "ac")
+    .replace(/non\s*-?\s*ac/gi, "non ac")
+    .replace(/&/g, " and ")
+    .replace(/\bwith\b/g, " ")
+    // strip punctuation to spaces
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return raw;
+}
+
+function resolveEzeeRoomTypeId(
+  mapping: EzeeSeparateSourceMapping | undefined,
+  roomTypeId?: string,
+  roomTypeName?: string
+): string | undefined {
+  const rid = roomTypeId?.trim();
+  if (rid && (mapping?.roomTypes ?? []).some((rt) => rt.id?.trim() === rid)) return rid;
+  const n = normName(roomTypeName);
+  if (!n) return rid || undefined;
+  const mRoomTypes = mapping?.roomTypes ?? [];
+  const hits = mRoomTypes.filter((rt) => normName(rt.name) === n);
+  if (hits.length === 1) return hits[0].id?.trim() || rid || undefined;
+  // Fuzzy fallback: allow partial containment (handles "(A/C)" vs "with AC", etc.)
+  const fuzzy = mRoomTypes.filter((rt) => {
+    const rn = normName(rt.name);
+    if (!rn) return false;
+    return rn.includes(n) || n.includes(rn);
+  });
+  if (fuzzy.length === 1) return fuzzy[0].id?.trim() || rid || undefined;
+  return rid || undefined;
+}
+
+function resolveEzeeRoomType(mapping: EzeeSeparateSourceMapping | undefined, roomTypeId?: string, roomTypeName?: string) {
+  const rid = resolveEzeeRoomTypeId(mapping, roomTypeId, roomTypeName);
+  if (!mapping || !rid) return undefined;
+  const hit = (mapping.roomTypes ?? []).find((rt) => rt.id?.trim() === rid);
+  if (!hit) return undefined;
+  if (isDefaultUnmappedName(hit.name)) return undefined;
+  return { id: hit.id.trim(), name: (hit.name || "").trim() || `Room ${hit.id.trim()}` };
+}
+
+function roomTypeOptions(mapping: EzeeSeparateSourceMapping | undefined): { id: string; name: string }[] {
+  return (mapping?.roomTypes ?? [])
+    .map((rt) => ({ id: String(rt.id || "").trim(), name: String(rt.name || "").trim() }))
+    .filter((rt) => rt.id && !isDefaultUnmappedName(rt.name))
+    .map((rt) => ({ id: rt.id, name: rt.name || `Room ${rt.id}` }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Meal plan dropdown options are RateTypes contextual to the selected room type.
+ * Derived by filtering RatePlans by RoomTypeID and extracting unique RateTypeIDs.
+ */
+function mealPlanOptionsForRoomType(
+  mapping: EzeeSeparateSourceMapping | undefined,
+  roomTypeId?: string,
+  roomTypeName?: string
+): MealPlanOption[] {
+  if (!mapping) return [];
+  const rid = resolveEzeeRoomTypeId(mapping, roomTypeId, roomTypeName);
+  if (!rid) return [];
+
+  const plans = (mapping.ratePlans ?? [])
+    .map((p) => ({
+      roomTypeId: String(p.roomTypeId || "").trim(),
+      rateTypeId: String(p.rateTypeId || "").trim(),
+      id: String(p.id || "").trim(),
+      name: String(p.name || "").trim(),
+    }))
+    .filter((p) => p.roomTypeId === rid)
+    // Do not suffix-filter RatePlan IDs; some real plans use ...0000001.
+    .filter((p) => p.id && !isDefaultUnmappedName(p.name))
+    .filter((p) => p.rateTypeId && !isEzeeDefaultUnmappedRateType(mapping, p.rateTypeId));
+
+  const uniqueRateTypeIds = Array.from(new Set(plans.map((p) => p.rateTypeId)));
+  const out: MealPlanOption[] = [];
+  for (const rateTypeId of uniqueRateTypeIds) {
+    const rt = (mapping.rateTypes ?? []).find((x) => String(x.id || "").trim() === rateTypeId);
+    const name = String(rt?.name || "").trim();
+    out.push({ id: rateTypeId, name: name || "Meal plan" });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+function resolveRatePlanForSelection(
+  mapping: EzeeSeparateSourceMapping | undefined,
+  roomTypeId: string | undefined,
+  roomTypeName: string | undefined,
+  rateTypeId: string | undefined
+): { ratePlanId: string; ratePlanName: string } | undefined {
+  if (!mapping) return undefined;
+  const rid = resolveEzeeRoomTypeId(mapping, roomTypeId, roomTypeName);
+  const rtId = String(rateTypeId || "").trim();
+  if (!rid || !rtId) return undefined;
+  if (isEzeeDefaultUnmappedRateType(mapping, rtId)) return undefined;
+
+  const matched = (mapping.ratePlans ?? [])
+    .map((p) => ({
+      id: String(p.id || "").trim(),
+      roomTypeId: String(p.roomTypeId || "").trim(),
+      rateTypeId: String(p.rateTypeId || "").trim(),
+      name: String(p.name || "").trim(),
+    }))
+    .filter((p) => p.id && !isDefaultUnmappedName(p.name))
+    .filter((p) => p.roomTypeId === rid && p.rateTypeId === rtId);
+
+  if (matched.length === 0) return undefined;
+  matched.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+  const first = matched[0];
+  return { ratePlanId: first.id, ratePlanName: first.name || `Rate plan ${first.id}` };
+}
+
+function rateLookupKey(roomTypeId: string | undefined, ratePlanId: string | undefined): string | undefined {
+  const rt = String(roomTypeId || "").trim();
+  const rp = String(ratePlanId || "").trim();
+  if (!rt || !rp) return undefined;
+  return `${rt}_${rp}`;
+}
+
+/** When user changes room type or meal plan, always sync base / extras from PMS (editable after). */
+function pmsRatePatchFromLookup(
+  key: string | undefined,
+  rateMap: EzeeRatesLookupMap | undefined
+): Pick<RoomRowDraft, "baseRate" | "extraAdultRate" | "extraChildRate" | "rateUnavailable"> {
+  if (!key || !rateMap) {
+    return { baseRate: "", extraAdultRate: undefined, extraChildRate: undefined, rateUnavailable: false };
+  }
+  const hit = rateMap[key];
+  if (hit?.base !== undefined) {
+    return {
+      baseRate: hit.base,
+      extraAdultRate: hit.extraAdult,
+      extraChildRate: hit.extraChild,
+      rateUnavailable: false,
+    };
+  }
+  return { baseRate: "", extraAdultRate: undefined, extraChildRate: undefined, rateUnavailable: true };
+}
+
+type RoomRowDraft = {
+  rowId: string;
+  roomTypeId?: string;
+  roomTypeName?: string;
+  /** RateTypeID (Meal plan) */
+  mealPlanId?: string;
+  mealPlanName?: string;
+  ratePlanId?: string;
+  ratePlanName?: string;
+  extraAdultRate?: number;
+  extraChildRate?: number;
+  rateUnavailable?: boolean;
+  adults: number;
+  children: number;
+  baseRate: number | "";
+  extraAdult: number | "";
+  extraChild: number | "";
+  discountPercent: number;
+};
+
+type HotelQuoteDraft = {
+  propertyId?: string;
+  hotelName?: string;
+  hotelAddress?: string;
+  checkInDate?: string;
+  checkOutDate?: string;
+  nights: number;
+  baseRateOptionsByKey?: Record<string, number[]>;
+  rows: RoomRowDraft[];
+};
+
+type QuotationDraft = {
+  id: string;
+  label: string;
+  hotelQuotes: HotelQuoteDraft[];
+  sent?: boolean;
 };
 
 interface SendQuotationDialogProps {
@@ -86,10 +257,12 @@ export const SendQuotationDialog = ({
   guestName,
   guestEmail,
   guestPhone,
-  propertyName,
+  propertyName, // kept for back-compat; not relied on for multi-hotel quoting
   onQuotationSent,
 }: SendQuotationDialogProps) => {
   const { toast } = useToast();
+  const { user, can } = useAuth();
+
   const [activeTab, setActiveTab] = useState<"create" | "history">("create");
   const [isSending, setIsSending] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -97,143 +270,309 @@ export const SendQuotationDialog = ({
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
 
-  // Form state
   const [sendVia, setSendVia] = useState<SendVia>("EMAIL");
-  const [rooms, setRooms] = useState<string>(
-    lead?.roomsRequested?.toString() || "1"
-  );
-  const [rate, setRate] = useState<string>("");
-  const [taxes, setTaxes] = useState<string>("");
-  const [rateLines, setRateLines] = useState<RateLineDraft[]>([]);
-  const [inclusions, setInclusions] = useState<string>(DEFAULT_INCLUSIONS);
-  const [specialPackages, setSpecialPackages] = useState<string>("");
   const [recipientName, setRecipientName] = useState<string>(guestName || "");
   const [recipientEmail, setRecipientEmail] = useState<string>(guestEmail || "");
   const [recipientPhone, setRecipientPhone] = useState<string>(guestPhone || "");
 
-  const [kbData, setKbData] = useState<KBForQuotationResponse | null>(null);
-  const [kbLoading, setKbLoading] = useState(false);
-  const [ezeeRates, setEzeeRates] = useState<EzeeRateSuggestion[]>([]);
-  const [ezeeLoading, setEzeeLoading] = useState(false);
-  const [showAllKbRules, setShowAllKbRules] = useState(false);
-  const kbInclusionsAppliedRef = useRef(false);
-  const [kbDirectoryDrawerOpen, setKbDirectoryDrawerOpen] = useState(false);
+  const [step, setStep] = useState<"grouping" | "builder" | "preview">("builder");
+  const [groupingChoice, setGroupingChoice] = useState<"separate" | "combined">("separate");
+  const [activeDraftIdx, setActiveDraftIdx] = useState(0);
+  const [drafts, setDrafts] = useState<QuotationDraft[]>([]);
+  const [ezeeMappingByPropertyId, setEzeeMappingByPropertyId] = useState<Record<string, EzeeSeparateSourceMapping>>({});
+  const [ezeeErrorByPropertyId, setEzeeErrorByPropertyId] = useState<Record<string, string>>({});
+  const [ezeeRateMapByPropertyId, setEzeeRateMapByPropertyId] = useState<Record<string, EzeeRatesLookupMap>>({});
+  const [ezeeRateErrorByPropertyId, setEzeeRateErrorByPropertyId] = useState<Record<string, string>>({});
 
-  // Update recipient fields when props change
+  const discountCap = useMemo(() => {
+    if (user?.isAdmin) return 20;
+    // TL / managers generally have manage permissions
+    if (can("leads.manage") || can("settings.manage") || can("quotations.manage")) return 20;
+    return 15;
+  }, [user?.isAdmin, can]);
+
   useEffect(() => {
     if (guestName) setRecipientName(guestName);
     if (guestEmail) setRecipientEmail(guestEmail);
     if (guestPhone) setRecipientPhone(guestPhone);
-    if (lead?.roomsRequested) setRooms(lead.roomsRequested.toString());
-  }, [guestName, guestEmail, guestPhone, lead]);
+  }, [guestName, guestEmail, guestPhone]);
 
-  const toYmd = (d: string | undefined) => {
-    if (!d) return null;
-    const x = new Date(d);
-    if (Number.isNaN(x.getTime())) return null;
-    return x.toISOString().slice(0, 10);
-  };
+  const leadForDialog = (leadDetail?.lead ?? lead) as any;
+  const itineraries: ItineraryLike[] = useMemo(() => {
+    const raw: any[] = Array.isArray(leadForDialog?.itineraries) ? leadForDialog.itineraries : [];
+    return raw;
+  }, [leadForDialog]);
 
-  const getLeadPropertyId = (): string | null =>
-    extractLeadPropertyId(lead, leadDetail?.lead);
+  const uniquePropertyIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const it of itineraries) {
+      const pid =
+        typeof it?.propertyId === "object" && it?.propertyId
+          ? String((it.propertyId as any)._id)
+          : it?.propertyId
+            ? String(it.propertyId)
+            : "";
+      if (pid) ids.add(pid);
+    }
+    return Array.from(ids);
+  }, [itineraries]);
 
-  const getLeadDates = (): { checkIn: string | null; checkOut: string | null } => {
-    const checkInRaw =
-      lead?.checkInDate ??
-      (lead as any)?.itineraries?.[0]?.checkInDate ??
-      (leadDetail as any)?.lead?.checkInDate;
-    const checkOutRaw =
-      lead?.checkOutDate ??
-      (lead as any)?.itineraries?.[0]?.checkOutDate ??
-      (leadDetail as any)?.lead?.checkOutDate;
-    return { checkIn: toYmd(checkInRaw), checkOut: toYmd(checkOutRaw) };
-  };
+  const ezeeMappingReadyKey = useMemo(
+    () =>
+      uniquePropertyIds
+        .map((pid) => {
+          const m = ezeeMappingByPropertyId[pid];
+          return m ? `${pid}:${m.ratePlans?.length ?? 0}:${m.rateTypes?.length ?? 0}` : `${pid}:pending`;
+        })
+        .join("|"),
+    [uniquePropertyIds, ezeeMappingByPropertyId]
+  );
 
-  const effectivePropertyId = getLeadPropertyId();
-  const { checkIn: effectiveCheckIn, checkOut: effectiveCheckOut } = getLeadDates();
+  const ezeeRatesReadyKey = useMemo(
+    () =>
+      uniquePropertyIds
+        .map((pid) => {
+          const m = ezeeRateMapByPropertyId[pid];
+          return m ? `${pid}:${Object.keys(m).length}` : `${pid}:pending`;
+        })
+        .join("|"),
+    [uniquePropertyIds, ezeeRateMapByPropertyId]
+  );
 
-  // Load quotation history, email accounts, KB, and Ezee rate suggestions when dialog opens
+  function nightsBetween(checkIn?: string, checkOut?: string) {
+    if (!checkIn || !checkOut) return 1;
+    const cin = new Date(checkIn);
+    const cout = new Date(checkOut);
+    const diff = Math.ceil((cout.getTime() - cin.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 1;
+  }
+
+  function computeRow(baseRate: number, discountPercent: number) {
+    const discountedRate = baseRate - (baseRate * discountPercent) / 100;
+    const taxPercent = discountedRate > 7499 ? 18 : 5;
+    const taxAmount = (discountedRate * taxPercent) / 100;
+    return { discountedRate, taxPercent, taxAmount };
+  }
+
+  function buildHotelQuoteDraft(it: ItineraryLike): HotelQuoteDraft {
+    const pid =
+      typeof it?.propertyId === "object" && it?.propertyId
+        ? String((it.propertyId as any)._id)
+        : it?.propertyId
+          ? String(it.propertyId)
+          : undefined;
+    const hotelName =
+      it?.hotelName ||
+      (typeof it?.propertyId === "object" && it?.propertyId ? (it.propertyId as any).name : undefined) ||
+      propertyName ||
+      undefined;
+    const nights = nightsBetween(it.checkInDate, it.checkOutDate);
+    const rr = Array.isArray(it.roomsRequested) ? it.roomsRequested : [];
+    const rows: RoomRowDraft[] = [];
+    for (const r of rr) {
+      const qty = Math.max(1, Number(r.quantity ?? 1));
+      const adults = Math.max(0, Number(r.adults ?? (leadForDialog?.guests?.adults ?? 1)));
+      const children = Math.max(0, Number(r.children ?? (leadForDialog?.guests?.children ?? 0)));
+      for (let i = 0; i < qty; i++) {
+        rows.push({
+          rowId: crypto.randomUUID(),
+          roomTypeId: r.roomTypeId ? String(r.roomTypeId) : undefined,
+          roomTypeName: r.roomTypeName ? String(r.roomTypeName) : undefined,
+          adults,
+          children,
+          baseRate: "",
+          extraAdult: "",
+          extraChild: "",
+          discountPercent: 0,
+        });
+      }
+    }
+    if (rows.length === 0) {
+      rows.push({
+        rowId: crypto.randomUUID(),
+        adults: Math.max(0, Number(leadForDialog?.guests?.adults ?? 1)),
+        children: Math.max(0, Number(leadForDialog?.guests?.children ?? 0)),
+        baseRate: "",
+        extraAdult: "",
+        extraChild: "",
+        discountPercent: 0,
+      });
+    }
+    const mapping = pid ? ezeeMappingByPropertyId[pid] : undefined;
+    const rtOptions = roomTypeOptions(mapping);
+    const rateMap = pid ? ezeeRateMapByPropertyId[pid] : undefined;
+
+    return {
+      propertyId: pid,
+      hotelName,
+      hotelAddress: it.hotelAddress,
+      checkInDate: it.checkInDate,
+      checkOutDate: it.checkOutDate,
+      nights,
+      baseRateOptionsByKey: {},
+      rows: rows.map((r) => {
+        const resolvedRoom = resolveEzeeRoomType(mapping, r.roomTypeId, r.roomTypeName);
+        const initRoomTypeId = resolvedRoom?.id || (rtOptions.length === 1 ? rtOptions[0].id : r.roomTypeId);
+        const initRoomTypeName =
+          resolvedRoom?.name ||
+          (initRoomTypeId ? rtOptions.find((x) => x.id === initRoomTypeId)?.name : undefined) ||
+          r.roomTypeName;
+
+        const mealOpts = mealPlanOptionsForRoomType(mapping, initRoomTypeId, initRoomTypeName);
+        const initMealPlanId = mealOpts[0]?.id;
+        const initMealPlanName = mealOpts[0]?.name;
+        const plan = resolveRatePlanForSelection(mapping, initRoomTypeId, initRoomTypeName, initMealPlanId);
+        const key = rateLookupKey(initRoomTypeId, plan?.ratePlanId);
+        const hit = key && rateMap ? rateMap[key] : undefined;
+        const autoBase = r.baseRate === "";
+        return {
+          ...r,
+          rowId: r.rowId || crypto.randomUUID(),
+          roomTypeId: initRoomTypeId,
+          roomTypeName: initRoomTypeName,
+          mealPlanId: initMealPlanId,
+          mealPlanName: initMealPlanName,
+          ratePlanId: plan?.ratePlanId,
+          ratePlanName: plan?.ratePlanName,
+          ...(autoBase
+            ? pmsRatePatchFromLookup(key, rateMap)
+            : {
+                extraAdultRate: hit?.extraAdult,
+                extraChildRate: hit?.extraChild,
+                rateUnavailable: !!key && !hit,
+              }),
+        };
+      }),
+    };
+  }
+
+  function rebuildDrafts(choice: "separate" | "combined") {
+    const hotelQuotes = itineraries.map(buildHotelQuoteDraft);
+    if (hotelQuotes.length <= 1) {
+      setDrafts([{ id: "q1", label: "Quotation", hotelQuotes }]);
+      setActiveDraftIdx(0);
+      setStep("builder");
+      return;
+    }
+    if (choice === "combined") {
+      setDrafts([{ id: "q1", label: "Combined quotation", hotelQuotes }]);
+      setActiveDraftIdx(0);
+      setStep("builder");
+      return;
+    }
+    setDrafts(
+      hotelQuotes.map((hq, idx) => ({
+        id: `q${idx + 1}`,
+        label: `Quotation ${idx + 1} — ${hq.hotelName || "Hotel"}`,
+        hotelQuotes: [hq],
+      }))
+    );
+    setActiveDraftIdx(0);
+    setStep("builder");
+  }
+
+  // Load quotation history + email accounts + PMS meal plans when dialog opens
   useEffect(() => {
     if (!open) {
-      setKbData(null);
-      setEzeeRates([]);
-      kbInclusionsAppliedRef.current = false;
-      setShowAllKbRules(false);
-      setKbDirectoryDrawerOpen(false);
+      setDrafts([]);
+      setActiveDraftIdx(0);
       return;
     }
-    if (open && lead?.id) {
-      loadQuotationHistory();
-      loadEmailAccounts();
+    if (lead?.id) {
+      void loadQuotationHistory();
+      void loadEmailAccounts();
     }
-  }, [open, lead?.id]);
-
-  useEffect(() => {
-    if (!open || !lead?.id || !effectivePropertyId) {
+    if (uniquePropertyIds.length === 0) {
+      setDrafts([]);
       return;
     }
-
     let cancelled = false;
-    (async () => {
-      try {
-        setKbLoading(true);
-        const data = await getKBForQuotation(effectivePropertyId);
-        if (cancelled) return;
-        setKbData(data);
 
-        if (!kbInclusionsAppliedRef.current && data.factsheet) {
-          const lines: string[] = [];
-          if (data.factsheet.generalInfo?.length) {
-            lines.push(...data.factsheet.generalInfo);
+    // eZee API 1 (room-info): RoomTypes, RateTypes, RatePlans
+    (async () => {
+      const out: Record<string, EzeeSeparateSourceMapping> = {};
+      const errs: Record<string, string> = {};
+      await Promise.all(
+        uniquePropertyIds.map(async (pid) => {
+          try {
+            const qs = new URLSearchParams({ hotelId: pid });
+            const res = await fetch(`${API_BASE_URL}/api/ezee/room-info?${qs.toString()}`, {
+              headers: withAuthHeaders(),
+            });
+            if (!res.ok) throw new Error("room-info failed");
+            out[pid] = (await res.json()) as EzeeSeparateSourceMapping;
+          } catch {
+            out[pid] = { roomTypes: [], rateTypes: [], ratePlans: [] };
+            errs[pid] = "Could not fetch room plans from PMS. Enter details manually.";
           }
-          if (data.factsheet.hotelAmenities?.length) {
-            lines.push(...data.factsheet.hotelAmenities);
-          }
-          if (lines.length > 0) {
-            setInclusions(lines.join("\n"));
-            kbInclusionsAppliedRef.current = true;
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load KB for quotation:", err);
-      } finally {
-        if (!cancelled) setKbLoading(false);
+        })
+      );
+      if (cancelled) return;
+      setEzeeMappingByPropertyId((prev) => ({ ...prev, ...out }));
+      setEzeeErrorByPropertyId((prev) => ({ ...prev, ...errs }));
+    })();
+
+    // eZee API 2 (rates): date-based Base/ExtraAdult/ExtraChild lookup map
+    ;(async () => {
+      const out: Record<string, EzeeRatesLookupMap> = {};
+      const errs: Record<string, string> = {};
+
+      const itineraryByPropertyId = new Map<string, ItineraryLike>();
+      for (const it of itineraries) {
+        const pid =
+          typeof it?.propertyId === "object" && it?.propertyId
+            ? String((it.propertyId as any)._id)
+            : it?.propertyId
+              ? String(it.propertyId)
+              : "";
+        if (pid && !itineraryByPropertyId.has(pid)) itineraryByPropertyId.set(pid, it);
       }
+
+      await Promise.all(
+        uniquePropertyIds.map(async (pid) => {
+          const it = itineraryByPropertyId.get(pid);
+          const fromDate = (it?.checkInDate || "").split("T")[0];
+          const toDate = (it?.checkOutDate || "").split("T")[0];
+          if (!fromDate || !toDate) {
+            out[pid] = {};
+            errs[pid] = "Check-in/Check-out dates missing on this lead — rates unavailable.";
+            return;
+          }
+          try {
+            const qs = new URLSearchParams({ hotelId: pid, fromDate, toDate });
+            const res = await fetch(`${API_BASE_URL}/api/ezee/rates?${qs.toString()}`, {
+              headers: withAuthHeaders(),
+            });
+            if (!res.ok) throw new Error("rates failed");
+            out[pid] = (await res.json()) as EzeeRatesLookupMap;
+          } catch {
+            out[pid] = {};
+            errs[pid] = "Could not fetch live rates from PMS — enter rates manually.";
+          }
+        })
+      );
+      if (cancelled) return;
+      setEzeeRateMapByPropertyId((prev) => ({ ...prev, ...out }));
+      setEzeeRateErrorByPropertyId((prev) => ({ ...prev, ...errs }));
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [open, lead?.id, effectivePropertyId]);
+  }, [open, lead?.id, uniquePropertyIds.join("|")]);
 
   useEffect(() => {
-    if (!open || !effectivePropertyId || !effectiveCheckIn || !effectiveCheckOut) {
-      setEzeeRates([]);
+    if (!open) return;
+    // Decide initial step based on number of hotels
+    if (itineraries.length > 1) {
+      setStep("grouping");
+      setGroupingChoice("separate");
+      setDrafts([]);
       return;
     }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        setEzeeLoading(true);
-        const res = await getPropertyEzeeRates(
-          effectivePropertyId,
-          effectiveCheckIn,
-          effectiveCheckOut
-        );
-        if (cancelled) return;
-        setEzeeRates(res.available ? res.rates : []);
-      } catch {
-        if (!cancelled) setEzeeRates([]);
-      } finally {
-        if (!cancelled) setEzeeLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, effectivePropertyId, effectiveCheckIn, effectiveCheckOut]);
+    rebuildDrafts("combined");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, itineraries.length, ezeeMappingReadyKey, ezeeRatesReadyKey]);
 
   const loadEmailAccounts = async () => {
     try {
@@ -263,801 +602,769 @@ export const SendQuotationDialog = ({
     }
   };
 
-  const calculateTotal = () => {
-    const rateNum = parseFloat(rate) || 0;
-    const taxesNum = parseFloat(taxes) || 0;
-    const roomsNum = parseInt(rooms) || 1;
-    const nights = calculateNights();
-    const subtotalFromLines =
-      rateLines.length > 0
-        ? rateLines.reduce(
-            (sum, l) => sum + (l.ratePerNight || 0) * (l.quantity || 1) * nights,
-            0
-          )
-        : null;
-    return ((subtotalFromLines ?? rateNum * roomsNum * nights) + taxesNum);
-  };
+  const activeDraft = drafts[activeDraftIdx];
 
-  const calculateNights = () => {
-    if (!lead?.checkInDate || !lead?.checkOutDate) return 1;
-    const checkIn = new Date(lead.checkInDate);
-    const checkOut = new Date(lead.checkOutDate);
-    const diff = Math.ceil(
-      (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
+  function calcHotelSummary(h: HotelQuoteDraft) {
+    const nights = Math.max(1, Number(h.nights || 1));
+    let subtotal = 0;
+    let totalTax = 0;
+    let grandTotal = 0;
+    for (const row of h.rows) {
+      const base = Math.max(0, Number(row.baseRate || 0));
+      const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
+      const { discountedRate, taxPercent, taxAmount } = computeRow(base, disc);
+      subtotal += discountedRate;
+      totalTax += taxAmount;
+      grandTotal += (discountedRate + taxAmount) * nights;
+    }
+    return { subtotal, totalTax, grandTotal };
+  }
+
+  function calcDraftSummary(d: QuotationDraft) {
+    return d.hotelQuotes.reduce(
+      (acc, h) => {
+        const s = calcHotelSummary(h);
+        acc.subtotal += s.subtotal;
+        acc.totalTax += s.totalTax;
+        acc.grandTotal += s.grandTotal;
+        return acc;
+      },
+      { subtotal: 0, totalTax: 0, grandTotal: 0 }
     );
-    return diff > 0 ? diff : 1;
-  };
+  }
 
-  const handleSendQuotation = async () => {
+  async function sendDraft(draftIdx: number) {
     if (!lead?.id) return;
-
-    // Validate based on send method
-    if (sendVia === "EMAIL" && !recipientEmail) {
-      toast({
-        title: "Email Required",
-        description: "Please enter an email address to send the quotation",
-        variant: "destructive",
-      });
+    if (sendVia === "EMAIL" && !recipientEmail?.trim()) {
+      toast({ title: "Email required", description: "Please enter an email address.", variant: "destructive" });
+      return;
+    }
+    if (sendVia === "WHATSAPP" && !recipientPhone?.trim()) {
+      toast({ title: "Phone required", description: "Please enter a phone number.", variant: "destructive" });
       return;
     }
 
-    if (sendVia === "WHATSAPP" && !recipientPhone) {
-      toast({
-        title: "Phone Required",
-        description: "Please enter a phone number to send the quotation via WhatsApp",
-        variant: "destructive",
-      });
-      return;
+    const d = drafts[draftIdx];
+    if (!d) return;
+    for (const h of d.hotelQuotes) {
+      for (const row of h.rows) {
+        if (!row.roomTypeId && !row.roomTypeName) {
+          toast({ title: "Missing room type", description: "Please select a room type for all rows.", variant: "destructive" });
+          return;
+        }
+        if (!row.mealPlanId && !row.mealPlanName) {
+          toast({ title: "Missing meal plan", description: "Please select a meal plan for all rows.", variant: "destructive" });
+          return;
+        }
+        if (row.discountPercent > discountCap) {
+          toast({ title: "Discount too high", description: `Max discount is ${discountCap}%`, variant: "destructive" });
+          return;
+        }
+      }
     }
 
-    if (!rate && rateLines.length === 0) {
-      toast({
-        title: "Rate Required",
-        description: "Please enter a room rate or add at least one room-rate line",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    setIsSending(true);
     try {
-      setIsSending(true);
-
-      const effectiveRoomsFromLines =
-        rateLines.length > 0
-          ? rateLines.reduce((sum, l) => sum + (l.quantity || 0), 0) || 1
-          : undefined;
-
-      const payload: CreateQuotationPayload = {
-        rooms: effectiveRoomsFromLines ?? (parseInt(rooms) || 1),
-        rate: rateLines.length > 0 ? undefined : (parseFloat(rate) || 0),
-        taxes: parseFloat(taxes) || 0,
-        rateLines:
-          rateLines.length > 0
-            ? rateLines.map((l) => ({
-                roomTypeName: l.roomTypeName,
-                quantity: l.quantity,
-                ratePerNight: l.ratePerNight,
-                hotelName: l.hotelName,
-              }))
-            : undefined,
-        inclusions,
-        specialPackages,
+      const payload = {
         sentVia: sendVia,
-        sentTo: {
-          name: recipientName,
-          email: recipientEmail,
-          phone: recipientPhone,
-        },
+        sentTo: { name: recipientName, email: recipientEmail, phone: recipientPhone },
+        hotelQuotes: d.hotelQuotes.map((h) => {
+          const nights = Math.max(1, Number(h.nights || 1));
+          const rows = h.rows.map((row) => {
+            const baseRate = Math.max(0, Number(row.baseRate || 0));
+            const discountPercent = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
+            const { discountedRate, taxPercent, taxAmount } = computeRow(baseRate, discountPercent);
+            const total = (discountedRate + taxAmount) * nights;
+            return {
+              roomTypeId: row.roomTypeId,
+              roomTypeName: row.roomTypeName,
+              mealPlanId: row.mealPlanId,
+              mealPlanName: row.mealPlanName,
+              ratePlanId: row.ratePlanId,
+              ratePlanName: row.ratePlanName,
+              adults: row.adults,
+              children: row.children,
+              baseRate,
+              discountPercent,
+              discountedRate,
+              taxPercent,
+              taxAmount,
+              total,
+            };
+          });
+          const subtotal = rows.reduce((s, r) => s + r.discountedRate, 0);
+          const totalTax = rows.reduce((s, r) => s + r.taxAmount, 0);
+          const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+          return {
+            propertyId: h.propertyId,
+            hotelName: h.hotelName,
+            hotelAddress: h.hotelAddress,
+            checkInDate: h.checkInDate,
+            checkOutDate: h.checkOutDate,
+            nights,
+            rows,
+            subtotal,
+            totalTax,
+            grandTotal,
+          };
+        }),
       };
 
-      await createQuotation(lead.id, payload);
-
-      toast({
-        title: "Quotation Sent",
-        description: `Quotation sent successfully via ${sendVia === "EMAIL" ? "Email" : "WhatsApp"}`,
-      });
-
-      // Reload history
+      await createQuotation(lead.id, payload as any);
+      toast({ title: "Quotation sent", description: d.label });
+      setDrafts((prev) => prev.map((x, i) => (i === draftIdx ? { ...x, sent: true } : x)));
       await loadQuotationHistory();
-
-      // Switch to history tab to show the sent quotation
-      setActiveTab("history");
-
-      // Notify parent
       onQuotationSent?.();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to send quotation";
       toast({
         title: "Error",
-        description: message,
+        description: err instanceof Error ? err.message : "Failed to send quotation",
         variant: "destructive",
       });
     } finally {
       setIsSending(false);
     }
-  };
+  }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "SENT":
-        return <Clock className="h-4 w-4 text-blue-500" />;
-      case "ACCEPTED":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "REJECTED":
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      case "REVISED":
-        return <RefreshCw className="h-4 w-4 text-orange-500" />;
-      default:
-        return <FileText className="h-4 w-4 text-gray-500" />;
+  async function sendAll() {
+    for (let i = 0; i < drafts.length; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await sendDraft(i);
     }
-  };
+  }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "SENT":
-        return "bg-blue-100 text-blue-800";
-      case "ACCEPTED":
-        return "bg-green-100 text-green-800";
-      case "REJECTED":
-        return "bg-red-100 text-red-800";
-      case "REVISED":
-        return "bg-orange-100 text-orange-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(amount);
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Send Quotation
-            {lead && (
-              <Badge variant="outline" className="ml-2">
-                Lead #{lead.leadNumber}
-              </Badge>
-            )}
-          </DialogTitle>
-        </DialogHeader>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Send Quotation
+              {lead && (
+                <Badge variant="outline" className="ml-2">
+                  Lead #{lead.leadNumber}
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "create" | "history")}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="create">
-              <Send className="h-4 w-4 mr-2" />
-              Create Quotation
-            </TabsTrigger>
-            <TabsTrigger value="history">
-              <Clock className="h-4 w-4 mr-2" />
-              History ({quotationHistory.length})
-            </TabsTrigger>
-          </TabsList>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "create" | "history")}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="create">
+                <Send className="h-4 w-4 mr-2" />
+                Create
+              </TabsTrigger>
+              <TabsTrigger value="history">
+                <Clock className="h-4 w-4 mr-2" />
+                History ({quotationHistory.length})
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="create" className="space-y-4 mt-4">
-            {/* Lead Summary */}
-            {lead && (
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <h4 className="font-medium text-sm">Lead Details</h4>
-                {effectivePropertyId ? (
-                  <div className="flex flex-wrap items-center gap-2 pb-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="rounded-sm text-xs h-8"
-                      onClick={() => setKbDirectoryDrawerOpen(true)}
-                    >
-                      View hotel directory
-                    </Button>
-                    <span className="text-[11px] text-muted-foreground">
-                      Property KB (rooms, amenities, contacts)
-                    </span>
+            <TabsContent value="create" className="space-y-4 mt-4">
+              {sendVia === "EMAIL" && !hasEmailAccount && !isLoadingAccounts && (
+                <Alert variant="destructive" className="border-amber-500 bg-amber-50 text-amber-900">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>No Email Account Connected</AlertTitle>
+                  <AlertDescription>
+                    The quotation will be saved but not delivered via email until an email account is connected.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {sendVia === "EMAIL" && hasEmailAccount && primaryEmailAccount && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-sm">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="text-green-800">
+                    Email will be sent from: <strong>{primaryEmailAccount.email}</strong>
+                  </span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="space-y-3 lg:col-span-1">
+                  <div className="space-y-2">
+                    <Label>Send via</Label>
+                    <RadioGroup value={sendVia} onValueChange={(v) => setSendVia(v as SendVia)} className="flex gap-4">
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="EMAIL" id="send-email" />
+                        <Label htmlFor="send-email" className="flex items-center gap-2 cursor-pointer">
+                          <Mail className="h-4 w-4 text-blue-600" />
+                          Email
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="WHATSAPP" id="send-whatsapp" />
+                        <Label htmlFor="send-whatsapp" className="flex items-center gap-2 cursor-pointer">
+                          <MessageCircle className="h-4 w-4 text-green-600" />
+                          WhatsApp
+                          <span className="text-xs text-muted-foreground">(Coming soon)</span>
+                        </Label>
+                      </div>
+                    </RadioGroup>
                   </div>
-                ) : null}
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  {propertyName && (
-                    <div className="flex items-center gap-2">
-                      <Hotel className="h-4 w-4 text-muted-foreground" />
-                      <span>{propertyName}</span>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="q-to-name">Guest name</Label>
+                    <Input id="q-to-name" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
+                  </div>
+                  {sendVia === "EMAIL" ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="q-to-email">Email *</Label>
+                      <Input id="q-to-email" type="email" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="q-to-phone">Phone *</Label>
+                      <Input id="q-to-phone" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} />
                     </div>
                   )}
-                  {lead.checkInDate && lead.checkOutDate && (
-                    <div className="flex items-center gap-2">
-                      <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                      <span>
-                        {new Date(lead.checkInDate).toLocaleDateString()} -{" "}
-                        {new Date(lead.checkOutDate).toLocaleDateString()}
-                        <span className="text-muted-foreground ml-1">
-                          ({calculateNights()} nights)
-                        </span>
-                      </span>
-                    </div>
-                  )}
-                  {lead.guests && (
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                      <span>
-                        {lead.guests.adults || 0} Adults
-                        {lead.guests.children ? `, ${lead.guests.children} Children` : ""}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
-            {/* Email Account Warning */}
-            {sendVia === "EMAIL" && !hasEmailAccount && !isLoadingAccounts && (
-              <Alert variant="destructive" className="border-amber-500 bg-amber-50 text-amber-900">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>No Email Account Connected</AlertTitle>
-                <AlertDescription>
-                  To send quotations via email, please connect your email account in{" "}
-                  <a href="/email-settings" className="underline font-medium">
-                    Email Settings
-                  </a>
-                  . The quotation will be saved but won't be delivered via email.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Email Account Info */}
-            {sendVia === "EMAIL" && hasEmailAccount && primaryEmailAccount && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-green-800">
-                  Email will be sent from: <strong>{primaryEmailAccount.email}</strong>
-                </span>
-              </div>
-            )}
-
-            {/* Send Method */}
-            <div className="space-y-3">
-              <Label>Send Via</Label>
-              <RadioGroup
-                value={sendVia}
-                onValueChange={(v) => setSendVia(v as SendVia)}
-                className="flex gap-4"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="EMAIL" id="email" />
-                  <Label htmlFor="email" className="flex items-center gap-2 cursor-pointer">
-                    <Mail className="h-4 w-4 text-blue-600" />
-                    Email
-                    {hasEmailAccount && (
-                      <CheckCircle className="h-3 w-3 text-green-500" />
-                    )}
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="WHATSAPP" id="whatsapp" />
-                  <Label htmlFor="whatsapp" className="flex items-center gap-2 cursor-pointer">
-                    <MessageCircle className="h-4 w-4 text-green-600" />
-                    WhatsApp
-                    <span className="text-xs text-muted-foreground">(Coming soon)</span>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            {/* Recipient Details */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="recipientName">Recipient Name</Label>
-                <Input
-                  id="recipientName"
-                  value={recipientName}
-                  onChange={(e) => setRecipientName(e.target.value)}
-                  placeholder="Guest name"
-                />
-              </div>
-              {sendVia === "EMAIL" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="recipientEmail">Email Address *</Label>
-                  <Input
-                    id="recipientEmail"
-                    type="email"
-                    value={recipientEmail}
-                    onChange={(e) => setRecipientEmail(e.target.value)}
-                    placeholder="email@example.com"
-                    required
-                  />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="recipientPhone">Phone Number *</Label>
-                  <Input
-                    id="recipientPhone"
-                    type="tel"
-                    value={recipientPhone}
-                    onChange={(e) => setRecipientPhone(e.target.value)}
-                    placeholder="+91 9876543210"
-                    required
-                  />
-                </div>
-              )}
-            </div>
-
-            <Separator />
-
-            {/* Pricing Details */}
-            <div className="space-y-4">
-              <h4 className="font-medium text-sm">Pricing Details</h4>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="rooms">Number of Rooms</Label>
-                  <Input
-                    id="rooms"
-                    type="number"
-                    min="1"
-                    value={rooms}
-                    onChange={(e) => setRooms(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="rate">Rate per Room/Night (₹) *</Label>
-                  <Input
-                    id="rate"
-                    type="number"
-                    value={rate}
-                    onChange={(e) => setRate(e.target.value)}
-                    placeholder="5000"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="taxes">Taxes & Fees (₹)</Label>
-                  <Input
-                    id="taxes"
-                    type="number"
-                    value={taxes}
-                    onChange={(e) => setTaxes(e.target.value)}
-                    placeholder="900"
-                  />
-                </div>
-              </div>
-
-              {/* Total Calculation */}
-              <div className="bg-primary/5 rounded-lg p-4 flex items-center justify-between">
-                <span className="font-medium">Estimated Total</span>
-                <span className="text-xl font-bold flex items-center">
-                  <IndianRupee className="h-5 w-5" />
-                  {calculateTotal().toLocaleString("en-IN")}
-                </span>
-              </div>
-
-              {ezeeLoading && (
-                <p className="text-xs text-muted-foreground">Loading rate suggestions from PMS…</p>
-              )}
-              {!ezeeLoading && ezeeRates.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground text-xs">Rate suggestions (click to apply)</Label>
-                  <div className="max-h-56 overflow-y-auto rounded-md border border-border/50 bg-muted/10 p-2">
-                    <div className="grid gap-2">
-                    {ezeeRates.map((r, i) => (
-                      <Button
-                        key={`${r.roomType}-${i}`}
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="h-auto w-full justify-start whitespace-normal break-words py-1.5 text-left text-xs font-normal"
-                        onClick={() => {
-                          const roomTypeName = (r.roomType || "Room").trim() || "Room";
-                          const existingQtyFromLead =
-                            leadDetail?.lead?.itineraries?.[0]?.roomsRequested?.find(
-                              (x) =>
-                                (x.roomTypeName || "").trim().toLowerCase() ===
-                                roomTypeName.toLowerCase()
-                            )?.quantity ?? 1;
-                          setRateLines((prev) => {
-                            const idx = prev.findIndex(
-                              (l) =>
-                                l.roomTypeName.trim().toLowerCase() ===
-                                  roomTypeName.toLowerCase() &&
-                                (l.hotelName || "").trim().toLowerCase() ===
-                                  ((leadDetail?.lead?.itineraries?.[0]?.hotelName || "") as string)
-                                    .trim()
-                                    .toLowerCase()
-                            );
-                            const hotelName = leadDetail?.lead?.itineraries?.[0]?.hotelName;
-                            const nextLine: RateLineDraft = {
-                              roomTypeName,
-                              quantity: existingQtyFromLead || 1,
-                              ratePerNight: Math.round(r.rate || 0),
-                              hotelName: hotelName || undefined,
-                            };
-                            if (idx >= 0) {
-                              const out = [...prev];
-                              out[idx] = nextLine;
-                              return out;
-                            }
-                            return [...prev, nextLine];
-                          });
-                        }}
-                      >
-                        Click to use: {formatCurrency(r.rate)} — {r.roomType}
-                      </Button>
-                    ))}
-                    </div>
+                  <div className="text-xs text-muted-foreground">
+                    Max discount: <span className="font-medium">{discountCap}%</span>
                   </div>
                 </div>
-              )}
 
-              {/* Multi-room rate lines */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <Label className="text-sm">Selected room rates (optional)</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-sm text-xs"
-                    onClick={() =>
-                      setRateLines((prev) => [
-                        ...prev,
-                        { roomTypeName: "", quantity: 1, ratePerNight: 0 },
-                      ])
-                    }
-                  >
-                    Add line
-                  </Button>
+                <div className="lg:col-span-2 space-y-4">
+                  {step === "grouping" && (
+                    <div className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center gap-2 font-medium">
+                        <Hotel className="h-4 w-4" /> Multiple hotels selected
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Choose how to send quotations for {itineraries.length} hotels.
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        {itineraries.map((it, idx) => (
+                          <div key={idx} className="flex items-center justify-between">
+                            <span className="truncate">
+                              {it.hotelName || (typeof it.propertyId === "object" ? (it.propertyId as any)?.name : "") || "Hotel"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {it.checkInDate ? it.checkInDate.split("T")[0] : "—"} → {it.checkOutDate ? it.checkOutDate.split("T")[0] : "—"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <Separator />
+                      <RadioGroup value={groupingChoice} onValueChange={(v) => setGroupingChoice(v as any)} className="space-y-2">
+                        <div className="flex items-start space-x-2">
+                          <RadioGroupItem value="separate" id="grp-sep" className="mt-1" />
+                          <Label htmlFor="grp-sep" className="cursor-pointer">
+                            Send as separate quotations
+                            <div className="text-xs text-muted-foreground font-normal">One quotation per hotel.</div>
+                          </Label>
+                        </div>
+                        <div className="flex items-start space-x-2">
+                          <RadioGroupItem value="combined" id="grp-comb" className="mt-1" />
+                          <Label htmlFor="grp-comb" className="cursor-pointer">
+                            Send as a combined quotation
+                            <div className="text-xs text-muted-foreground font-normal">All hotels inside a single quotation.</div>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                      <div className="flex justify-end">
+                        <Button type="button" onClick={() => rebuildDrafts(groupingChoice)}>
+                          Proceed
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {step !== "grouping" && activeDraft && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{activeDraft.label}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {drafts.length > 1 ? `Quotation ${activeDraftIdx + 1} of ${drafts.length}` : "Single quotation"}
+                          </div>
+                        </div>
+                        {drafts.length > 1 && (
+                          <div className="flex gap-2">
+                            <Button type="button" variant="outline" onClick={() => setActiveDraftIdx((i) => Math.max(0, i - 1))} disabled={activeDraftIdx === 0}>
+                              Prev
+                            </Button>
+                            <Button type="button" variant="outline" onClick={() => setActiveDraftIdx((i) => Math.min(drafts.length - 1, i + 1))} disabled={activeDraftIdx === drafts.length - 1}>
+                              Next
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {activeDraft.hotelQuotes.map((hq, hIdx) => {
+                        const summary = calcHotelSummary(hq);
+                        const pid = (hq.propertyId || "").trim();
+                        const pmsErr = pid ? ezeeErrorByPropertyId[pid] : undefined;
+                        const pmsRatesErr = pid ? ezeeRateErrorByPropertyId[pid] : undefined;
+                        const map = pid ? ezeeMappingByPropertyId[pid] : undefined;
+                        const hasEzeeData =
+                          !!map &&
+                          ((map.roomTypes?.length ?? 0) > 0 ||
+                            (map.rateTypes?.length ?? 0) > 0 ||
+                            (map.ratePlans?.length ?? 0) > 0);
+                        const noRatePlansConfigured = hasEzeeData && (map?.ratePlans?.length ?? 0) === 0;
+                        return (
+                          <div key={hIdx} className="rounded-lg border p-3 space-y-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="font-medium truncate">{hq.hotelName || "Hotel"}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {hq.checkInDate ? hq.checkInDate.split("T")[0] : "—"} → {hq.checkOutDate ? hq.checkOutDate.split("T")[0] : "—"} · {hq.nights} night{hq.nights === 1 ? "" : "s"}
+                                </div>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Subtotal: {formatCurrency(summary.subtotal)} · Tax: {formatCurrency(summary.totalTax)} · Total:{" "}
+                                <span className="font-medium text-foreground">{formatCurrency(summary.grandTotal)}</span>
+                              </div>
+                            </div>
+
+                            {pmsErr ? (
+                              <Alert variant="destructive" className="py-2">
+                                <AlertTriangle className="h-4 w-4" />
+                                <AlertTitle className="text-sm">PMS unavailable</AlertTitle>
+                                <AlertDescription className="text-sm">
+                                  {pmsErr}{" "}
+                                  <span className="opacity-90">
+                                    (You can still fill Room Type and Meal Plan manually.)
+                                  </span>
+                                </AlertDescription>
+                              </Alert>
+                            ) : noRatePlansConfigured ? (
+                              <Alert className="py-2">
+                                <AlertTriangle className="h-4 w-4" />
+                                <AlertTitle className="text-sm">No rate plans configured</AlertTitle>
+                                <AlertDescription className="text-sm">
+                                  No rate plans configured in PMS for this hotel. Please enter details manually.
+                                </AlertDescription>
+                              </Alert>
+                            ) : pmsRatesErr ? (
+                              <Alert className="py-2">
+                                <AlertTriangle className="h-4 w-4" />
+                                <AlertTitle className="text-sm">Rates unavailable</AlertTitle>
+                                <AlertDescription className="text-sm">
+                                  {pmsRatesErr}
+                                </AlertDescription>
+                              </Alert>
+                            ) : null}
+
+                            <div className="overflow-auto rounded-md border">
+                              <table className="min-w-[1150px] w-full text-sm">
+                                <thead className="bg-muted/40">
+                                  <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:text-xs [&>th]:font-medium">
+                                    <th>Room Type</th>
+                                    <th>Meal Plan</th>
+                                    <th className="text-right">Adults</th>
+                                    <th className="text-right">Children</th>
+                                    <th className="text-right">Base Rate</th>
+                                    <th className="text-right">Discount %</th>
+                                    <th className="text-right">Discounted</th>
+                                    <th className="text-right">Tax %</th>
+                                    <th className="text-right">Tax Amt</th>
+                                    <th className="text-right">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {hq.rows.map((row, rIdx) => {
+                                    const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
+                                    const base = Math.max(0, Number(row.baseRate || 0));
+                                    const { discountedRate, taxPercent, taxAmount } = computeRow(base, disc);
+                                    const total = (discountedRate + taxAmount) * hq.nights;
+                                    const ezeeMap = hq.propertyId ? ezeeMappingByPropertyId[hq.propertyId] : undefined;
+                                    const roomOptions = roomTypeOptions(ezeeMap);
+                                    const mealPlans = mealPlanOptionsForRoomType(ezeeMap, row.roomTypeId, row.roomTypeName);
+                                    const hasPmsOptions = (roomOptions.length > 0 && (ezeeMap?.ratePlans?.length ?? 0) > 0 && (ezeeMap?.rateTypes?.length ?? 0) > 0);
+                                    const noPlansForRoom = hasPmsOptions && row.roomTypeId && mealPlans.length === 0;
+                                    const rateMap = hq.propertyId ? ezeeRateMapByPropertyId[hq.propertyId] : undefined;
+                                    return (
+                                      <tr key={row.rowId || rIdx} className="border-t">
+                                        <td className="px-2 py-2">
+                                          {hasPmsOptions ? (
+                                            <select
+                                              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                                              value={row.roomTypeId || ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value || "";
+                                                const picked = roomOptions.find((x) => x.id === val);
+                                                const nextRoomTypeId = val || undefined;
+                                                const nextRoomTypeName = picked?.name || undefined;
+                                                const nextMealPlans = mealPlanOptionsForRoomType(ezeeMap, nextRoomTypeId, nextRoomTypeName);
+                                                const nextMealPlanId = nextMealPlans[0]?.id;
+                                                const nextMealPlanName = nextMealPlans[0]?.name;
+                                                const plan = resolveRatePlanForSelection(ezeeMap, nextRoomTypeId, nextRoomTypeName, nextMealPlanId);
+                                                const key = rateLookupKey(nextRoomTypeId, plan?.ratePlanId);
+                                                const ratePatch = pmsRatePatchFromLookup(key, rateMap);
+
+                                                setDrafts((prev) => {
+                                                  const next = [...prev];
+                                                  const d = next[activeDraftIdx];
+                                                  const h = d.hotelQuotes[hIdx];
+                                                  const rows = [...h.rows];
+                                                  rows[rIdx] = {
+                                                    ...rows[rIdx],
+                                                    roomTypeId: nextRoomTypeId,
+                                                    roomTypeName: nextRoomTypeName,
+                                                    mealPlanId: nextMealPlanId,
+                                                    mealPlanName: nextMealPlanName,
+                                                    ratePlanId: plan?.ratePlanId,
+                                                    ratePlanName: plan?.ratePlanName,
+                                                    ...ratePatch,
+                                                  };
+                                                  d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                  next[activeDraftIdx] = { ...d };
+                                                  return next;
+                                                });
+                                              }}
+                                            >
+                                              <option value="">Select…</option>
+                                              {roomOptions.map((rt) => (
+                                                <option key={rt.id} value={rt.id}>
+                                                  {rt.name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          ) : (
+                                            <Input
+                                              value={row.roomTypeName || ""}
+                                              placeholder="Enter room type"
+                                              onChange={(e) => {
+                                                const v = e.target.value;
+                                                setDrafts((prev) => {
+                                                  const next = [...prev];
+                                                  const d = next[activeDraftIdx];
+                                                  const h = d.hotelQuotes[hIdx];
+                                                  const rows = [...h.rows];
+                                                  rows[rIdx] = { ...rows[rIdx], roomTypeName: v, roomTypeId: rows[rIdx].roomTypeId };
+                                                  d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                  next[activeDraftIdx] = { ...d };
+                                                  return next;
+                                                });
+                                              }}
+                                            />
+                                          )}
+                                        </td>
+                                        <td className="px-2 py-2">
+                                          {hasPmsOptions ? (
+                                            <>
+                                              <select
+                                                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                                                value={row.mealPlanId || ""}
+                                                disabled={!row.roomTypeId || mealPlans.length === 0}
+                                                onChange={(e) => {
+                                                  const val = e.target.value || "";
+                                                  const picked = mealPlans.find((x) => x.id === val);
+                                                  const plan = resolveRatePlanForSelection(ezeeMap, row.roomTypeId, row.roomTypeName, val);
+                                                  const key = rateLookupKey(row.roomTypeId, plan?.ratePlanId);
+                                                  const ratePatch = pmsRatePatchFromLookup(key, rateMap);
+                                                  setDrafts((prev) => {
+                                                    const next = [...prev];
+                                                    const d = next[activeDraftIdx];
+                                                    const h = d.hotelQuotes[hIdx];
+                                                    const rows = [...h.rows];
+                                                    rows[rIdx] = {
+                                                      ...rows[rIdx],
+                                                      mealPlanId: val,
+                                                      mealPlanName: picked?.name || rows[rIdx].mealPlanName,
+                                                      ratePlanId: plan?.ratePlanId,
+                                                      ratePlanName: plan?.ratePlanName,
+                                                      ...ratePatch,
+                                                    };
+                                                    d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                    next[activeDraftIdx] = { ...d };
+                                                    return next;
+                                                  });
+                                                }}
+                                              >
+                                                <option value="">
+                                                  {!row.roomTypeId ? "Select room type first…" : "Select…"}
+                                                </option>
+                                                {mealPlans.map((mp) => (
+                                                  <option key={mp.id} value={mp.id}>
+                                                    {mp.name}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                              {noPlansForRoom ? (
+                                                <div className="text-[11px] text-amber-700 dark:text-amber-500 mt-1 leading-snug">
+                                                  No plans available for this room type.
+                                                </div>
+                                              ) : null}
+                                            </>
+                                          ) : (
+                                            <Input
+                                              value={row.mealPlanName || ""}
+                                              placeholder="Enter meal plan"
+                                              onChange={(e) => {
+                                                const v = e.target.value;
+                                                setDrafts((prev) => {
+                                                  const next = [...prev];
+                                                  const d = next[activeDraftIdx];
+                                                  const h = d.hotelQuotes[hIdx];
+                                                  const rows = [...h.rows];
+                                                  rows[rIdx] = { ...rows[rIdx], mealPlanName: v };
+                                                  d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                  next[activeDraftIdx] = { ...d };
+                                                  return next;
+                                                });
+                                              }}
+                                            />
+                                          )}
+                                        </td>
+                                        {/* Room No removed (not part of quotation stage) */}
+                                        <td className="px-2 py-2 text-right">
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            value={String(row.adults ?? 0)}
+                                            onChange={(e) => {
+                                              const v = Math.max(0, Number(e.target.value || 0));
+                                              setDrafts((prev) => {
+                                                const next = [...prev];
+                                                const d = next[activeDraftIdx];
+                                                const h = d.hotelQuotes[hIdx];
+                                                const rows = [...h.rows];
+                                                rows[rIdx] = { ...rows[rIdx], adults: v };
+                                                d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                next[activeDraftIdx] = { ...d };
+                                                return next;
+                                              });
+                                            }}
+                                            className="text-right"
+                                          />
+                                        </td>
+                                        <td className="px-2 py-2 text-right">
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            value={String(row.children ?? 0)}
+                                            onChange={(e) => {
+                                              const v = Math.max(0, Number(e.target.value || 0));
+                                              setDrafts((prev) => {
+                                                const next = [...prev];
+                                                const d = next[activeDraftIdx];
+                                                const h = d.hotelQuotes[hIdx];
+                                                const rows = [...h.rows];
+                                                rows[rIdx] = { ...rows[rIdx], children: v };
+                                                d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                next[activeDraftIdx] = { ...d };
+                                                return next;
+                                              });
+                                            }}
+                                            className="text-right"
+                                          />
+                                        </td>
+                                        <td className="px-2 py-2 text-right align-top">
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            placeholder={
+                                              row.rateUnavailable
+                                                ? "Rate not available — enter manually"
+                                                : "Enter base rate"
+                                            }
+                                            value={row.baseRate === "" ? "" : String(row.baseRate)}
+                                            onChange={(e) => {
+                                              const raw = e.target.value;
+                                              setDrafts((prev) => {
+                                                const next = [...prev];
+                                                const d = next[activeDraftIdx];
+                                                const h = d.hotelQuotes[hIdx];
+                                                const rows = [...h.rows];
+                                                if (raw === "") {
+                                                  rows[rIdx] = { ...rows[rIdx], baseRate: "" };
+                                                } else {
+                                                  const v = Math.max(0, Number(raw));
+                                                  rows[rIdx] = {
+                                                    ...rows[rIdx],
+                                                    baseRate: Number.isFinite(v) ? v : 0,
+                                                  };
+                                                }
+                                                d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                next[activeDraftIdx] = { ...d };
+                                                return next;
+                                              });
+                                            }}
+                                            className="text-right"
+                                          />
+                                          {row.extraAdultRate != null || row.extraChildRate != null ? (
+                                            <div className="text-[11px] text-muted-foreground text-right mt-1 leading-snug">
+                                              {row.extraAdultRate != null ? `Extra Adult: ₹${Math.round(row.extraAdultRate).toLocaleString("en-IN")}` : ""}
+                                              {row.extraAdultRate != null && row.extraChildRate != null ? " | " : ""}
+                                              {row.extraChildRate != null ? `Extra Child: ₹${Math.round(row.extraChildRate).toLocaleString("en-IN")}` : ""}
+                                            </div>
+                                          ) : null}
+                                          {row.rateUnavailable ? (
+                                            <div className="text-[11px] text-amber-700 dark:text-amber-500 text-right mt-1 leading-snug">
+                                              No rate found for this combination in PMS — enter manually.
+                                            </div>
+                                          ) : null}
+                                        </td>
+                                        <td className="px-2 py-2 text-right">
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            max={discountCap}
+                                            value={String(row.discountPercent ?? 0)}
+                                            onChange={(e) => {
+                                              const v = Math.min(discountCap, Math.max(0, Number(e.target.value || 0)));
+                                              setDrafts((prev) => {
+                                                const next = [...prev];
+                                                const d = next[activeDraftIdx];
+                                                const h = d.hotelQuotes[hIdx];
+                                                const rows = [...h.rows];
+                                                rows[rIdx] = { ...rows[rIdx], discountPercent: v };
+                                                d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                next[activeDraftIdx] = { ...d };
+                                                return next;
+                                              });
+                                            }}
+                                            className="text-right"
+                                          />
+                                          <div className="text-[11px] text-muted-foreground text-right">max {discountCap}%</div>
+                                        </td>
+                                        <td className="px-2 py-2 text-right">{formatCurrency(discountedRate)}</td>
+                                        <td className="px-2 py-2 text-right">{taxPercent}%</td>
+                                        <td className="px-2 py-2 text-right">{formatCurrency(taxAmount)}</td>
+                                        <td className="px-2 py-2 text-right font-medium">{formatCurrency(total)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  setDrafts((prev) => {
+                                    const next = [...prev];
+                                    const d = next[activeDraftIdx];
+                                    const h = d.hotelQuotes[hIdx];
+                                    const pid = h.propertyId;
+                                    const ezeeMap = pid ? ezeeMappingByPropertyId[pid] : undefined;
+                                    const rateMapAdd = pid ? ezeeRateMapByPropertyId[pid] : undefined;
+                                    const last = h.rows[h.rows.length - 1];
+                                    const hasPmsOptions =
+                                      (roomTypeOptions(ezeeMap).length > 0 &&
+                                        (ezeeMap?.ratePlans?.length ?? 0) > 0 &&
+                                        (ezeeMap?.rateTypes?.length ?? 0) > 0);
+                                    const opts = hasPmsOptions
+                                      ? mealPlanOptionsForRoomType(ezeeMap, last?.roomTypeId, last?.roomTypeName)
+                                      : [];
+                                    const initMealPlanId = opts[0]?.id;
+                                    const initMealPlanName = opts[0]?.name;
+                                    const plan = initMealPlanId
+                                      ? resolveRatePlanForSelection(ezeeMap, last?.roomTypeId, last?.roomTypeName, initMealPlanId)
+                                      : undefined;
+                                    const addKey = rateLookupKey(last?.roomTypeId, plan?.ratePlanId);
+                                    const ratePatchAdd = pmsRatePatchFromLookup(addKey, rateMapAdd);
+                                    const rows = [
+                                      ...h.rows,
+                                      {
+                                        rowId: crypto.randomUUID(),
+                                        roomTypeId: last?.roomTypeId,
+                                        roomTypeName: last?.roomTypeName,
+                                        adults: last?.adults ?? 1,
+                                        children: last?.children ?? 0,
+                                        extraAdult: "" as const,
+                                        extraChild: "" as const,
+                                        discountPercent: 0,
+                                        mealPlanId: initMealPlanId,
+                                        mealPlanName: initMealPlanName,
+                                        ratePlanId: plan?.ratePlanId,
+                                        ratePlanName: plan?.ratePlanName,
+                                        ...ratePatchAdd,
+                                      },
+                                    ];
+                                    d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                    next[activeDraftIdx] = { ...d };
+                                    return next;
+                                  });
+                                }}
+                              >
+                                Add room
+                              </Button>
+                              <div className="text-xs text-muted-foreground">
+                                Billing summary:{" "}
+                                <span className="font-medium text-foreground">
+                                  {formatCurrency(summary.grandTotal)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                {rateLines.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    If you’re quoting multiple room types/rates, add them here. Otherwise, use the single “Rate per Room/Night”.
-                  </p>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="history" className="mt-4">
+              <ScrollArea className="h-[400px]">
+                {isLoadingHistory ? (
+                  <div className="flex items-center justify-center py-8">
+                    <span className="text-sm text-muted-foreground">Loading quotation history...</span>
+                  </div>
+                ) : quotationHistory.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <FileText className="h-12 w-12 text-muted-foreground/50 mb-3" />
+                    <p className="text-sm text-muted-foreground">No quotations sent yet</p>
+                  </div>
                 ) : (
-                  <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 p-2">
-                    {rateLines.map((l, idx) => (
-                      <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                        <div className="col-span-6 space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">Room type</Label>
-                          <Input
-                            value={l.roomTypeName}
-                            onChange={(e) =>
-                              setRateLines((prev) => {
-                                const out = [...prev];
-                                out[idx] = { ...out[idx], roomTypeName: e.target.value };
-                                return out;
-                              })
-                            }
-                            placeholder="Deluxe Room"
-                          />
+                  <div className="space-y-3">
+                    {quotationHistory.map((q) => (
+                      <div key={q.id} className="border rounded-lg p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium">Version {q.versionNumber}</div>
+                          <div className="text-xs text-muted-foreground">{q.sentAt ? new Date(q.sentAt).toLocaleString() : ""}</div>
                         </div>
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">Qty</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={String(l.quantity ?? 1)}
-                            onChange={(e) =>
-                              setRateLines((prev) => {
-                                const out = [...prev];
-                                out[idx] = {
-                                  ...out[idx],
-                                  quantity: Math.max(1, parseInt(e.target.value || "1") || 1),
-                                };
-                                return out;
-                              })
-                            }
-                          />
-                        </div>
-                        <div className="col-span-3 space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">₹ / night</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            value={String(l.ratePerNight ?? 0)}
-                            onChange={(e) =>
-                              setRateLines((prev) => {
-                                const out = [...prev];
-                                out[idx] = {
-                                  ...out[idx],
-                                  ratePerNight: Math.max(0, parseFloat(e.target.value || "0") || 0),
-                                };
-                                return out;
-                              })
-                            }
-                          />
-                        </div>
-                        <div className="col-span-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-9 px-2"
-                            onClick={() =>
-                              setRateLines((prev) => prev.filter((_, i) => i !== idx))
-                            }
-                          >
-                            Remove
-                          </Button>
-                        </div>
+                        {q.hotelQuotes?.length ? (
+                          <div className="text-sm text-muted-foreground">
+                            {q.hotelQuotes.length} hotel(s) · Total{" "}
+                            {formatCurrency(q.hotelQuotes.reduce((s, h) => s + (h.grandTotal ?? 0), 0))}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">Legacy quotation</div>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
+              </ScrollArea>
+            </TabsContent>
+          </Tabs>
+
+          {activeTab === "create" && (
+            <DialogFooter className="flex items-center justify-between gap-2">
+              <div className="text-xs text-muted-foreground">
+                {drafts.length > 0 && activeDraft ? (
+                  <>Grand total: <span className="font-medium text-foreground">{formatCurrency(calcDraftSummary(activeDraft).grandTotal)}</span></>
+                ) : (
+                  <span />
+                )}
               </div>
-
-              {kbLoading && !kbData && lead?.propertyId && (
-                <p className="text-xs text-muted-foreground">Loading property knowledge…</p>
-              )}
-
-              {kbData && (
-                <Collapsible
-                  className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
-                  defaultOpen={false}
-                >
-                  <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-1 text-left text-sm font-medium [&[data-state=open]>svg]:rotate-180">
-                    <span>Property knowledge base</span>
-                    <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="space-y-3 pt-2 text-sm">
-                    {!kbData.factsheet ? (
-                      <p className="text-muted-foreground text-xs">
-                        No fact sheet content yet. Add details in Knowledge Base → Fact sheets.
-                      </p>
-                    ) : (
-                      <>
-                        {kbData.factsheet.roomCategories && kbData.factsheet.roomCategories.length > 0 && (
-                          <div>
-                            <span className="font-medium text-foreground">Room categories</span>
-                            <ul className="mt-1 list-inside list-disc text-muted-foreground">
-                              {kbData.factsheet.roomCategories.map((rc, idx) => (
-                                <li key={idx}>
-                                  {rc.name}
-                                  {rc.capacity != null ? ` · up to ${rc.capacity} guests` : ""}
-                                  {rc.sizesqft != null ? ` · ${rc.sizesqft} sq ft` : ""}
-                                  {rc.isAC ? " · AC" : ""}
-                                  {rc.isDorm ? " · Dorm" : ""}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {kbData.factsheet.inHouseRules && kbData.factsheet.inHouseRules.length > 0 && (
-                          <div>
-                            <span className="font-medium text-foreground">In-house rules</span>
-                            <ul className="mt-1 list-inside list-disc text-muted-foreground">
-                              {(showAllKbRules
-                                ? kbData.factsheet.inHouseRules
-                                : kbData.factsheet.inHouseRules.slice(0, 5)
-                              ).map((rule, idx) => (
-                                <li key={idx}>{rule}</li>
-                              ))}
-                            </ul>
-                            {kbData.factsheet.inHouseRules.length > 5 && (
-                              <button
-                                type="button"
-                                className="mt-1 text-xs text-primary underline"
-                                onClick={() => setShowAllKbRules(!showAllKbRules)}
-                              >
-                                {showAllKbRules ? "Show less" : "Show more"}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        {kbData.factsheet.additionalCharges &&
-                          kbData.factsheet.additionalCharges.length > 0 && (
-                            <div>
-                              <span className="font-medium text-foreground">Additional charges</span>
-                              <ul className="mt-1 space-y-0.5 text-muted-foreground">
-                                {kbData.factsheet.additionalCharges.map((ac, idx) => (
-                                  <li key={idx}>
-                                    {ac.item}
-                                    {ac.amount ? ` — ${ac.amount}` : ""}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        {kbData.factsheet.nearbyAttractions &&
-                          kbData.factsheet.nearbyAttractions.length > 0 && (
-                            <div>
-                              <span className="font-medium text-foreground">Nearby attractions</span>
-                              <ul className="mt-1 list-inside list-disc text-muted-foreground">
-                                {kbData.factsheet.nearbyAttractions.slice(0, 3).map((a, idx) => (
-                                  <li key={idx}>{a}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        {kbData.factsheet.pocDetails &&
-                          (kbData.factsheet.pocDetails.frontDeskPhone ||
-                            kbData.factsheet.pocDetails.frontDeskEmail ||
-                            kbData.factsheet.pocDetails.gmName ||
-                            kbData.factsheet.pocDetails.gmPhone) && (
-                            <div>
-                              <span className="font-medium text-foreground">POC</span>
-                              <div className="mt-1 space-y-0.5 text-muted-foreground text-xs">
-                                {kbData.factsheet.pocDetails.frontDeskPhone && (
-                                  <div>Front desk: {kbData.factsheet.pocDetails.frontDeskPhone}</div>
-                                )}
-                                {kbData.factsheet.pocDetails.frontDeskEmail && (
-                                  <div>{kbData.factsheet.pocDetails.frontDeskEmail}</div>
-                                )}
-                                {kbData.factsheet.pocDetails.gmName && (
-                                  <div>GM: {kbData.factsheet.pocDetails.gmName}</div>
-                                )}
-                                {kbData.factsheet.pocDetails.gmPhone && (
-                                  <div>GM phone: {kbData.factsheet.pocDetails.gmPhone}</div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                      </>
-                    )}
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
-            </div>
-
-            <Separator />
-
-            {/* Inclusions & Packages */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="inclusions">Inclusions</Label>
-                <Textarea
-                  id="inclusions"
-                  value={inclusions}
-                  onChange={(e) => setInclusions(e.target.value)}
-                  placeholder="Breakfast, Wi-Fi, Pool access..."
-                  rows={4}
-                />
+              <div className="flex gap-2">
+                {drafts.length > 1 && (
+                  <Button type="button" variant="outline" onClick={sendAll} disabled={isSending}>
+                    Send all
+                  </Button>
+                )}
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Close
+                </Button>
+                <Button type="button" onClick={() => sendDraft(activeDraftIdx)} disabled={isSending || !drafts.length}>
+                  {isSending ? "Sending…" : "Send"}
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="specialPackages">Special Packages</Label>
-                <Textarea
-                  id="specialPackages"
-                  value={specialPackages}
-                  onChange={(e) => setSpecialPackages(e.target.value)}
-                  placeholder="Honeymoon package, Spa credits..."
-                  rows={4}
-                />
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="history" className="mt-4">
-            <ScrollArea className="h-[400px]">
-              {isLoadingHistory ? (
-                <div className="flex items-center justify-center py-8">
-                  <span className="text-sm text-muted-foreground">Loading quotation history...</span>
-                </div>
-              ) : quotationHistory.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <FileText className="h-12 w-12 text-muted-foreground/50 mb-3" />
-                  <p className="text-sm text-muted-foreground">No quotations sent yet</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Create and send your first quotation to this lead
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {quotationHistory.map((quote) => (
-                    <div
-                      key={quote.id}
-                      className="border rounded-lg p-4 space-y-3 hover:bg-muted/30 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(quote.status)}
-                          <span className="font-medium">Version {quote.versionNumber}</span>
-                          <Badge className={getStatusColor(quote.status)}>
-                            {quote.status}
-                          </Badge>
-                        </div>
-                        <div className="text-right text-sm text-muted-foreground">
-                          {quote.sentAt && (
-                            <div className="flex items-center gap-1">
-                              {quote.sentVia === "EMAIL" ? (
-                                <Mail className="h-3 w-3" />
-                              ) : (
-                                <MessageCircle className="h-3 w-3" />
-                              )}
-                              {new Date(quote.sentAt).toLocaleString()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">Rooms:</span>{" "}
-                          <span className="font-medium">{quote.rooms || 1}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Rate:</span>{" "}
-                          <span className="font-medium">
-                            {quote.rate ? formatCurrency(quote.rate) : "-"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Taxes:</span>{" "}
-                          <span className="font-medium">
-                            {quote.taxes ? formatCurrency(quote.taxes) : "-"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {quote.rateLines && quote.rateLines.length > 0 && (
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">Room rates:</span>
-                          <ul className="mt-1 list-inside list-disc text-muted-foreground">
-                            {quote.rateLines.map((l, i) => (
-                              <li key={i}>
-                                {l.quantity} × {l.roomTypeName} — {formatCurrency(l.ratePerNight)} / night
-                                {l.hotelName ? ` · ${l.hotelName}` : ""}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {quote.sentTo && (
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">Sent to:</span>{" "}
-                          <span>
-                            {quote.sentTo.name}
-                            {quote.sentTo.email && ` (${quote.sentTo.email})`}
-                            {quote.sentTo.phone && ` - ${quote.sentTo.phone}`}
-                          </span>
-                        </div>
-                      )}
-
-                      {quote.inclusions && (
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">Inclusions:</span>{" "}
-                          <span className="whitespace-pre-line">{quote.inclusions}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
-
-        {activeTab === "create" && (
-          <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSendQuotation} disabled={isSending}>
-              {isSending ? (
-                "Sending..."
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send {sendVia === "EMAIL" ? "Email" : "WhatsApp"}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        )}
-      </DialogContent>
-    </Dialog>
-    {effectivePropertyId ? (
-      <KBQuickDrawer
-        key={effectivePropertyId}
-        propertyId={effectivePropertyId}
-        isOpen={kbDirectoryDrawerOpen}
-        onClose={() => setKbDirectoryDrawerOpen(false)}
-        defaultTab="rooms"
-      />
-    ) : null}
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

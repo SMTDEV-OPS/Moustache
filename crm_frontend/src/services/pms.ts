@@ -84,6 +84,70 @@ export const getRates = async (
     return response.json();
 };
 
+/** Normalized row from GET /pms/:propertyId/rates (eZee Rate API; rate type = meal plan). */
+export interface FetchedRoomRateRow {
+    roomTypeId: string;
+    /** eZee XML `RateTypeID` actually maps to RatePlanID (see Postman Rate response). */
+    ratePlanId: string;
+    fromDate: string;
+    toDate: string;
+    baseRate: number;
+    extraAdult?: number;
+    extraChild?: number;
+}
+
+function parseRatesPayload(data: unknown): FetchedRoomRateRow[] {
+    if (!Array.isArray(data)) {
+        return [];
+    }
+    const arr = data;
+    return arr.map((raw: any) => {
+        const date = String(raw.date ?? raw.fromDate ?? "").trim();
+        const toDate = String(raw.toDate ?? raw.date ?? raw.fromDate ?? "").trim();
+        const ratePlanId = String(raw.ratePlanId ?? raw.rateTypeId ?? "").trim();
+        const roomTypeId = String(raw.roomTypeId ?? "").trim();
+        const baseRate = Number(raw.baseRate);
+        const extraAdult = raw.extraAdult != null && raw.extraAdult !== "" ? Number(raw.extraAdult) : undefined;
+        const extraChild = raw.extraChild != null && raw.extraChild !== "" ? Number(raw.extraChild) : undefined;
+        return {
+            roomTypeId,
+            ratePlanId,
+            fromDate: date,
+            toDate: toDate || date,
+            baseRate: Number.isFinite(baseRate) ? baseRate : 0,
+            ...(extraAdult !== undefined && Number.isFinite(extraAdult) ? { extraAdult } : {}),
+            ...(extraChild !== undefined && Number.isFinite(extraChild) ? { extraChild } : {}),
+        };
+    });
+}
+
+/**
+ * Room-type–scoped rates for the date range (backend filters by roomTypeId).
+ * Throws on HTTP errors or PMS error payloads (`{ available: false }`).
+ */
+export async function fetchRoomRates(
+    propertyId: string,
+    from: string,
+    to: string,
+    roomTypeId: string
+): Promise<FetchedRoomRateRow[]> {
+    const q = new URLSearchParams({ from, to, roomTypeId });
+    const response = await fetch(`${API_BASE_URL}/pms/${propertyId}/rates?${q.toString()}`, {
+        headers: withAuthHeaders(),
+    });
+
+    if (!response.ok) {
+        throw new Error("Failed to fetch rates");
+    }
+
+    const data = await response.json();
+    if (data && typeof data === "object" && !Array.isArray(data) && (data as any).available === false) {
+        throw new Error((data as any).error || "PMS unavailable");
+    }
+
+    return parseRatesPayload(data);
+}
+
 export const createBooking = async (
     propertyId: string,
     data: BookingRequest
@@ -149,6 +213,47 @@ export const getRoomCatalogue = async (
   if (!res.ok) return { roomTypes: [], ratePlans: [] };
   return res.json();
 };
+
+export type EzeeSeparateSourceMapping = {
+  roomTypes: { id: string; name: string }[];
+  rateTypes: { id: string; name: string }[];
+  /** RatePlanID + RoomTypeID + RateTypeID + display Name (eZee Separatesourcemapping). */
+  ratePlans: { id: string; roomTypeId?: string; rateTypeId?: string; name?: string }[];
+};
+
+const ezeeMappingCache = new Map<string, { expiresAt: number; value?: EzeeSeparateSourceMapping; promise?: Promise<EzeeSeparateSourceMapping> }>();
+
+export async function getEzeeSeparateSourceMappingCached(
+  propertyId: string,
+  opts?: { ttlMs?: number; signal?: AbortSignal }
+): Promise<EzeeSeparateSourceMapping> {
+  const ttlMs = opts?.ttlMs ?? 5 * 60_000;
+  const key = `ezee-mapping::${propertyId}`;
+  const now = Date.now();
+  const cached = ezeeMappingCache.get(key);
+  if (cached?.value && cached.expiresAt > now) return cached.value;
+  if (cached?.promise) return cached.promise;
+
+  const promise = (async () => {
+    const res = await fetch(`${API_BASE_URL}/pms/${propertyId}/ezee/mapping`, {
+      headers: withAuthHeaders(),
+      signal: opts?.signal,
+    });
+    if (!res.ok) return { roomTypes: [], rateTypes: [], ratePlans: [] };
+    return (await res.json()) as EzeeSeparateSourceMapping;
+  })()
+    .then((value) => {
+      ezeeMappingCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+      return value;
+    })
+    .catch((err) => {
+      ezeeMappingCache.delete(key);
+      throw err;
+    });
+
+  ezeeMappingCache.set(key, { promise, expiresAt: now + ttlMs });
+  return promise;
+}
 
 export const syncRoomCatalogue = async (
   propertyId: string

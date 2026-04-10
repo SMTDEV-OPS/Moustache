@@ -126,6 +126,29 @@ export interface GenerateQuotationEmailOptions {
       ratePerNight: number;
       hotelName?: string;
     }[];
+    hotelQuotes?: {
+      hotelName?: string;
+      hotelAddress?: string;
+      checkInDate?: string | Date;
+      checkOutDate?: string | Date;
+      nights?: number;
+      rows: {
+        roomTypeName?: string;
+        mealPlanName?: string;
+        roomNo?: string;
+        adults?: number;
+        children?: number;
+        baseRate: number;
+        discountPercent: number;
+        discountedRate: number;
+        taxPercent: number;
+        taxAmount: number;
+        total: number;
+      }[];
+      subtotal?: number;
+      totalTax?: number;
+      grandTotal?: number;
+    }[];
     inclusions?: string;
     specialPackages?: string;
     sentTo?: { name?: string; email?: string; phone?: string };
@@ -158,7 +181,20 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
         )
       : null;
   const subtotal = subtotalFromLines ?? rate * rooms * nights;
-  const total = subtotal + taxes;
+
+  const hotelQuotes = (o.quote.hotelQuotes ?? []).filter((h) => (h.rows?.length ?? 0) > 0);
+  const totalsFromHotelQuotes =
+    hotelQuotes.length > 0
+      ? {
+          subtotal: hotelQuotes.reduce((s, h) => s + (h.subtotal ?? 0), 0),
+          tax: hotelQuotes.reduce((s, h) => s + (h.totalTax ?? 0), 0),
+          total: hotelQuotes.reduce((s, h) => s + (h.grandTotal ?? 0), 0),
+        }
+      : null;
+
+  const totalSubtotal = totalsFromHotelQuotes?.subtotal ?? subtotal;
+  const totalTax = totalsFromHotelQuotes?.tax ?? taxes;
+  const total = totalsFromHotelQuotes?.total ?? (totalSubtotal + totalTax);
 
   const p = o.palette;
   const stay = o.stay;
@@ -259,6 +295,68 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
         </table>`
       : "";
 
+  const hotelQuotesBlock =
+    hotelQuotes.length > 0
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0 0 0;">
+          <tr>
+            <td>
+              <p style="margin:0 0 10px 0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:${p.accentDark};font-weight:700;font-family:${o.secondaryFont};">Room breakdown</p>
+              ${hotelQuotes
+                .map((h) => {
+                  const hName = escapeHtml(h.hotelName || propName);
+                  const hAddr = h.hotelAddress?.trim() ? escapeHtml(h.hotelAddress.trim()) : "";
+                  const head = `<div style="margin:14px 0 8px 0;">
+                      <p style="margin:0;font-size:14px;font-weight:700;color:${p.accentDark};font-family:${o.primaryFont};">${hName}</p>
+                      ${hAddr ? `<p style="margin:4px 0 0 0;font-size:12px;color:#666;">${hAddr}</p>` : ""}
+                    </div>`;
+                  const rows = (h.rows || [])
+                    .map((r) => {
+                      const rt = escapeHtml(r.roomTypeName || "Room");
+                      const mp = r.mealPlanName ? escapeHtml(r.mealPlanName) : "—";
+                      const occ = `${r.adults ?? "—"}A / ${r.children ?? "—"}C`;
+                      const base = formatCurrency(r.baseRate || 0);
+                      const disc = `${Math.round(r.discountPercent || 0)}%`;
+                      const discRate = formatCurrency(r.discountedRate || 0);
+                      const taxLine = `${Math.round(r.taxPercent || 0)}%`;
+                      const taxAmt = formatCurrency(r.taxAmount || 0);
+                      const rowTotal = formatCurrency(r.total || 0);
+                      return `<tr>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};">${rt}</td>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};">${mp}</td>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};text-align:center;">${escapeHtml(occ)}</td>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};text-align:right;">${base}</td>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};text-align:right;">${disc}</td>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};text-align:right;">${discRate}</td>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};text-align:right;">${taxLine}</td>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};text-align:right;">${taxAmt}</td>
+                        <td style="padding:8px 10px;border-top:1px solid ${p.borderColor};text-align:right;font-weight:600;">${rowTotal}</td>
+                      </tr>`;
+                    })
+                    .join("");
+
+                  return `${head}
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${p.borderColor};border-radius:8px;overflow:hidden;font-family:${o.secondaryFont};font-size:13px;">
+                      <tr style="background:${p.contentBg};">
+                        <th align="left" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Room Type</th>
+                        <th align="left" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Meal Plan</th>
+                        <th align="center" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Occ.</th>
+                        <th align="right" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Base</th>
+                        <th align="right" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Disc</th>
+                        <th align="right" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Disc. Rate</th>
+                        <th align="right" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Tax</th>
+                        <th align="right" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Tax Amt</th>
+                        <th align="right" style="padding:10px;font-size:11px;color:${p.accentDark};letter-spacing:0.08em;text-transform:uppercase;">Total</th>
+                      </tr>
+                      ${rows}
+                    </table>`;
+                })
+                .join("")}
+            </td>
+          </tr>
+        </table>
+        <p style="margin:14px 0 0 0;font-size:12px;color:#666;">This is a provisional quotation. Final rates are subject to availability at the time of booking.</p>`
+      : "";
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -344,9 +442,10 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
                 }
                 <tr>
                   <td style="padding:8px 0;color:#555;">Taxes &amp; fees</td>
-                  <td align="right" style="font-weight:600;color:#111;">${formatCurrency(taxes)}</td>
+                  <td align="right" style="font-weight:600;color:#111;">${formatCurrency(totalTax)}</td>
                 </tr>
               </table>
+              ${hotelQuotesBlock}
               ${rateLinesTable}
             </td>
           </tr>

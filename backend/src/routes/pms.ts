@@ -6,6 +6,7 @@ import type { RoomMasterCatalog } from "../services/pms/IPMSService";
 import { BookingService } from "../services/bookingService";
 import { badRequest, notFound } from "../utils/httpError";
 import { PMSRoomCatalogueModel, IRoomType, IRatePlan } from "../models/pmsRoomCatalogue";
+import { EzeePMSService } from "../services/pms/adapters/EzeePMSService";
 
 export const pmsRouter = Router();
 
@@ -214,6 +215,29 @@ pmsRouter.get(
             next(err);
         }
     }
+);
+
+// GET eZee mapping (RoomTypes + RateTypes + RatePlans)
+pmsRouter.get(
+  "/:propertyId/ezee/mapping",
+  async (req, res, next) => {
+    try {
+      const { propertyId } = req.params;
+      const pms = await PMSFactory.getPMS(propertyId);
+      if (!pms) {
+        return res.json({ roomTypes: [], rateTypes: [], ratePlans: [] });
+      }
+      // Only eZee supports this mapping call.
+      const ezee = pms as unknown as EzeePMSService & { getSeparateSourceMapping?: () => Promise<any> };
+      if (typeof (ezee as any).getSeparateSourceMapping !== "function") {
+        return res.json({ roomTypes: [], rateTypes: [], ratePlans: [] });
+      }
+      const mapping = await (ezee as any).getSeparateSourceMapping();
+      res.json(mapping);
+    } catch (err) {
+      next(err);
+    }
+  }
 );
 
 // POST Create Booking
