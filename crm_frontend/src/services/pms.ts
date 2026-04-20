@@ -219,6 +219,8 @@ export type EzeeSeparateSourceMapping = {
   rateTypes: { id: string; name: string }[];
   /** RatePlanID + RoomTypeID + RateTypeID + display Name (eZee Separatesourcemapping). */
   ratePlans: { id: string; roomTypeId?: string; rateTypeId?: string; name?: string }[];
+  /** Present on `GET /api/ezee/room-info` when eZee returns `Saparatechannelsources`. */
+  channelSources?: { channelId: string; channelName: string }[];
 };
 
 const ezeeMappingCache = new Map<string, { expiresAt: number; value?: EzeeSeparateSourceMapping; promise?: Promise<EzeeSeparateSourceMapping> }>();

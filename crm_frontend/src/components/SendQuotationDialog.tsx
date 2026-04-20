@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,7 +17,8 @@ import { useAuth } from "@/context/AuthContext";
 import {
   type EzeeSeparateSourceMapping,
 } from "@/services/pms";
-import { FileText, Mail, MessageCircle, Send, Clock, CheckCircle, Hotel, AlertTriangle } from "lucide-react";
+import { QuotationPreview, type QuotationFormat, type QuotationPreviewRow } from "@/components/quotation/QuotationPreview";
+import { FileText, Mail, MessageCircle, Send, Clock, CheckCircle, AlertTriangle, Eye } from "lucide-react";
 
 type ItineraryLike = {
   propertyId?: string | { _id: string; name?: string };
@@ -230,6 +230,31 @@ type HotelQuoteDraft = {
   rows: RoomRowDraft[];
 };
 
+/** GST slab on discounted nightly rate per room; tax and totals scale by nights. */
+function computeQuotationRowTotals(
+  baseRate: number,
+  discountPercent: number,
+  nights: number,
+  discountCap: number
+) {
+  const disc = Math.min(discountCap, Math.max(0, discountPercent));
+  const discountedNightlyRate = baseRate * (1 - disc / 100);
+  const taxPercent = discountedNightlyRate > 7499 ? 18 : 5;
+  const taxPerNight = (discountedNightlyRate * taxPercent) / 100;
+  const discountAmountPerNight = baseRate - discountedNightlyRate;
+  const n = Math.max(1, nights);
+  return {
+    discountedNightlyRate,
+    taxPercent,
+    taxPerNight,
+    taxTotal: taxPerNight * n,
+    discountAmountPerNight,
+    discountAmountTotal: discountAmountPerNight * n,
+    discountedSubtotal: discountedNightlyRate * n,
+    roomTotal: (discountedNightlyRate + taxPerNight) * n,
+  };
+}
+
 type QuotationDraft = {
   id: string;
   label: string;
@@ -275,14 +300,19 @@ export const SendQuotationDialog = ({
   const [recipientEmail, setRecipientEmail] = useState<string>(guestEmail || "");
   const [recipientPhone, setRecipientPhone] = useState<string>(guestPhone || "");
 
-  const [step, setStep] = useState<"grouping" | "builder" | "preview">("builder");
-  const [groupingChoice, setGroupingChoice] = useState<"separate" | "combined">("separate");
   const [activeDraftIdx, setActiveDraftIdx] = useState(0);
+  const [quoteView, setQuoteView] = useState<"build" | "preview">("build");
   const [drafts, setDrafts] = useState<QuotationDraft[]>([]);
   const [ezeeMappingByPropertyId, setEzeeMappingByPropertyId] = useState<Record<string, EzeeSeparateSourceMapping>>({});
   const [ezeeErrorByPropertyId, setEzeeErrorByPropertyId] = useState<Record<string, string>>({});
   const [ezeeRateMapByPropertyId, setEzeeRateMapByPropertyId] = useState<Record<string, EzeeRatesLookupMap>>({});
   const [ezeeRateErrorByPropertyId, setEzeeRateErrorByPropertyId] = useState<Record<string, string>>({});
+  const [hotelDetailsByPropertyId, setHotelDetailsByPropertyId] = useState<Record<string, Record<string, unknown>>>({});
+  const [hotelDetailsTierByPropertyId, setHotelDetailsTierByPropertyId] = useState<
+    Record<string, QuotationFormat>
+  >({});
+  const [hotelDetailsErrorByPropertyId, setHotelDetailsErrorByPropertyId] = useState<Record<string, string>>({});
+  const [hotelDetailsLoading, setHotelDetailsLoading] = useState(false);
 
   const discountCap = useMemo(() => {
     if (user?.isAdmin) return 20;
@@ -345,13 +375,6 @@ export const SendQuotationDialog = ({
     const cout = new Date(checkOut);
     const diff = Math.ceil((cout.getTime() - cin.getTime()) / (1000 * 60 * 60 * 24));
     return diff > 0 ? diff : 1;
-  }
-
-  function computeRow(baseRate: number, discountPercent: number) {
-    const discountedRate = baseRate - (baseRate * discountPercent) / 100;
-    const taxPercent = discountedRate > 7499 ? 18 : 5;
-    const taxAmount = (discountedRate * taxPercent) / 100;
-    return { discountedRate, taxPercent, taxAmount };
   }
 
   function buildHotelQuoteDraft(it: ItineraryLike): HotelQuoteDraft {
@@ -446,29 +469,19 @@ export const SendQuotationDialog = ({
     };
   }
 
-  function rebuildDrafts(choice: "separate" | "combined") {
+  /** Always one quotation draft per hotel itinerary (separate quotations only). */
+  function rebuildSeparateDrafts() {
     const hotelQuotes = itineraries.map(buildHotelQuoteDraft);
-    if (hotelQuotes.length <= 1) {
-      setDrafts([{ id: "q1", label: "Quotation", hotelQuotes }]);
-      setActiveDraftIdx(0);
-      setStep("builder");
-      return;
-    }
-    if (choice === "combined") {
-      setDrafts([{ id: "q1", label: "Combined quotation", hotelQuotes }]);
-      setActiveDraftIdx(0);
-      setStep("builder");
-      return;
-    }
     setDrafts(
       hotelQuotes.map((hq, idx) => ({
         id: `q${idx + 1}`,
-        label: `Quotation ${idx + 1} — ${hq.hotelName || "Hotel"}`,
+        label: hq.hotelName || `Hotel ${idx + 1}`,
         hotelQuotes: [hq],
+        sent: false,
       }))
     );
     setActiveDraftIdx(0);
-    setStep("builder");
+    setQuoteView("build");
   }
 
   // Load quotation history + email accounts + PMS meal plans when dialog opens
@@ -476,6 +489,10 @@ export const SendQuotationDialog = ({
     if (!open) {
       setDrafts([]);
       setActiveDraftIdx(0);
+      setHotelDetailsByPropertyId({});
+      setHotelDetailsTierByPropertyId({});
+      setHotelDetailsErrorByPropertyId({});
+      setHotelDetailsLoading(false);
       return;
     }
     if (lead?.id) {
@@ -562,15 +579,58 @@ export const SendQuotationDialog = ({
   }, [open, lead?.id, uniquePropertyIds.join("|")]);
 
   useEffect(() => {
-    if (!open) return;
-    // Decide initial step based on number of hotels
-    if (itineraries.length > 1) {
-      setStep("grouping");
-      setGroupingChoice("separate");
-      setDrafts([]);
+    if (!open || uniquePropertyIds.length === 0) {
+      if (!open) setHotelDetailsLoading(false);
       return;
     }
-    rebuildDrafts("combined");
+    let cancelled = false;
+    setHotelDetailsLoading(true);
+    (async () => {
+      const detailsOut: Record<string, Record<string, unknown>> = {};
+      const tierOut: Record<string, QuotationFormat> = {};
+      const errOut: Record<string, string> = {};
+      try {
+        await Promise.all(
+          uniquePropertyIds.map(async (pid) => {
+            try {
+              const res = await fetch(`${API_BASE_URL}/api/ezee/hotel-details`, {
+                method: "POST",
+                headers: withAuthHeaders({ "Content-Type": "application/json" }),
+                body: JSON.stringify({ hotelId: pid }),
+              });
+              if (!res.ok) throw new Error("hotel-details failed");
+              const j = (await res.json()) as {
+                tier?: string;
+                details?: Record<string, unknown>;
+                error?: string;
+              };
+              detailsOut[pid] = (j.details && typeof j.details === "object" ? j.details : {}) as Record<string, unknown>;
+              const t = j.tier;
+              if (t === "HOSTEL" || t === "SELECT" || t === "LUXURIA") tierOut[pid] = t;
+              if (j.error) errOut[pid] = j.error;
+            } catch {
+              detailsOut[pid] = {};
+              errOut[pid] = "Could not load hotel brochure details.";
+            }
+          })
+        );
+        if (!cancelled) {
+          setHotelDetailsByPropertyId((prev) => ({ ...prev, ...detailsOut }));
+          setHotelDetailsTierByPropertyId((prev) => ({ ...prev, ...tierOut }));
+          setHotelDetailsErrorByPropertyId((prev) => ({ ...prev, ...errOut }));
+        }
+      } finally {
+        if (!cancelled) setHotelDetailsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, uniquePropertyIds.join("|")]);
+
+  useEffect(() => {
+    if (!open) return;
+    rebuildSeparateDrafts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, itineraries.length, ezeeMappingReadyKey, ezeeRatesReadyKey]);
 
@@ -606,32 +666,35 @@ export const SendQuotationDialog = ({
 
   function calcHotelSummary(h: HotelQuoteDraft) {
     const nights = Math.max(1, Number(h.nights || 1));
-    let subtotal = 0;
+    let discountedSubtotalAll = 0;
     let totalTax = 0;
     let grandTotal = 0;
     for (const row of h.rows) {
       const base = Math.max(0, Number(row.baseRate || 0));
       const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
-      const { discountedRate, taxPercent, taxAmount } = computeRow(base, disc);
-      subtotal += discountedRate;
-      totalTax += taxAmount;
-      grandTotal += (discountedRate + taxAmount) * nights;
+      const t = computeQuotationRowTotals(base, disc, nights, discountCap);
+      discountedSubtotalAll += t.discountedSubtotal;
+      totalTax += t.taxTotal;
+      grandTotal += t.roomTotal;
     }
-    return { subtotal, totalTax, grandTotal };
+    return { discountedSubtotalAll, totalTax, grandTotal };
   }
 
   function calcDraftSummary(d: QuotationDraft) {
     return d.hotelQuotes.reduce(
       (acc, h) => {
         const s = calcHotelSummary(h);
-        acc.subtotal += s.subtotal;
+        acc.discountedSubtotalAll += s.discountedSubtotalAll;
         acc.totalTax += s.totalTax;
         acc.grandTotal += s.grandTotal;
         return acc;
       },
-      { subtotal: 0, totalTax: 0, grandTotal: 0 }
+      { discountedSubtotalAll: 0, totalTax: 0, grandTotal: 0 }
     );
   }
+
+  const gstSlabNote =
+    "Includes GST @ 5% on rooms ≤ ₹7,499/night (after discount) and 18% on rooms above that slab, calculated per room per night.";
 
   async function sendDraft(draftIdx: number) {
     if (!lead?.id) return;
@@ -673,8 +736,7 @@ export const SendQuotationDialog = ({
           const rows = h.rows.map((row) => {
             const baseRate = Math.max(0, Number(row.baseRate || 0));
             const discountPercent = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
-            const { discountedRate, taxPercent, taxAmount } = computeRow(baseRate, discountPercent);
-            const total = (discountedRate + taxAmount) * nights;
+            const t = computeQuotationRowTotals(baseRate, discountPercent, nights, discountCap);
             return {
               roomTypeId: row.roomTypeId,
               roomTypeName: row.roomTypeName,
@@ -686,14 +748,14 @@ export const SendQuotationDialog = ({
               children: row.children,
               baseRate,
               discountPercent,
-              discountedRate,
-              taxPercent,
-              taxAmount,
-              total,
+              discountedRate: t.discountedNightlyRate,
+              taxPercent: t.taxPercent,
+              taxAmount: t.taxPerNight,
+              total: t.roomTotal,
             };
           });
-          const subtotal = rows.reduce((s, r) => s + r.discountedRate, 0);
-          const totalTax = rows.reduce((s, r) => s + r.taxAmount, 0);
+          const subtotal = rows.reduce((s, r) => s + r.discountedRate * nights, 0);
+          const totalTax = rows.reduce((s, r) => s + r.taxAmount * nights, 0);
           const grandTotal = rows.reduce((s, r) => s + r.total, 0);
           return {
             propertyId: h.propertyId,
@@ -727,7 +789,8 @@ export const SendQuotationDialog = ({
   }
 
   async function sendAll() {
-    for (let i = 0; i < drafts.length; i++) {
+    const indices = drafts.map((d, i) => (d.sent ? -1 : i)).filter((i) => i >= 0);
+    for (const i of indices) {
       // eslint-disable-next-line no-await-in-loop
       await sendDraft(i);
     }
@@ -829,73 +892,111 @@ export const SendQuotationDialog = ({
                 </div>
 
                 <div className="lg:col-span-2 space-y-4">
-                  {step === "grouping" && (
-                    <div className="rounded-lg border p-4 space-y-3">
-                      <div className="flex items-center gap-2 font-medium">
-                        <Hotel className="h-4 w-4" /> Multiple hotels selected
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Choose how to send quotations for {itineraries.length} hotels.
-                      </div>
-                      <div className="space-y-1 text-sm">
-                        {itineraries.map((it, idx) => (
-                          <div key={idx} className="flex items-center justify-between">
-                            <span className="truncate">
-                              {it.hotelName || (typeof it.propertyId === "object" ? (it.propertyId as any)?.name : "") || "Hotel"}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {it.checkInDate ? it.checkInDate.split("T")[0] : "—"} → {it.checkOutDate ? it.checkOutDate.split("T")[0] : "—"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <Separator />
-                      <RadioGroup value={groupingChoice} onValueChange={(v) => setGroupingChoice(v as any)} className="space-y-2">
-                        <div className="flex items-start space-x-2">
-                          <RadioGroupItem value="separate" id="grp-sep" className="mt-1" />
-                          <Label htmlFor="grp-sep" className="cursor-pointer">
-                            Send as separate quotations
-                            <div className="text-xs text-muted-foreground font-normal">One quotation per hotel.</div>
-                          </Label>
-                        </div>
-                        <div className="flex items-start space-x-2">
-                          <RadioGroupItem value="combined" id="grp-comb" className="mt-1" />
-                          <Label htmlFor="grp-comb" className="cursor-pointer">
-                            Send as a combined quotation
-                            <div className="text-xs text-muted-foreground font-normal">All hotels inside a single quotation.</div>
-                          </Label>
-                        </div>
-                      </RadioGroup>
-                      <div className="flex justify-end">
-                        <Button type="button" onClick={() => rebuildDrafts(groupingChoice)}>
-                          Proceed
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {step !== "grouping" && activeDraft && (
+                  {activeDraft && (
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{activeDraft.label}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {drafts.length > 1 ? `Quotation ${activeDraftIdx + 1} of ${drafts.length}` : "Single quotation"}
-                          </div>
+                      {drafts.length > 1 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {drafts.map((tab, i) => (
+                            <Button
+                              key={tab.id}
+                              type="button"
+                              size="sm"
+                              variant={i === activeDraftIdx ? "default" : "outline"}
+                              className="gap-1.5 max-w-[220px]"
+                              onClick={() => {
+                                setActiveDraftIdx(i);
+                                setQuoteView("build");
+                              }}
+                            >
+                              <span className="truncate">{tab.label}</span>
+                              {tab.sent ? <CheckCircle className="h-3.5 w-3.5 shrink-0 text-green-600" aria-label="Sent" /> : null}
+                            </Button>
+                          ))}
                         </div>
-                        {drafts.length > 1 && (
-                          <div className="flex gap-2">
-                            <Button type="button" variant="outline" onClick={() => setActiveDraftIdx((i) => Math.max(0, i - 1))} disabled={activeDraftIdx === 0}>
-                              Prev
-                            </Button>
-                            <Button type="button" variant="outline" onClick={() => setActiveDraftIdx((i) => Math.min(drafts.length - 1, i + 1))} disabled={activeDraftIdx === drafts.length - 1}>
-                              Next
-                            </Button>
-                          </div>
-                        )}
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0 font-medium truncate">{activeDraft.label}</div>
+                        <div className="flex gap-2 shrink-0">
+                          <Button
+                            type="button"
+                            variant={quoteView === "build" ? "secondary" : "outline"}
+                            size="sm"
+                            onClick={() => setQuoteView("build")}
+                          >
+                            Build
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={quoteView === "preview" ? "secondary" : "outline"}
+                            size="sm"
+                            onClick={() => setQuoteView("preview")}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            Preview
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={isSending || !drafts.length}
+                            onClick={() => void sendDraft(activeDraftIdx)}
+                          >
+                            {isSending ? "Sending…" : "Send"}
+                          </Button>
+                        </div>
                       </div>
 
-                      {activeDraft.hotelQuotes.map((hq, hIdx) => {
+                      {quoteView === "preview" && activeDraft.hotelQuotes[0] ? (
+                        <QuotationPreview
+                          format={hotelDetailsTierByPropertyId[activeDraft.hotelQuotes[0].propertyId || ""] || "HOSTEL"}
+                          loading={hotelDetailsLoading}
+                          loadError={hotelDetailsErrorByPropertyId[activeDraft.hotelQuotes[0].propertyId || ""]}
+                          hotelName={activeDraft.hotelQuotes[0].hotelName || "Hotel"}
+                          hotelAddress={activeDraft.hotelQuotes[0].hotelAddress}
+                          checkInDate={
+                            activeDraft.hotelQuotes[0].checkInDate
+                              ? activeDraft.hotelQuotes[0].checkInDate.split("T")[0]
+                              : undefined
+                          }
+                          checkOutDate={
+                            activeDraft.hotelQuotes[0].checkOutDate
+                              ? activeDraft.hotelQuotes[0].checkOutDate.split("T")[0]
+                              : undefined
+                          }
+                          nights={Math.max(1, activeDraft.hotelQuotes[0].nights || 1)}
+                          guestName={recipientName}
+                          guestAdults={leadForDialog?.guests?.adults}
+                          guestChildren={leadForDialog?.guests?.children}
+                          details={hotelDetailsByPropertyId[activeDraft.hotelQuotes[0].propertyId || ""] || {}}
+                          rows={activeDraft.hotelQuotes[0].rows.map((row) => {
+                            const base = Math.max(0, Number(row.baseRate || 0));
+                            const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
+                            const n = Math.max(1, activeDraft.hotelQuotes[0].nights || 1);
+                            const t = computeQuotationRowTotals(base, disc, n, discountCap);
+                            return {
+                              roomTypeName: row.roomTypeName || "",
+                              mealPlanName: row.mealPlanName || "",
+                              adults: row.adults,
+                              children: row.children,
+                              baseRateNight: base,
+                              discountAmountTotal: t.discountAmountTotal,
+                              discountedSubtotal: t.discountedSubtotal,
+                              taxPercent: t.taxPercent,
+                              taxTotal: t.taxTotal,
+                              roomTotal: t.roomTotal,
+                              extraAdultRate: row.extraAdultRate,
+                              extraChildRate: row.extraChildRate,
+                            } satisfies QuotationPreviewRow;
+                          })}
+                          grandTotal={calcHotelSummary(activeDraft.hotelQuotes[0]).grandTotal}
+                          totalTax={calcHotelSummary(activeDraft.hotelQuotes[0]).totalTax}
+                          gstNote={gstSlabNote}
+                          formatCurrency={formatCurrency}
+                        />
+                      ) : null}
+
+                      {quoteView === "build"
+                        ? activeDraft.hotelQuotes.map((hq, hIdx) => {
                         const summary = calcHotelSummary(hq);
                         const pid = (hq.propertyId || "").trim();
                         const pmsErr = pid ? ezeeErrorByPropertyId[pid] : undefined;
@@ -917,7 +1018,7 @@ export const SendQuotationDialog = ({
                                 </div>
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                Subtotal: {formatCurrency(summary.subtotal)} · Tax: {formatCurrency(summary.totalTax)} · Total:{" "}
+                                Pre-tax: {formatCurrency(summary.discountedSubtotalAll)} · Tax: {formatCurrency(summary.totalTax)} · Total:{" "}
                                 <span className="font-medium text-foreground">{formatCurrency(summary.grandTotal)}</span>
                               </div>
                             </div>
@@ -959,20 +1060,21 @@ export const SendQuotationDialog = ({
                                     <th>Meal Plan</th>
                                     <th className="text-right">Adults</th>
                                     <th className="text-right">Children</th>
-                                    <th className="text-right">Base Rate</th>
-                                    <th className="text-right">Discount %</th>
-                                    <th className="text-right">Discounted</th>
+                                    <th className="text-right">Base / night</th>
+                                    <th className="text-right">Disc %</th>
+                                    <th className="text-right">Discount</th>
+                                    <th className="text-right">Pre-tax</th>
                                     <th className="text-right">Tax %</th>
-                                    <th className="text-right">Tax Amt</th>
-                                    <th className="text-right">Total</th>
+                                    <th className="text-right">Tax</th>
+                                    <th className="text-right">Room total</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {hq.rows.map((row, rIdx) => {
                                     const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
                                     const base = Math.max(0, Number(row.baseRate || 0));
-                                    const { discountedRate, taxPercent, taxAmount } = computeRow(base, disc);
-                                    const total = (discountedRate + taxAmount) * hq.nights;
+                                    const nightsRow = Math.max(1, Number(hq.nights || 1));
+                                    const t = computeQuotationRowTotals(base, disc, nightsRow, discountCap);
                                     const ezeeMap = hq.propertyId ? ezeeMappingByPropertyId[hq.propertyId] : undefined;
                                     const roomOptions = roomTypeOptions(ezeeMap);
                                     const mealPlans = mealPlanOptionsForRoomType(ezeeMap, row.roomTypeId, row.roomTypeName);
@@ -1225,10 +1327,11 @@ export const SendQuotationDialog = ({
                                           />
                                           <div className="text-[11px] text-muted-foreground text-right">max {discountCap}%</div>
                                         </td>
-                                        <td className="px-2 py-2 text-right">{formatCurrency(discountedRate)}</td>
-                                        <td className="px-2 py-2 text-right">{taxPercent}%</td>
-                                        <td className="px-2 py-2 text-right">{formatCurrency(taxAmount)}</td>
-                                        <td className="px-2 py-2 text-right font-medium">{formatCurrency(total)}</td>
+                                        <td className="px-2 py-2 text-right">{formatCurrency(t.discountAmountTotal)}</td>
+                                        <td className="px-2 py-2 text-right">{formatCurrency(t.discountedSubtotal)}</td>
+                                        <td className="px-2 py-2 text-right">{t.taxPercent}%</td>
+                                        <td className="px-2 py-2 text-right">{formatCurrency(t.taxTotal)}</td>
+                                        <td className="px-2 py-2 text-right font-medium">{formatCurrency(t.roomTotal)}</td>
                                       </tr>
                                     );
                                   })}
@@ -1288,16 +1391,18 @@ export const SendQuotationDialog = ({
                               >
                                 Add room
                               </Button>
-                              <div className="text-xs text-muted-foreground">
-                                Billing summary:{" "}
-                                <span className="font-medium text-foreground">
-                                  {formatCurrency(summary.grandTotal)}
-                                </span>
+                              <div className="text-xs text-muted-foreground text-right max-w-md space-y-1">
+                                <div>
+                                  Quotation total:{" "}
+                                  <span className="font-medium text-foreground">{formatCurrency(summary.grandTotal)}</span>
+                                </div>
+                                <div className="text-[11px] leading-snug opacity-90">{gstSlabNote}</div>
                               </div>
                             </div>
                           </div>
                         );
-                      })}
+                      })
+                        : null}
                     </div>
                   )}
                 </div>
@@ -1358,7 +1463,7 @@ export const SendQuotationDialog = ({
                   Close
                 </Button>
                 <Button type="button" onClick={() => sendDraft(activeDraftIdx)} disabled={isSending || !drafts.length}>
-                  {isSending ? "Sending…" : "Send"}
+                  {isSending ? "Sending…" : drafts.length > 1 ? "Send this hotel" : "Send quotation"}
                 </Button>
               </div>
             </DialogFooter>

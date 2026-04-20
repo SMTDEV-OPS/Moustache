@@ -48,6 +48,48 @@ export function pmsPolicyFieldToEmailBodyHtml(raw: string): string {
   return escapeHtml(plain).replace(/\n/g, "<br>");
 }
 
+/** Title + MetaSearch field key (cleaned `cleanHotelDetails` output). */
+const META_HOTEL_DETAIL_FIELDS: [string, string][] = [
+  ["About the property", "Hotel_Description"],
+  ["Facilities", "Facilities_Attractions"],
+  ["Check-in & check-out", "CheckIn_Policy"],
+  ["House rules", "Hotel_Policy"],
+  ["Cancellation", "Cancellation_Policy"],
+  ["Parking", "Parking_Policy"],
+  ["Children & extra guests", "Children_ExtraGuest_Details"],
+  ["Dining & activities", "ThingsToDo"],
+  ["Directions", "Travel_Directions"],
+  ["Nearby", "Landmarks_Nearby"],
+  ["Booking conditions", "Booking_Conditions"],
+];
+
+/** Map cleaned MetaSearch / `cleanHotelDetails` output into email sections. */
+export function hotelMetaCleanedDetailsToSections(
+  details: Record<string, unknown>
+): { title: string; bodyHtml: string }[] {
+  const out: { title: string; bodyHtml: string }[] = [];
+  for (const [title, key] of META_HOTEL_DETAIL_FIELDS) {
+    const s = String(details[key] ?? "").trim();
+    if (!s) continue;
+    out.push({ title, bodyHtml: pmsPolicyFieldToEmailBodyHtml(s) });
+  }
+  return out;
+}
+
+export function hotelMetaCleanedDetailsToPlainAppend(
+  details: Record<string, unknown>
+): string {
+  const parts: string[] = [];
+  for (const [title, key] of META_HOTEL_DETAIL_FIELDS) {
+    const s = String(details[key] ?? "").trim();
+    if (!s) continue;
+    parts.push(`${title}:\n${pmsPolicyFieldToPlainText(s)}`);
+  }
+  return parts.length > 0
+    ? "\n\n--- Property information ---\n" + parts.join("\n\n")
+    : "";
+}
+
 function buildPocFooterHtml(factsheet: IFactSheetContent, accent: string): string {
   const p = factsheet.pocDetails;
   if (!p) return "";
@@ -127,6 +169,7 @@ export interface GenerateQuotationEmailOptions {
       hotelName?: string;
     }[];
     hotelQuotes?: {
+      propertyId?: string;
       hotelName?: string;
       hotelAddress?: string;
       checkInDate?: string | Date;
@@ -157,6 +200,8 @@ export interface GenerateQuotationEmailOptions {
   leadNumber: string;
   versionNumber: number;
   factsheet: IFactSheetContent | null;
+  /** From eZee HotelList (cleaned) — property copy shown before PMS policy API block */
+  hotelDetailsSections?: { title: string; bodyHtml: string }[];
   /** From eZee HotelList policy fields — titles plain, bodies escaped with &lt;br&gt; only */
   pmsPolicySections?: { title: string; bodyHtml: string }[];
   fontFaceCss: string;
@@ -195,6 +240,10 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
   const totalSubtotal = totalsFromHotelQuotes?.subtotal ?? subtotal;
   const totalTax = totalsFromHotelQuotes?.tax ?? taxes;
   const total = totalsFromHotelQuotes?.total ?? (totalSubtotal + totalTax);
+
+  const showLegacyRateSummary = rateLines.length === 0 && hotelQuotes.length === 0;
+  const showHotelQuoteSummaryRows =
+    rateLines.length === 0 && hotelQuotes.length > 0;
 
   const p = o.palette;
   const stay = o.stay;
@@ -236,6 +285,26 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
   const pills = o.factsheet && hasPillContent ? buildHighlightPillsHtml(o.factsheet, p) : "";
   const legacyExtra =
     o.factsheet && !hasPillContent ? legacyHighlightsBlock(o.factsheet, p) : "";
+
+  const hotelDetailsFromMetaBlock =
+    o.hotelDetailsSections && o.hotelDetailsSections.length > 0
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${p.borderColor};border-radius:8px;margin:24px 0 0 0;background:${p.contentBg};">
+      <tr>
+        <td style="padding:18px;">
+          <p style="margin:0 0 12px 0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${p.accentDark};font-weight:700;">Property information</p>
+          <p style="margin:0 0 14px 0;font-size:12px;line-height:1.5;color:#666;">Details below are from our booking system for this hotel.</p>
+          ${o.hotelDetailsSections
+            .map(
+              (s) => `<div style="margin-top:14px;">
+            <p style="margin:0 0 6px 0;font-size:14px;font-weight:600;color:${p.accentDark};font-family:${o.primaryFont};">${escapeHtml(s.title)}</p>
+            <div style="margin:0;font-size:13px;line-height:1.55;color:#333;font-family:${o.secondaryFont};">${s.bodyHtml}</div>
+          </div>`
+            )
+            .join("")}
+        </td>
+      </tr>
+    </table>`
+      : "";
 
   const pmsPoliciesBlock =
     o.pmsPolicySections && o.pmsPolicySections.length > 0
@@ -421,7 +490,7 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
             <td style="padding:12px 18px;border-top:1px solid ${p.borderColor};">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-family:${o.secondaryFont};font-size:14px;">
                 ${
-                  rateLines.length === 0
+                  showLegacyRateSummary
                     ? `<tr>
                   <td style="padding:8px 0;color:#555;">Rate per room / night</td>
                   <td align="right" style="font-weight:600;color:#111;">${formatCurrency(rate)}</td>
@@ -436,6 +505,22 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
                   <td style="padding:8px 0;color:#555;">Subtotal</td>
                   <td align="right" style="font-weight:600;color:#111;">${formatCurrency(
                     subtotal
+                  )}</td>
+                </tr>`
+                    : ""
+                }
+                ${
+                  showHotelQuoteSummaryRows
+                    ? `<tr>
+                  <td style="padding:8px 0;color:#555;">Pre-tax (quoted stay)</td>
+                  <td align="right" style="font-weight:600;color:#111;">${formatCurrency(
+                    totalSubtotal
+                  )}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0;color:#555;">Nights</td>
+                  <td align="right" style="font-weight:600;color:#111;">${escapeHtml(
+                    String(nights)
                   )}</td>
                 </tr>`
                     : ""
@@ -465,6 +550,7 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
         ${specialHtml}
         ${pills}
         ${legacyExtra}
+        ${hotelDetailsFromMetaBlock}
         ${pmsPoliciesBlock}
 
         <p style="margin:20px 0 0 0;font-size:14px;line-height:1.6;color:#333;">This quotation is valid for 7 days. To confirm your booking or if you have any questions, please contact us.</p>

@@ -14,6 +14,8 @@ import {
 import { LeadModel, ILead } from "../models/lead";
 import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import { CommunicationModel } from "../models/communication";
+import { PipelineModel } from "../models/pipeline";
+import { PipelineStageModel } from "../models/pipelineStage";
 import { badRequest, notFound, forbidden } from "../utils/httpError";
 import {
   canAccessLeadPatch,
@@ -731,7 +733,7 @@ leadsRouter.get("/summary", async (req, res, next) => {
       },
     };
 
-    const [total, agg, recentDocs, checkInLeads, staleNew] = await Promise.all([
+    const [total, agg, recentDocs, checkInLeads, staleNew, stageCounts] = await Promise.all([
       LeadModel.countDocuments(filter),
       LeadModel.aggregate([
         { $match: filter },
@@ -761,6 +763,10 @@ leadsRouter.get("/summary", async (req, res, next) => {
         .select("leadNumber createdAt")
         .limit(400)
         .lean(),
+      LeadModel.aggregate([
+        { $match: filter },
+        { $group: { _id: "$stageId", count: { $sum: 1 } } },
+      ]),
     ]);
 
     const facet = (agg[0] as Record<string, { _id?: string; count?: number; c?: number }[]>) || {
@@ -856,6 +862,27 @@ leadsRouter.get("/summary", async (req, res, next) => {
       return { ...o, id, checkInDate };
     });
 
+    // Pipeline stage distribution (default leads pipeline)
+    const pipeline = await PipelineModel.findOne({
+      module: "leads",
+      isDefault: true,
+    }).lean();
+
+    let stageDistribution: Array<{ stage_id: string; stage_name: string; count: number }> = [];
+    if (pipeline) {
+      const stages = await PipelineStageModel.find({ pipelineId: pipeline._id })
+        .sort({ order: 1 })
+        .lean();
+      const countMap = Object.fromEntries(
+        (stageCounts || []).map((c: any) => [c._id?.toString(), c.count])
+      );
+      stageDistribution = stages.map((s: any) => ({
+        stage_id: s._id.toString(),
+        stage_name: s.name,
+        count: countMap[s._id.toString()] ?? 0,
+      }));
+    }
+
     res.json({
       stats: {
         totalLeads: total,
@@ -871,6 +898,7 @@ leadsRouter.get("/summary", async (req, res, next) => {
       },
       recentLeads,
       alerts: alerts.slice(0, 10),
+      stageDistribution,
     });
   } catch (err) {
     next(err);
@@ -950,6 +978,48 @@ leadsRouter.get("/:id", async (req, res, next) => {
       previousCommunications,
       editableLeadFields,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /leads/:id/bookings — LeadBooking history
+leadsRouter.get("/:id/bookings", async (req, res, next) => {
+  try {
+    if (!req.user) throw badRequest("Missing authenticated user");
+
+    const lead = await LeadModel.findById(req.params.id).lean();
+    if (!lead) throw notFound("Lead not found");
+    await assertLeadAccess(req.user, lead);
+
+    const { LeadBookingModel } = await import("../models/leadBooking");
+    const bookings = await LeadBookingModel.find({ leadId: req.params.id })
+      .sort({ bookedAt: -1 })
+      .populate("propertyId", "name")
+      .lean();
+
+    res.json(bookings);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /leads/:id/bookings/:bookingId — single booking doc
+leadsRouter.get("/:id/bookings/:bookingId", async (req, res, next) => {
+  try {
+    if (!req.user) throw badRequest("Missing authenticated user");
+
+    const lead = await LeadModel.findById(req.params.id).lean();
+    if (!lead) throw notFound("Lead not found");
+    await assertLeadAccess(req.user, lead);
+
+    const { LeadBookingModel } = await import("../models/leadBooking");
+    const booking = await LeadBookingModel.findOne({ _id: req.params.bookingId, leadId: req.params.id })
+      .populate("propertyId", "name")
+      .lean();
+    if (!booking) throw notFound("Booking not found");
+
+    res.json(booking);
   } catch (err) {
     next(err);
   }

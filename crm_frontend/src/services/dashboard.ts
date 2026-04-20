@@ -21,10 +21,17 @@ export interface DashboardAlert {
   type: "checkin_urgent" | "checkin_critical" | "followup_overdue" | "no_response";
 }
 
+export interface StageDistributionRow {
+  stage_id: string;
+  stage_name: string;
+  count: number;
+}
+
 export interface DashboardData {
   stats: DashboardStats;
   recentLeads: Lead[];
   alerts: DashboardAlert[];
+  stageDistribution?: StageDistributionRow[];
 }
 
 function mapSummaryLead(raw: Record<string, unknown>): Lead {
@@ -50,6 +57,7 @@ export const getDashboardData = async (scope: "own" | "team" | "all" = "own"): P
       stats: DashboardStats;
       recentLeads?: Record<string, unknown>[];
       alerts?: DashboardAlert[];
+      stageDistribution?: StageDistributionRow[];
     };
 
     const recentLeads = (body.recentLeads || []).map((r) => mapSummaryLead(r));
@@ -58,6 +66,7 @@ export const getDashboardData = async (scope: "own" | "team" | "all" = "own"): P
       stats: body.stats,
       recentLeads,
       alerts: Array.isArray(body.alerts) ? body.alerts : [],
+      stageDistribution: Array.isArray(body.stageDistribution) ? body.stageDistribution : [],
     };
   } catch (error) {
     console.error("Failed to fetch dashboard data:", error);

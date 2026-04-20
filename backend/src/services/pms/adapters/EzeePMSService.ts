@@ -416,6 +416,7 @@ export class EzeePMSService implements IPMSService {
         roomTypes: { id: string; name: string }[];
         rateTypes: { id: string; name: string }[];
         ratePlans: { id: string; roomTypeId?: string; rateTypeId?: string; name?: string }[];
+        channelSources: { channelId: string; channelName: string }[];
     }> {
         const payload = {
             RES_Request: {
@@ -486,12 +487,12 @@ export class EzeePMSService implements IPMSService {
                 try {
                     data = JSON.parse(data);
                 } catch {
-                    return { roomTypes: [], rateTypes: [], ratePlans: [] };
+                    return { roomTypes: [], rateTypes: [], ratePlans: [], channelSources: [] };
                 }
             }
 
             if (isFatalEzeeEnvelope(data)) {
-                return { roomTypes: [], rateTypes: [], ratePlans: [] };
+                return { roomTypes: [], rateTypes: [], ratePlans: [], channelSources: [] };
             }
 
             const top = data?.RES_Response ?? data;
@@ -525,11 +526,30 @@ export class EzeePMSService implements IPMSService {
                 }))
                 .filter((x: any) => x.id);
 
-            return { roomTypes, rateTypes, ratePlans };
+            /** eZee typo: `Saparatechannelsources` under RoomInfo (Postman "Retrieve Room Rates with Source details"). */
+            const chRoot =
+                (block as any)?.Saparatechannelsources ??
+                (block as any)?.Separatechannelsources ??
+                (block as any)?.saparatechannelsources;
+            const rawChannelSources = normalizeArray(
+                chRoot?.Saparatechannelsource ??
+                    chRoot?.SaparatechannelSource ??
+                    chRoot?.Separatechannelsource ??
+                    chRoot
+            );
+            const channelSources = rawChannelSources
+                .filter((s: any) => s && typeof s === "object")
+                .map((s: any) => ({
+                    channelId: String(s.ChannelID ?? s.channelID ?? s.Id ?? s.ID ?? "").trim(),
+                    channelName: String(s.Channel_name ?? s.ChannelName ?? s.channel_name ?? s.Name ?? "").trim(),
+                }))
+                .filter((s: { channelId: string; channelName: string }) => s.channelId && s.channelName);
+
+            return { roomTypes, rateTypes, ratePlans, channelSources };
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error("eZee getSeparateSourceMapping error:", e);
-            return { roomTypes: [], rateTypes: [], ratePlans: [] };
+            return { roomTypes: [], rateTypes: [], ratePlans: [], channelSources: [] };
         }
     }
 
@@ -639,10 +659,22 @@ export class EzeePMSService implements IPMSService {
                     id && metaName && shouldPreferMetaSearchName(rawName, id)
                         ? metaName
                         : rawName;
+
+                const roomNodes = normalizeArray((rt as any).Rooms?.Room ?? (rt as any).Rooms);
+                const physicalRooms: { roomId: string; roomName: string }[] = [];
+                for (const room of roomNodes) {
+                    if (!room || typeof room !== "object") continue;
+                    const rid = String((room as any).RoomID ?? (room as any).ID ?? "").trim();
+                    if (!rid) continue;
+                    const rname = String((room as any).RoomName ?? (room as any).Name ?? "").trim();
+                    physicalRooms.push({ roomId: rid, roomName: rname || rid });
+                }
+
                 if (id) {
                     roomTypes.push({
                         roomTypeId: id,
                         roomTypeName: name || `Room ${id}`,
+                        ...(physicalRooms.length ? { physicalRooms } : {}),
                     });
                 }
             }
@@ -679,6 +711,25 @@ export class EzeePMSService implements IPMSService {
         } catch (error) {
             console.error("eZee getRoomMasterCatalog error:", error);
             return null;
+        }
+    }
+
+    /**
+     * Physical rooms for one room type — derived from the same RoomInfo (NeedPhysicalRooms: 1) data
+     * parsed in {@link getRoomMasterCatalog} (`RoomTypes.RoomType[].Rooms.Room[]`, RoomID/RoomName).
+     */
+    async getPhysicalRoomsForRoomType(roomTypeId: string): Promise<{ roomId: string; roomName: string }[]> {
+        const targetId = String(roomTypeId || "").trim();
+        if (!targetId) return [];
+        try {
+            const catalog = await this.getRoomMasterCatalog();
+            if (!catalog) return [];
+            const hit = catalog.roomTypes.find((rt) => String(rt.roomTypeId) === targetId);
+            return Array.isArray(hit?.physicalRooms) ? hit.physicalRooms : [];
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error("eZee getPhysicalRoomsForRoomType error:", e);
+            return [];
         }
     }
 
@@ -920,5 +971,59 @@ export class EzeePMSService implements IPMSService {
             console.error("Error fetching reservations from eZee:", error);
             return [];
         }
+    }
+
+    /**
+     * MetaSearch `listing.php` — `request_type=ProcessBooking`: confirms a reservation after InsertBooking.
+     * `Process_Data` JSON keys follow eZee connectivity (Action, ReservationNo, Inventory_Mode, Booking_Payment_Mode).
+     */
+    async processBooking(reservationNo: string, bookingPaymentMode: string = "3"): Promise<void> {
+        const resNo = String(reservationNo ?? "").trim();
+        if (!resNo) {
+            throw new Error("ProcessBooking: reservation number is required");
+        }
+
+        const processData = {
+            Action: "ConfirmBooking",
+            ReservationNo: resNo,
+            Inventory_Mode: "REGULAR",
+            Booking_Payment_Mode: String(bookingPaymentMode ?? "3").trim() || "3",
+        };
+
+        const processDataJson = JSON.stringify(processData);
+        const processDataEncoded = encodeURIComponent(processDataJson);
+        const processUrl =
+            `${this.metaSearchBaseUrl}/listing.php` +
+            `?request_type=ProcessBooking` +
+            `&HotelCode=${encodeURIComponent(this.hotelCode)}` +
+            `&APIKey=${encodeURIComponent(this.authCode)}` +
+            `&Process_Data=${processDataEncoded}` +
+            `&LANGUAGE=${encodeURIComponent("en")}`;
+
+        const resp = await axios.post(processUrl, null, { timeout: 20000 });
+
+        let result: any = resp.data;
+        if (typeof result === "string") {
+            try {
+                result = JSON.parse(result);
+            } catch {
+                /* keep string */
+            }
+        }
+
+        const errBag = result?.Errors ?? result?.RES_Response?.Errors;
+        const errCode = String(errBag?.ErrorCode ?? errBag?.errorcode ?? "").trim();
+        if (errCode && errCode !== "0") {
+            const em = String(errBag?.ErrorMessage ?? errBag?.errormessage ?? "").trim();
+            throw new Error(`ProcessBooking failed (${errCode}): ${em || JSON.stringify(result)}`);
+        }
+
+        const resLower = String(result?.result ?? result?.Result ?? "").toLowerCase().trim();
+        const msg = typeof result?.message === "string" ? result.message : String(result?.Message ?? "");
+        if (resLower === "success" || /booking processed successfully/i.test(msg)) {
+            return;
+        }
+
+        throw new Error(`ProcessBooking failed: ${msg || (() => { try { return JSON.stringify(result); } catch { return String(result); } })()}`);
     }
 }

@@ -120,7 +120,7 @@ const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
     );
   }
 
-  const { stats, recentLeads, alerts } = dashboardData;
+  const { stats, recentLeads, alerts, stageDistribution } = dashboardData;
 
   return (
     <div className="space-y-6">
@@ -363,6 +363,34 @@ const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
         </CardContent>
       </Card>
       </div>
+
+      {/* Pipeline Stages */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="border-b border-slate-100 p-6">
+          <CardTitle className="text-xl font-bold">Pipeline Stages</CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          {stageDistribution && stageDistribution.length > 0 ? (
+            <div className="space-y-3">
+              {stageDistribution.map((row) => (
+                <div
+                  key={row.stage_id}
+                  className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">{row.stage_name}</p>
+                  </div>
+                  <span className="font-mono text-sm font-medium text-slate-900">
+                    {row.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-slate-500 py-8">No pipeline data yet</div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

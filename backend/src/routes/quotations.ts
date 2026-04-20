@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Types } from "mongoose";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { QuotationModel } from "../models/quotation";
@@ -22,13 +23,16 @@ import {
   resolveQuotationTierForProperty,
 } from "../constants/quotationVisualBranding";
 import {
-  buildQuotationStayContext,
+  buildQuotationEmailStayContext,
   firstItinerary,
 } from "../utils/quotationLeadContext";
+import { fetchCleanEzeeHotelDetails } from "../utils/ezeeHotelDetails";
 import { EzeePMSService } from "../services/pms/adapters/EzeePMSService";
 import {
   generateQuotationEmailHtml,
   buildQuotationEmailSubject,
+  hotelMetaCleanedDetailsToSections,
+  hotelMetaCleanedDetailsToPlainAppend,
   pmsPolicyFieldToEmailBodyHtml,
   pmsPolicyFieldToPlainText,
   type GenerateQuotationEmailOptions,
@@ -205,17 +209,37 @@ quotationsRouter.post(
         .sort({ createdAt: 1 })
         .lean();
 
+      const hq0 = parsed.data.hotelQuotes?.[0];
+      const quotingPropertyId = (
+        hq0?.propertyId?.trim() ||
+        (lead.propertyId ? String(lead.propertyId) : "")
+      ).trim();
+
+      let emailProperty = property;
+      if (quotingPropertyId) {
+        const pid = quotingPropertyId;
+        const currentId = emailProperty?._id ? String(emailProperty._id) : "";
+        if (!emailProperty || currentId !== pid) {
+          const pQuoted = await PropertyModel.findById(pid).lean();
+          if (pQuoted) emailProperty = pQuoted as typeof property;
+        }
+      }
+
       const firstItin = firstItinerary(itineraries);
       const propertyTier = resolveQuotationTierForProperty(
-        property?.tier,
-        property?.name,
-        firstItin?.hotelName
+        emailProperty?.tier,
+        emailProperty?.name,
+        hq0?.hotelName ?? firstItin?.hotelName
       );
 
       let fsRecord: Awaited<
         ReturnType<typeof KnowledgeBaseService.getFactSheetRecordForProperty>
       > = null;
-      if (lead.propertyId) {
+      if (quotingPropertyId) {
+        fsRecord = await KnowledgeBaseService.getFactSheetRecordForProperty(
+          quotingPropertyId
+        );
+      } else if (lead.propertyId) {
         fsRecord = await KnowledgeBaseService.getFactSheetRecordForProperty(
           lead.propertyId.toString()
         );
@@ -229,9 +253,14 @@ quotationsRouter.post(
 
       const versionNumber = (last?.versionNumber ?? 0) + 1;
 
+      const quotationPropertyId =
+        quotingPropertyId && Types.ObjectId.isValid(quotingPropertyId)
+          ? new Types.ObjectId(quotingPropertyId)
+          : lead.propertyId;
+
       const quote = await QuotationModel.create({
         leadId: lead._id,
-        propertyId: lead.propertyId,
+        propertyId: quotationPropertyId,
         versionNumber,
         ...parsed.data,
         kbFactsheetId: fsRecord?.kbFactsheetId,
@@ -241,12 +270,16 @@ quotationsRouter.post(
 
       const factsheetForEmail: IFactSheetContent | null = fsRecord?.content ?? null;
 
-      const stay = buildQuotationStayContext(
+      const quoteRooms =
+        parsed.data.rooms ??
+        (parsed.data.rateLines?.reduce((sum, l) => sum + (l.quantity ?? 0), 0) || 1);
+
+      const stay = buildQuotationEmailStayContext(
         lead,
         itineraries,
-        property,
-        parsed.data.rooms ??
-          (parsed.data.rateLines?.reduce((sum, l) => sum + (l.quantity ?? 0), 0) || 1)
+        emailProperty,
+        hq0,
+        quoteRooms
       );
 
       const palette = TIER_VISUAL_PALETTE[stay.tier];
@@ -257,16 +290,27 @@ quotationsRouter.post(
         | { title: string; bodyHtml: string }[]
         | undefined;
       let pmsPolicyPlainAppend = "";
+
+      const cleanedMetaDetails = await fetchCleanEzeeHotelDetails(emailProperty);
+      const hotelDetailsSections =
+        cleanedMetaDetails && Object.keys(cleanedMetaDetails).length > 0
+          ? hotelMetaCleanedDetailsToSections(cleanedMetaDetails)
+          : undefined;
+      const hotelDetailsPlainAppend =
+        cleanedMetaDetails && Object.keys(cleanedMetaDetails).length > 0
+          ? hotelMetaCleanedDetailsToPlainAppend(cleanedMetaDetails)
+          : "";
+
       if (
-        property &&
-        property.pmsProvider === "EZEE" &&
-        property.pmsConfig?.hotelCode?.trim() &&
-        property.pmsConfig?.authCode?.trim()
+        emailProperty &&
+        emailProperty.pmsProvider === "EZEE" &&
+        emailProperty.pmsConfig?.hotelCode?.trim() &&
+        emailProperty.pmsConfig?.authCode?.trim()
       ) {
         try {
           const ezee = new EzeePMSService({
-            hotelCode: property.pmsConfig.hotelCode.trim(),
-            authCode: property.pmsConfig.authCode.trim(),
+            hotelCode: emailProperty.pmsConfig.hotelCode.trim(),
+            authCode: emailProperty.pmsConfig.authCode.trim(),
           });
           const rawPolicies = await ezee.getQuotationPolicySections();
           if (rawPolicies.length > 0) {
@@ -286,7 +330,7 @@ quotationsRouter.post(
         } catch (polErr) {
           logger.warn("Quotation: could not load PMS hotel policies", {
             leadId: lead._id,
-            propertyId: lead.propertyId,
+            propertyId: emailProperty?._id ?? lead.propertyId,
             error: polErr instanceof Error ? polErr.message : polErr,
           });
         }
@@ -299,11 +343,14 @@ quotationsRouter.post(
           if (primaryAccount) {
             const propertyName = stay.propertyLabel;
             const nights = (() => {
+              if (hq0?.nights != null && hq0.nights > 0) return hq0.nights;
               const cin =
-                itineraries?.[0]?.checkInDate ??
+                hq0?.checkInDate ??
+                firstItin?.checkInDate ??
                 (lead.checkIn ? new Date(lead.checkIn) : undefined);
               const cout =
-                itineraries?.[0]?.checkOutDate ??
+                hq0?.checkOutDate ??
+                firstItin?.checkOutDate ??
                 (lead.checkOut ? new Date(lead.checkOut) : undefined);
               if (!cin || !cout) return 1;
               const diff = Math.ceil(
@@ -323,6 +370,7 @@ quotationsRouter.post(
               leadNumber: lead.leadNumber,
               versionNumber,
               factsheet: factsheetForEmail,
+              hotelDetailsSections,
               pmsPolicySections,
               fontFaceCss,
               primaryFont: fontStacks.primaryStack,
@@ -354,8 +402,20 @@ quotationsRouter.post(
                           )}/night`
                       )
                       .join("\n")}\nNights: ${nights}`
-                  : `Rate: ₹${parsed.data.rate || 0}`
-              }\nTaxes: ₹${parsed.data.taxes || 0}${pmsPolicyPlainAppend}\n\nWarm regards,\nThe ${propertyName} Team`,
+                  : parsed.data.hotelQuotes?.length
+                    ? `Quoted stay (pre-tax): ₹${Math.round(
+                        parsed.data.hotelQuotes.reduce((s, h) => s + (h.subtotal ?? 0), 0)
+                      )}\nNights: ${nights}\nGrand total: ₹${Math.round(
+                        parsed.data.hotelQuotes.reduce((s, h) => s + (h.grandTotal ?? 0), 0)
+                      )}`
+                    : `Rate: ₹${parsed.data.rate || 0}`
+              }\nTaxes: ₹${
+                parsed.data.hotelQuotes?.length
+                  ? Math.round(
+                      parsed.data.hotelQuotes.reduce((s, h) => s + (h.totalTax ?? 0), 0)
+                    )
+                  : parsed.data.taxes || 0
+              }${hotelDetailsPlainAppend}${pmsPolicyPlainAppend}\n\nWarm regards,\nThe ${propertyName} Team`,
             });
 
             logger.info("Quotation email sent successfully", {
@@ -383,12 +443,16 @@ quotationsRouter.post(
 
       // Auto-create 50% advance payment link when quotation is shared
       try {
+        const firstItinPay = firstItinerary(itineraries);
         const nights = (() => {
+          if (hq0?.nights != null && hq0.nights > 0) return hq0.nights;
           const cin =
-            itineraries?.[0]?.checkInDate ??
+            hq0?.checkInDate ??
+            firstItinPay?.checkInDate ??
             (lead.checkIn ? new Date(lead.checkIn) : undefined);
           const cout =
-            itineraries?.[0]?.checkOutDate ??
+            hq0?.checkOutDate ??
+            firstItinPay?.checkOutDate ??
             (lead.checkOut ? new Date(lead.checkOut) : undefined);
           if (!cin || !cout) return 1;
           const diff = Math.ceil(
@@ -409,8 +473,13 @@ quotationsRouter.post(
               0
             )
           : undefined;
+        const totalFromHotelQuotes = parsed.data.hotelQuotes?.length
+          ? parsed.data.hotelQuotes.reduce((s, h) => s + (h.grandTotal ?? 0), 0)
+          : 0;
         const totalAmount =
-          (subtotalFromLines ?? rate * rooms * nights) + taxes;
+          totalFromHotelQuotes > 0
+            ? totalFromHotelQuotes
+            : (subtotalFromLines ?? rate * rooms * nights) + taxes;
         const advanceAmount = totalAmount * 0.5; // 50% advance
 
         if (advanceAmount > 0) {

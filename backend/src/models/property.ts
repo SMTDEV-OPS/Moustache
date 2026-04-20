@@ -33,6 +33,8 @@ export interface IProperty extends Document {
     hotelCode?: string;
     authCode?: string;
     username?: string;
+    /** Used when InsertBooking `Source_Id` is omitted (eZee often requires a channel/source unk id). */
+    defaultInsertBookingSourceId?: string;
   };
   roomCategories?: string[];
   lastSyncedAt?: Date;
@@ -72,6 +74,7 @@ const propertySchema = new Schema<IProperty>(
       hotelCode: String,
       authCode: String,
       username: String,
+      defaultInsertBookingSourceId: String,
     },
     roomCategories: [{ type: String }],
     lastSyncedAt: Date,

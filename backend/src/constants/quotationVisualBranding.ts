@@ -253,8 +253,13 @@ export function resolveQuotationTierForProperty(
     .join(" ");
   const fromName = inferTierFromPropertyName(combined);
 
+  const normalizedTier = (tier ?? "").trim().toUpperCase();
   const db =
-    tier === "HOSTEL" || tier === "SELECT" || tier === "LUXURIA" ? tier : null;
+    normalizedTier === "HOSTEL" ||
+    normalizedTier === "SELECT" ||
+    normalizedTier === "LUXURIA"
+      ? (normalizedTier as QuotationTier)
+      : null;
 
   if (!db || db === "SELECT") {
     if (fromName) return fromName;

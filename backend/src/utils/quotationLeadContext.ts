@@ -6,8 +6,24 @@ import { resolveQuotationTierForProperty } from "../constants/quotationVisualBra
 /** Lean itinerary shape (from .lean()) — avoids Document typing issues */
 export type QuotationItineraryLean = Pick<
   ILeadItinerary,
-  "checkInDate" | "checkOutDate" | "roomsRequested" | "numberOfGuests" | "hotelName" | "createdAt"
+  | "checkInDate"
+  | "checkOutDate"
+  | "roomsRequested"
+  | "numberOfGuests"
+  | "hotelName"
+  | "createdAt"
+  | "propertyId"
 >;
+
+/** Payload slice used when resolving email stay context from `hotelQuotes[0]`. */
+export type HotelQuoteStayInput = {
+  propertyId?: string;
+  hotelName?: string;
+  checkInDate?: Date | string;
+  checkOutDate?: Date | string;
+  nights?: number;
+  rows?: { roomTypeName?: string; adults?: number; children?: number }[];
+};
 
 export interface QuotationStayContext {
   tier: QuotationTier;
@@ -134,21 +150,115 @@ export function buildQuotationStayContext(
   } | null,
   quoteRooms: number
 ): QuotationStayContext {
-  const it = firstItinerary(itineraries ?? []);
+  return buildQuotationEmailStayContext(
+    lead,
+    itineraries,
+    property,
+    undefined,
+    quoteRooms
+  );
+}
+
+function itineraryForQuotedProperty(
+  itineraries: QuotationItineraryLean[],
+  quotedPropertyId: string | undefined
+): QuotationItineraryLean | undefined {
+  const pid = (quotedPropertyId ?? "").trim();
+  if (pid) {
+    const m = itineraries.find(
+      (x) => x.propertyId != null && String(x.propertyId) === pid
+    );
+    if (m) return m;
+  }
+  return firstItinerary(itineraries);
+}
+
+function formatRoomsLineFromHotelQuote(
+  hq: HotelQuoteStayInput | null | undefined,
+  fallbackIt: QuotationItineraryLean | undefined,
+  quoteRooms: number
+): string {
+  if (hq?.rows?.length) {
+    const parts = hq.rows.map((r) => {
+      const name = (r.roomTypeName ?? "Room").trim() || "Room";
+      return `1 × ${name}`;
+    });
+    if (parts.length) return parts.join(", ");
+  }
+  return formatRoomsLine(fallbackIt, quoteRooms);
+}
+
+function formatGuestsLineFromHotelQuote(
+  hq: HotelQuoteStayInput | null | undefined,
+  it: QuotationItineraryLean | undefined,
+  lead: ILead
+): string {
+  if (hq?.rows?.length) {
+    let adults = 0;
+    let children = 0;
+    for (const r of hq.rows) {
+      adults += r.adults ?? 0;
+      children += r.children ?? 0;
+    }
+    if (adults + children > 0) {
+      const bits: string[] = [`${adults} adult${adults === 1 ? "" : "s"}`];
+      if (children > 0) {
+        bits.push(`${children} child${children === 1 ? "" : "ren"}`);
+      }
+      return bits.join(", ");
+    }
+  }
+  return formatGuestsLine(it, lead);
+}
+
+/**
+ * Stay summary for outbound quotation email: uses `hotelQuotes[0]` when present
+ * (property, dates, rooms) so multi-property leads match the hotel actually quoted.
+ */
+export function buildQuotationEmailStayContext(
+  lead: ILead,
+  itineraries: QuotationItineraryLean[] | null | undefined,
+  property: {
+    name?: string;
+    tier?: string;
+    location?: { city?: string; state?: string };
+  } | null,
+  hotelQuote: HotelQuoteStayInput | null | undefined,
+  quoteRooms: number
+): QuotationStayContext {
+  const itList = itineraries ?? [];
+  const quotedPid = hotelQuote?.propertyId?.trim();
+  const it = itineraryForQuotedProperty(itList, quotedPid);
+
   const tier = resolveQuotationTierForProperty(
     property?.tier,
     property?.name,
-    it?.hotelName
+    hotelQuote?.hotelName ?? it?.hotelName
   );
-  const { in: dIn, out: dOut } = resolveCheckInOut(lead, it);
 
-  const checkInDisplay = dIn ? formatLongDate(dIn) : "To be confirmed";
-  const checkOutDisplay = dOut ? formatLongDate(dOut) : "To be confirmed";
+  let dIn: Date | undefined;
+  let dOut: Date | undefined;
+  if (hotelQuote?.checkInDate != null) {
+    dIn = new Date(hotelQuote.checkInDate);
+  }
+  if (hotelQuote?.checkOutDate != null) {
+    dOut = new Date(hotelQuote.checkOutDate);
+  }
+  if (!dIn || Number.isNaN(dIn.getTime()) || !dOut || Number.isNaN(dOut.getTime())) {
+    const resolved = resolveCheckInOut(lead, it);
+    if (!dIn || Number.isNaN(dIn.getTime())) dIn = resolved.in;
+    if (!dOut || Number.isNaN(dOut.getTime())) dOut = resolved.out;
+  }
+
+  const checkInDisplay = dIn && !Number.isNaN(dIn.getTime()) ? formatLongDate(dIn) : "To be confirmed";
+  const checkOutDisplay =
+    dOut && !Number.isNaN(dOut.getTime()) ? formatLongDate(dOut) : "To be confirmed";
 
   const propertyLabel =
-    (property?.name?.trim() ||
-      it?.hotelName?.trim() ||
-      "Our Property") ?? "Our Property";
+    hotelQuote?.hotelName?.trim() ||
+    property?.name?.trim() ||
+    it?.hotelName?.trim() ||
+    "Our Property";
 
   return {
     tier,
@@ -156,7 +266,7 @@ export function buildQuotationStayContext(
     locationSubtitle: buildLocationSubtitle(tier, property?.location),
     checkInDisplay,
     checkOutDisplay,
-    roomsLine: formatRoomsLine(it, quoteRooms),
-    guestsLine: formatGuestsLine(it, lead),
+    roomsLine: formatRoomsLineFromHotelQuote(hotelQuote, it, quoteRooms),
+    guestsLine: formatGuestsLineFromHotelQuote(hotelQuote, it, lead),
   };
 }

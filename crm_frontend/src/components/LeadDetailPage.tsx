@@ -57,6 +57,9 @@ import { EmailThreadView } from "@/components/email/EmailThreadView";
 import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
 import { KBQuickDrawer } from "@/components/knowledge/directory/KBQuickDrawer";
 import { extractLeadPropertyId } from "@/lib/leadPropertyId";
+import { getProperty } from "@/services/properties";
+import { BookRoomDialog } from "@/components/BookRoomDialog";
+import { listLeadBookings, type LeadBooking, cancelEzeeBooking } from "@/services/leadBookings";
 
 interface LeadDetailPageProps {
   leadId: string;
@@ -390,6 +393,17 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const leadInfoRef = useRef<HTMLDivElement>(null);
   const leadSocketRef = useRef<Socket | null>(null);
 
+  const [leadBookings, setLeadBookings] = useState<LeadBooking[]>([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [hotelPickOpen, setHotelPickOpen] = useState(false);
+  const [bookRoomOpen, setBookRoomOpen] = useState(false);
+  const [bookableHotels, setBookableHotels] = useState<
+    { hotelId: string; hotelName: string; checkIn: string; checkOut: string }[]
+  >([]);
+  const [selectedHotelForBooking, setSelectedHotelForBooking] = useState<
+    { hotelId: string; hotelName: string; checkIn: string; checkOut: string } | null
+  >(null);
+
   const canScoreCall = !!isAdmin || permissions?.includes("leads.manage") || permissions?.includes("settings.manage");
 
   // Permission checks (legacy) + per-field keys from GET /leads/:id (`editableLeadFields`)
@@ -491,6 +505,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       const detail = await getLeadDetail(leadId);
       setLeadDetail(detail);
       void loadLeadEmails(leadId);
+      void loadLeadBookings(leadId);
     } catch (err) {
       toast({
         title: "Error",
@@ -499,6 +514,18 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadLeadBookings = async (leadId: string) => {
+    try {
+      setIsLoadingBookings(true);
+      const rows = await listLeadBookings(leadId);
+      setLeadBookings(rows);
+    } catch {
+      setLeadBookings([]);
+    } finally {
+      setIsLoadingBookings(false);
     }
   };
 
@@ -1003,6 +1030,77 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             >
               Send Quotation
             </Button>
+            <Button
+              variant="secondary"
+              icon={Calendar}
+              size="sm"
+              onClick={async () => {
+                try {
+                  const candidates = itineraries
+                    .filter((it) => it.propertyId && it.checkInDate && it.checkOutDate)
+                    .map((it) => ({
+                      hotelId: String(it.propertyId),
+                      hotelName: String(it.hotelName || it.propertyName || "Hotel"),
+                      checkIn: String(it.checkInDate),
+                      checkOut: String(it.checkOutDate),
+                    }));
+
+                  const uniqueByHotel = Array.from(
+                    new Map(candidates.map((c) => [`${c.hotelId}::${c.checkIn}::${c.checkOut}`, c])).values()
+                  );
+
+                  if (uniqueByHotel.length === 0) {
+                    toast({
+                      title: "Missing itinerary",
+                      description: "Add a hotel with check-in and check-out dates to book via PMS.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  const props = await Promise.all(
+                    uniqueByHotel.map(async (c) => {
+                      try {
+                        const p: any = await getProperty(c.hotelId);
+                        const ok =
+                          String(p?.pmsProvider || "").toUpperCase() === "EZEE" &&
+                          String(p?.pmsConfig?.hotelCode || "").trim() &&
+                          String(p?.pmsConfig?.authCode || "").trim();
+                        return ok ? c : null;
+                      } catch {
+                        return null;
+                      }
+                    })
+                  );
+
+                  const eligible = props.filter(Boolean) as typeof uniqueByHotel;
+                  if (eligible.length === 0) {
+                    toast({
+                      title: "Not bookable",
+                      description: "No eZee PMS hotel with valid credentials found on this lead.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  setBookableHotels(eligible);
+                  if (eligible.length === 1) {
+                    setSelectedHotelForBooking(eligible[0]);
+                    setBookRoomOpen(true);
+                    return;
+                  }
+                  setHotelPickOpen(true);
+                } catch (e) {
+                  toast({
+                    title: "Could not start booking",
+                    description: e instanceof Error ? e.message : "Try again.",
+                    variant: "destructive",
+                  });
+                }
+              }}
+            >
+              Book Room
+            </Button>
             {leadPropertyId ? (
               <Button
                 variant="secondary"
@@ -1216,6 +1314,101 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
                           ))}
                         </div>
                       )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Bookings */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: 20,
+              marginBottom: 16,
+            }}
+          >
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Bookings</div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void loadLeadBookings(leadId)}
+                disabled={isLoadingBookings}
+              >
+                Refresh
+              </Button>
+            </div>
+            {isLoadingBookings ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Loading bookings…</div>
+            ) : leadBookings.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No bookings yet.</div>
+            ) : (
+              <div className="overflow-hidden rounded-md" style={{ border: "1px solid var(--border-light)" }}>
+                <div className="grid grid-cols-12 gap-2 px-3 py-2" style={{ background: "var(--surface-2)", fontSize: 11, color: "var(--text-faint)" }}>
+                  <div className="col-span-2">Booking Ref</div>
+                  <div className="col-span-3">Hotel</div>
+                  <div className="col-span-2">Check-in</div>
+                  <div className="col-span-2">Check-out</div>
+                  <div className="col-span-1 text-right">Rooms</div>
+                  <div className="col-span-1 text-right">Total</div>
+                  <div className="col-span-1 text-right">Actions</div>
+                </div>
+                {leadBookings.map((b) => {
+                  const propName = typeof b.propertyId === "string" ? b.propertyId : (b.propertyId as any)?.name;
+                  const roomsCount = Array.isArray(b.rooms) ? b.rooms.length : 0;
+                  const total = typeof b.grandTotal === "number" ? b.grandTotal : 0;
+                  return (
+                    <div key={b._id} className="grid grid-cols-12 gap-2 px-3 py-2 border-t items-center" style={{ borderColor: "var(--border-light)" }}>
+                      <div className="col-span-2 text-sm min-w-0" style={{ color: "var(--text)" }}>
+                        <div className="truncate">{b.ezeeBookingRef}</div>
+                        {b.processedInPms === false ? (
+                          <div className="text-[11px] text-amber-600 font-medium mt-0.5">Pending PMS confirmation</div>
+                        ) : null}
+                      </div>
+                      <div className="col-span-3 text-sm truncate" style={{ color: "var(--text)" }}>{propName || "—"}</div>
+                      <div className="col-span-2 text-sm" style={{ color: "var(--text)" }}>{new Date(b.checkIn).toLocaleDateString("en-IN")}</div>
+                      <div className="col-span-2 text-sm" style={{ color: "var(--text)" }}>{new Date(b.checkOut).toLocaleDateString("en-IN")}</div>
+                      <div className="col-span-1 text-sm text-right" style={{ color: "var(--text)" }}>{roomsCount}</div>
+                      <div className="col-span-1 text-sm text-right" style={{ color: "var(--text)" }}>{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(total)}</div>
+                      <div className="col-span-1 flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            toast({
+                              title: "Booking",
+                              description: `${b.guestName || "Guest"} · ${b.ezeeBookingRef}`,
+                            });
+                          }}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={b.status !== "confirmed"}
+                          onClick={async () => {
+                            try {
+                              const hotelId = typeof b.propertyId === "string" ? b.propertyId : (b.propertyId as any)?._id;
+                              await cancelEzeeBooking({ leadId, hotelId, bookingRef: b.ezeeBookingRef });
+                              toast({ title: "Cancelled", description: "Booking cancelled successfully." });
+                              void loadLeadBookings(leadId);
+                            } catch (e) {
+                              toast({
+                                title: "Cancel failed",
+                                description: e instanceof Error ? e.message : "Try again.",
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1681,6 +1874,52 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
       </div>
 
       {/* Dialogs */}
+      <Dialog open={hotelPickOpen} onOpenChange={setHotelPickOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Select hotel to book</DialogTitle>
+            <DialogDescription>Each hotel is booked as a separate flow.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {bookableHotels.map((h) => (
+              <button
+                key={`${h.hotelId}::${h.checkIn}::${h.checkOut}`}
+                type="button"
+                className="w-full text-left rounded-md border px-3 py-3 hover:bg-muted transition-colors"
+                onClick={() => {
+                  setSelectedHotelForBooking(h);
+                  setHotelPickOpen(false);
+                  setBookRoomOpen(true);
+                }}
+              >
+                <div className="text-sm font-medium">{h.hotelName}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {h.checkIn} → {h.checkOut}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setHotelPickOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {selectedHotelForBooking ? (
+        <BookRoomDialog
+          open={bookRoomOpen}
+          onOpenChange={setBookRoomOpen}
+          lead={lead}
+          hotel={selectedHotelForBooking}
+          onSuccess={() => {
+            void loadLeadDetail();
+            void loadLeadBookings(leadId);
+          }}
+        />
+      ) : null}
+
       <SharedEmailComposer
         isOpen={emailComposerOpen}
         mode="compose"

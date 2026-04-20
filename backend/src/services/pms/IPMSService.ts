@@ -53,6 +53,8 @@ export interface BookingResponse {
 export interface RoomMasterRoomType {
     roomTypeId: string;
     roomTypeName: string;
+    /** Present when RoomInfo was requested with NeedPhysicalRooms: 1 and PMS returned room rows. */
+    physicalRooms?: { roomId: string; roomName: string }[];
 }
 
 export interface RoomMasterRatePlan {
