@@ -9,6 +9,14 @@ const formatCurrency = (amount: number) =>
     minimumFractionDigits: 0,
   }).format(amount);
 
+function formatQuotationTaxPercent(n: number): string {
+  const x = Number(n) || 0;
+  if (!Number.isFinite(x)) return "0%";
+  const rounded = Math.round(x * 100) / 100;
+  if (Number.isInteger(rounded)) return `${Math.round(rounded)}%`;
+  return `${rounded.toFixed(2).replace(/\.?0+$/, "")}%`;
+}
+
 export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -386,7 +394,7 @@ export function generateQuotationEmailHtml(o: GenerateQuotationEmailOptions): st
                       const base = formatCurrency(r.baseRate || 0);
                       const disc = `${Math.round(r.discountPercent || 0)}%`;
                       const discRate = formatCurrency(r.discountedRate || 0);
-                      const taxLine = `${Math.round(r.taxPercent || 0)}%`;
+                      const taxLine = formatQuotationTaxPercent(r.taxPercent || 0);
                       const taxAmt = formatCurrency(r.taxAmount || 0);
                       const rowTotal = formatCurrency(r.total || 0);
                       return `<tr>

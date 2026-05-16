@@ -29,7 +29,7 @@ export interface IQuotationRoomRow {
   baseRate: number; // per room / night
   discountPercent: number; // 0-100 (capped by role at validation time)
   discountedRate: number; // per room / night
-  taxPercent: number; // 5 or 18
+  taxPercent: number; // effective % on discounted pre-tax night (PMS ratio or GST slab)
   taxAmount: number; // per room / night
   total: number; // (discountedRate + taxAmount) * nights
 }
@@ -122,7 +122,7 @@ const quotationSchema = new Schema<IQuotation>(
                     baseRate: { type: Number, required: true, min: 0 },
                     discountPercent: { type: Number, required: true, min: 0, max: 100 },
                     discountedRate: { type: Number, required: true, min: 0 },
-                    taxPercent: { type: Number, required: true, enum: [5, 18] },
+                    taxPercent: { type: Number, required: true, min: 0, max: 100 },
                     taxAmount: { type: Number, required: true, min: 0 },
                     total: { type: Number, required: true, min: 0 },
                   },

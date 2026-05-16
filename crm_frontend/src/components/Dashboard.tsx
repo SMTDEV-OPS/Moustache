@@ -11,11 +11,22 @@ import {
   ArrowUpRight,
   TrendingUp,
   Loader2,
+  Layers,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getDashboardData, DashboardData } from "@/services/dashboard";
+import { getDashboardData, DashboardData, StageDistributionRow } from "@/services/dashboard";
 import { listUsers, User } from "@/services/users";
 import { Lead, getLeadContactInfo } from "@/services/leads";
+
+const PIPELINE_BAR_FALLBACK_COLORS = [
+  "#6366f1",
+  "#3b82f6",
+  "#0ea5e9",
+  "#f59e0b",
+  "#8b5cf6",
+  "#22c55e",
+  "#ef4444",
+];
 
 interface DashboardProps {
   onViewLead?: (leadId: string) => void;
@@ -121,6 +132,8 @@ const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
   }
 
   const { stats, recentLeads, alerts, stageDistribution } = dashboardData;
+  const pipelineTotal =
+    stageDistribution?.reduce((sum, row) => sum + row.count, 0) ?? 0;
 
   return (
     <div className="space-y-6">
@@ -365,29 +378,81 @@ const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
       </div>
 
       {/* Pipeline Stages */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="border-b border-slate-100 p-6">
-          <CardTitle className="text-xl font-bold">Pipeline Stages</CardTitle>
+      <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+        <CardHeader className="border-b border-slate-100 dark:border-slate-800 p-6">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
+                <Layers className="h-4 w-4 text-slate-600 dark:text-slate-300" />
+              </div>
+              <div>
+                <CardTitle className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                  Pipeline stages
+                </CardTitle>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {pipelineTotal > 0
+                    ? `${pipelineTotal} lead${pipelineTotal === 1 ? "" : "s"} in this view`
+                    : "No leads in this view yet"}
+                </p>
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-6">
           {stageDistribution && stageDistribution.length > 0 ? (
-            <div className="space-y-3">
-              {stageDistribution.map((row) => (
-                <div
-                  key={row.stage_id}
-                  className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900">{row.stage_name}</p>
+            <div className="space-y-4">
+              {stageDistribution.map((row: StageDistributionRow, index: number) => {
+                const share =
+                  pipelineTotal > 0 ? Math.round((row.count / pipelineTotal) * 100) : 0;
+                const barWidthPct =
+                  pipelineTotal > 0 ? Math.max((row.count / pipelineTotal) * 100, row.count > 0 ? 2 : 0) : 0;
+                const accent =
+                  row.color ?? PIPELINE_BAR_FALLBACK_COLORS[index % PIPELINE_BAR_FALLBACK_COLORS.length];
+                return (
+                  <div
+                    key={row.stage_id}
+                    className="rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/40"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white dark:ring-slate-900"
+                        style={{ backgroundColor: accent }}
+                        aria-hidden
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {row.stage_name}
+                          </p>
+                          <div className="flex shrink-0 items-baseline gap-2 tabular-nums">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                              {row.count}
+                            </span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">
+                              {pipelineTotal > 0 ? `${share}%` : "—"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200/90 dark:bg-slate-800">
+                          <div
+                            className="h-full rounded-full transition-[width] duration-500 ease-out"
+                            style={{
+                              width: `${barWidthPct}%`,
+                              backgroundColor: accent,
+                              opacity: row.count > 0 ? 0.92 : 0.2,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <span className="font-mono text-sm font-medium text-slate-900">
-                    {row.count}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
-            <div className="text-center text-slate-500 py-8">No pipeline data yet</div>
+            <div className="py-10 text-center text-slate-500 dark:text-slate-400">
+              No default leads pipeline configured, or no stages yet.
+            </div>
           )}
         </CardContent>
       </Card>

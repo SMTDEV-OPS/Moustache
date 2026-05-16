@@ -25,6 +25,8 @@ export interface StageDistributionRow {
   stage_id: string;
   stage_name: string;
   count: number;
+  /** Hex from pipeline stage when configured */
+  color?: string;
 }
 
 export interface DashboardData {

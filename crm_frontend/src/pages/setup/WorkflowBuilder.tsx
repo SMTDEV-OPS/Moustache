@@ -412,6 +412,34 @@ export function WorkflowBuilder() {
                   )}
                 </div>
               )}
+              {form.trigger_event === "lead_field_changed" && (
+                <div>
+                  <Label>Only when these fields change (optional)</Label>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 8px" }}>
+                    Comma-separated field slugs (e.g. <code style={{ fontSize: 11 }}>reason_of_await</code>). If set, this
+                    workflow ignores updates to other fields, so you will not get &quot;skipped&quot; logs when only IVR or
+                    budget changes.
+                  </p>
+                  <Input
+                    placeholder="reason_of_await"
+                    value={Array.isArray((form.trigger_params_json as any)?.only_on_field_slugs)
+                      ? ((form.trigger_params_json as any).only_on_field_slugs as string[]).join(", ")
+                      : ""}
+                    onChange={(e) => {
+                      const slugs = e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      setForm((p) => {
+                        const next = { ...(p.trigger_params_json ?? {}) } as Record<string, unknown>;
+                        if (slugs.length) next.only_on_field_slugs = slugs;
+                        else delete next.only_on_field_slugs;
+                        return { ...p, trigger_params_json: next };
+                      });
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -456,6 +484,7 @@ export function WorkflowBuilder() {
                     <option value="lte">≤</option>
                     <option value="contains">contains</option>
                     <option value="is_empty">is empty</option>
+                    <option value="is_not_empty">is not empty</option>
                   </Select>
                   <Input
                     value={c.value}
@@ -468,6 +497,7 @@ export function WorkflowBuilder() {
                     }
                     placeholder="Value"
                     style={{ flex: 1 }}
+                    disabled={c.operator === "is_empty" || c.operator === "is_not_empty"}
                   />
                   <button
                     type="button"

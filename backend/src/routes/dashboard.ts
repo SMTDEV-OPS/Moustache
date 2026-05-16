@@ -10,6 +10,10 @@ import { PipelineStageModel } from "../models/pipelineStage";
 import { badRequest } from "../utils/httpError";
 import { PERMISSIONS } from "../constants/permissions";
 import { buildLeadQueryForUser } from "../services/dashboardDataScope";
+import {
+  buildLeadsPipelineStageDistribution,
+  LeanPipelineStage,
+} from "../utils/pipelineStageDistribution";
 
 export const dashboardRouter = Router();
 
@@ -135,17 +139,10 @@ dashboardRouter.get("/widgets/:widget_type/data", async (req, res, next) => {
         })
           .sort({ order: 1 })
           .lean();
-        const stageIds = stages.map((s) => s._id);
-        const counts = await LeadModel.aggregate([
-          { $match: baseQuery },
-          { $group: { _id: "$stageId", count: { $sum: 1 } } },
-        ]);
-        const countMap = Object.fromEntries(counts.map((c) => [c._id?.toString(), c.count]));
-        data = stages.map((s) => ({
-          stage_id: s._id.toString(),
-          stage_name: s.name,
-          count: countMap[s._id.toString()] ?? 0,
-        }));
+        data = await buildLeadsPipelineStageDistribution(
+          baseQuery,
+          stages as LeanPipelineStage[]
+        );
         break;
       }
 

@@ -32,6 +32,10 @@ import { getCommunicationTimeline } from "../services/communicationService";
 import { PERMISSIONS } from "../constants/permissions";
 import { uploadResource } from "../middleware/upload";
 import { parse } from "csv-parse/sync";
+import {
+  buildLeadsPipelineStageDistribution,
+  LeanPipelineStage,
+} from "../utils/pipelineStageDistribution";
 
 export const leadsRouter = Router();
 
@@ -110,6 +114,45 @@ type LeadsIndexQuery = {
 };
 
 /**
+ * Cast id fields to ObjectId so `aggregate([{ $match: filter }])` matches the same docs as `find(filter)`.
+ * Mongoose does not apply schema casting to aggregation $match the way it does for find().
+ */
+function normalizeObjectIdsInLeadFilter(filter: Record<string, unknown>): void {
+  const toOid = (x: unknown): Types.ObjectId | undefined => {
+    if (x instanceof Types.ObjectId) return x;
+    const s = String(x ?? "");
+    if (!s || !Types.ObjectId.isValid(s)) return undefined;
+    return new Types.ObjectId(s);
+  };
+
+  const aid = filter.assignedToUserId;
+  if (aid != null && typeof aid === "object" && "$in" in aid) {
+    const rawIn = (aid as { $in: unknown[] }).$in;
+    if (Array.isArray(rawIn)) {
+      const seen = new Set<string>();
+      const oids: Types.ObjectId[] = [];
+      for (const x of rawIn) {
+        const o = toOid(x);
+        if (!o) continue;
+        const k = o.toString();
+        if (seen.has(k)) continue;
+        seen.add(k);
+        oids.push(o);
+      }
+      filter.assignedToUserId = { $in: oids };
+    }
+  } else if (aid != null && typeof aid !== "object") {
+    const o = toOid(aid);
+    if (o) filter.assignedToUserId = o;
+  }
+
+  if (filter.propertyId != null && typeof filter.propertyId !== "object") {
+    const o = toOid(filter.propertyId);
+    if (o) filter.propertyId = o;
+  }
+}
+
+/**
  * Build Mongo filter for lead index (list + summary). Caller must resolve `effectiveScope` and permissions first.
  */
 async function buildLeadsIndexFilter(
@@ -159,11 +202,10 @@ async function buildLeadsIndexFilter(
     filter.assignedToUserId = user.id;
   } else if (effectiveScope === "team") {
     const teamMemberIds = await getTeamMemberIdsForRoleOwner(user.id);
-    if (teamMemberIds.length === 0) {
-      return { filter: {}, earlyEmpty: true };
-    }
-    filter.assignedToUserId = { $in: teamMemberIds };
+    filter.assignedToUserId = { $in: [...new Set([user.id, ...teamMemberIds])] };
   }
+
+  normalizeObjectIdsInLeadFilter(filter);
 
   return { filter, earlyEmpty: false };
 }
@@ -715,6 +757,12 @@ leadsRouter.get("/summary", async (req, res, next) => {
       },
       recentLeads: [] as unknown[],
       alerts: [] as unknown[],
+      stageDistribution: [] as Array<{
+        stage_id: string;
+        stage_name: string;
+        count: number;
+        color?: string;
+      }>,
     };
 
     if (earlyEmpty) {
@@ -733,7 +781,7 @@ leadsRouter.get("/summary", async (req, res, next) => {
       },
     };
 
-    const [total, agg, recentDocs, checkInLeads, staleNew, stageCounts] = await Promise.all([
+    const [total, agg, recentDocs, checkInLeads, staleNew] = await Promise.all([
       LeadModel.countDocuments(filter),
       LeadModel.aggregate([
         { $match: filter },
@@ -763,10 +811,6 @@ leadsRouter.get("/summary", async (req, res, next) => {
         .select("leadNumber createdAt")
         .limit(400)
         .lean(),
-      LeadModel.aggregate([
-        { $match: filter },
-        { $group: { _id: "$stageId", count: { $sum: 1 } } },
-      ]),
     ]);
 
     const facet = (agg[0] as Record<string, { _id?: string; count?: number; c?: number }[]>) || {
@@ -868,19 +912,20 @@ leadsRouter.get("/summary", async (req, res, next) => {
       isDefault: true,
     }).lean();
 
-    let stageDistribution: Array<{ stage_id: string; stage_name: string; count: number }> = [];
+    let stageDistribution: Array<{
+      stage_id: string;
+      stage_name: string;
+      count: number;
+      color?: string;
+    }> = [];
     if (pipeline) {
       const stages = await PipelineStageModel.find({ pipelineId: pipeline._id })
         .sort({ order: 1 })
         .lean();
-      const countMap = Object.fromEntries(
-        (stageCounts || []).map((c: any) => [c._id?.toString(), c.count])
+      stageDistribution = await buildLeadsPipelineStageDistribution(
+        filter,
+        stages as LeanPipelineStage[]
       );
-      stageDistribution = stages.map((s: any) => ({
-        stage_id: s._id.toString(),
-        stage_name: s.name,
-        count: countMap[s._id.toString()] ?? 0,
-      }));
     }
 
     res.json({

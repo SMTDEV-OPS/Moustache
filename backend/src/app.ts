@@ -58,6 +58,7 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware (must be early to capture all requests)
 app.use(requestLogger);
@@ -147,7 +148,9 @@ app.use("/api/admin/workflows", adminWorkflowsRouter);
 
 // Public endpoints (no authentication required)
 app.use("/api/public/website-leads", publicWebsiteLeadsRouter);
+// Singular (UI copy) and plural (legacy/docs) — same handler
 app.use("/api/public/ivr-webhook", publicIvrWebhooksRouter);
+app.use("/api/public/ivr-webhooks", publicIvrWebhooksRouter);
 app.use("/api/public/whatsapp-webhook", publicWhatsappWebhooksRouter);
 app.use("/api/public/social-webhook", publicSocialWebhooksRouter);
 app.use("/api/public/email-webhook", publicEmailWebhooksRouter);

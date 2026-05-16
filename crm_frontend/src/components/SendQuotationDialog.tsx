@@ -17,6 +17,7 @@ import { useAuth } from "@/context/AuthContext";
 import {
   type EzeeSeparateSourceMapping,
 } from "@/services/pms";
+import { fetchAvailableRooms, type AvailableRoomRow } from "@/services/ezeeBooking";
 import { QuotationPreview, type QuotationFormat, type QuotationPreviewRow } from "@/components/quotation/QuotationPreview";
 import { FileText, Mail, MessageCircle, Send, Clock, CheckCircle, AlertTriangle, Eye } from "lucide-react";
 
@@ -179,6 +180,15 @@ function rateLookupKey(roomTypeId: string | undefined, ratePlanId: string | unde
   return `${rt}_${rp}`;
 }
 
+function formatTaxPercentLabel(n: number): string {
+  const x = Number(n) || 0;
+  if (!Number.isFinite(x)) return "0";
+  const rounded = Math.round(x * 100) / 100;
+  if (Number.isInteger(rounded)) return String(Math.round(rounded));
+  const s = rounded.toFixed(2).replace(/\.?0+$/, "");
+  return s;
+}
+
 /** When user changes room type or meal plan, always sync base / extras from PMS (editable after). */
 function pmsRatePatchFromLookup(
   key: string | undefined,
@@ -219,6 +229,24 @@ type RoomRowDraft = {
   discountPercent: number;
 };
 
+/** Match eZee RoomList row to quotation row (room + meal plan); disambiguate by plan label when needed. */
+function pickAvailableRowForQuotationRow(available: AvailableRoomRow[], row: RoomRowDraft): AvailableRoomRow | undefined {
+  const rt = String(row.roomTypeId || "").trim();
+  const mp = String(row.mealPlanId || "").trim();
+  if (!rt || !mp || !available.length) return undefined;
+  const candidates = available.filter(
+    (a) => String(a.roomTypeId).trim() === rt && String(a.rateTypeId).trim() === mp
+  );
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0];
+  const wantPlan = normName(row.ratePlanName || row.mealPlanName);
+  if (wantPlan) {
+    const named = candidates.find((c) => normName(c.planName) === wantPlan);
+    if (named) return named;
+  }
+  return candidates[0];
+}
+
 type HotelQuoteDraft = {
   propertyId?: string;
   hotelName?: string;
@@ -230,19 +258,34 @@ type HotelQuoteDraft = {
   rows: RoomRowDraft[];
 };
 
-/** GST slab on discounted nightly rate per room; tax and totals scale by nights. */
+type PmsStayTaxTotals = { totalBeforeTax: number; totalTax: number };
+
+/**
+ * Tax matches live booking: when PMS RoomList totals exist, tax scales with pre-tax rate after discount
+ * (same ratio as totalTax/totalBeforeTax for the stay). Otherwise GST slab on discounted nightly rate.
+ */
 function computeQuotationRowTotals(
   baseRate: number,
   discountPercent: number,
   nights: number,
-  discountCap: number
+  discountCap: number,
+  pmsStayTotals?: PmsStayTaxTotals | null
 ) {
   const disc = Math.min(discountCap, Math.max(0, discountPercent));
   const discountedNightlyRate = baseRate * (1 - disc / 100);
-  const taxPercent = discountedNightlyRate > 7499 ? 18 : 5;
-  const taxPerNight = (discountedNightlyRate * taxPercent) / 100;
-  const discountAmountPerNight = baseRate - discountedNightlyRate;
   const n = Math.max(1, nights);
+  let taxPerNight: number;
+  let taxPercent: number;
+  if (pmsStayTotals && pmsStayTotals.totalBeforeTax > 0) {
+    const ratio = pmsStayTotals.totalTax / pmsStayTotals.totalBeforeTax;
+    taxPerNight = discountedNightlyRate * ratio;
+    taxPercent =
+      discountedNightlyRate > 0 ? Math.round((taxPerNight / discountedNightlyRate) * 10000) / 100 : 0;
+  } else {
+    taxPercent = discountedNightlyRate > 7499 ? 18 : 5;
+    taxPerNight = (discountedNightlyRate * taxPercent) / 100;
+  }
+  const discountAmountPerNight = baseRate - discountedNightlyRate;
   return {
     discountedNightlyRate,
     taxPercent,
@@ -307,6 +350,7 @@ export const SendQuotationDialog = ({
   const [ezeeErrorByPropertyId, setEzeeErrorByPropertyId] = useState<Record<string, string>>({});
   const [ezeeRateMapByPropertyId, setEzeeRateMapByPropertyId] = useState<Record<string, EzeeRatesLookupMap>>({});
   const [ezeeRateErrorByPropertyId, setEzeeRateErrorByPropertyId] = useState<Record<string, string>>({});
+  const [availableRoomsByPropertyId, setAvailableRoomsByPropertyId] = useState<Record<string, AvailableRoomRow[]>>({});
   const [hotelDetailsByPropertyId, setHotelDetailsByPropertyId] = useState<Record<string, Record<string, unknown>>>({});
   const [hotelDetailsTierByPropertyId, setHotelDetailsTierByPropertyId] = useState<
     Record<string, QuotationFormat>
@@ -493,6 +537,7 @@ export const SendQuotationDialog = ({
       setHotelDetailsTierByPropertyId({});
       setHotelDetailsErrorByPropertyId({});
       setHotelDetailsLoading(false);
+      setAvailableRoomsByPropertyId({});
       return;
     }
     if (lead?.id) {
@@ -529,9 +574,10 @@ export const SendQuotationDialog = ({
       setEzeeErrorByPropertyId((prev) => ({ ...prev, ...errs }));
     })();
 
-    // eZee API 2 (rates): date-based Base/ExtraAdult/ExtraChild lookup map
+    // eZee API 2 (rates + RoomList): same date range as booking — rates map + tax breakdown per plan
     ;(async () => {
       const out: Record<string, EzeeRatesLookupMap> = {};
+      const availOut: Record<string, AvailableRoomRow[]> = {};
       const errs: Record<string, string> = {};
 
       const itineraryByPropertyId = new Map<string, ItineraryLike>();
@@ -552,25 +598,40 @@ export const SendQuotationDialog = ({
           const toDate = (it?.checkOutDate || "").split("T")[0];
           if (!fromDate || !toDate) {
             out[pid] = {};
+            availOut[pid] = [];
             errs[pid] = "Check-in/Check-out dates missing on this lead — rates unavailable.";
             return;
           }
-          try {
-            const qs = new URLSearchParams({ hotelId: pid, fromDate, toDate });
-            const res = await fetch(`${API_BASE_URL}/api/ezee/rates?${qs.toString()}`, {
-              headers: withAuthHeaders(),
-            });
-            if (!res.ok) throw new Error("rates failed");
-            out[pid] = (await res.json()) as EzeeRatesLookupMap;
-          } catch {
+          const qs = new URLSearchParams({ hotelId: pid, fromDate, toDate });
+          const [ratesSettled, availSettled] = await Promise.allSettled([
+            (async () => {
+              const res = await fetch(`${API_BASE_URL}/api/ezee/rates?${qs.toString()}`, {
+                headers: withAuthHeaders(),
+              });
+              if (!res.ok) throw new Error("rates failed");
+              return (await res.json()) as EzeeRatesLookupMap;
+            })(),
+            fetchAvailableRooms({ hotelId: pid, fromDate, toDate }),
+          ]);
+
+          if (ratesSettled.status === "fulfilled") {
+            out[pid] = ratesSettled.value;
+          } else {
             out[pid] = {};
             errs[pid] = "Could not fetch live rates from PMS — enter rates manually.";
+          }
+
+          if (availSettled.status === "fulfilled") {
+            availOut[pid] = availSettled.value;
+          } else {
+            availOut[pid] = [];
           }
         })
       );
       if (cancelled) return;
       setEzeeRateMapByPropertyId((prev) => ({ ...prev, ...out }));
       setEzeeRateErrorByPropertyId((prev) => ({ ...prev, ...errs }));
+      setAvailableRoomsByPropertyId((prev) => ({ ...prev, ...availOut }));
     })();
 
     return () => {
@@ -669,10 +730,17 @@ export const SendQuotationDialog = ({
     let discountedSubtotalAll = 0;
     let totalTax = 0;
     let grandTotal = 0;
+    const pid = (h.propertyId || "").trim();
+    const availList = pid ? availableRoomsByPropertyId[pid] : undefined;
     for (const row of h.rows) {
       const base = Math.max(0, Number(row.baseRate || 0));
       const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
-      const t = computeQuotationRowTotals(base, disc, nights, discountCap);
+      const pmsRow = availList?.length ? pickAvailableRowForQuotationRow(availList, row) : undefined;
+      const pmsTotals =
+        pmsRow && pmsRow.totalBeforeTax > 0
+          ? { totalBeforeTax: pmsRow.totalBeforeTax, totalTax: pmsRow.totalTax }
+          : null;
+      const t = computeQuotationRowTotals(base, disc, nights, discountCap, pmsTotals);
       discountedSubtotalAll += t.discountedSubtotal;
       totalTax += t.taxTotal;
       grandTotal += t.roomTotal;
@@ -693,8 +761,13 @@ export const SendQuotationDialog = ({
     );
   }
 
-  const gstSlabNote =
-    "Includes GST @ 5% on rooms ≤ ₹7,499/night (after discount) and 18% on rooms above that slab, calculated per room per night.";
+  const gstSlabNote = useMemo(() => {
+    const anyListing = uniquePropertyIds.some((pid) => (availableRoomsByPropertyId[pid]?.length ?? 0) > 0);
+    if (anyListing) {
+      return "Tax uses the same PMS breakdown as live booking: it scales with your pre-tax nightly rate after discount (ratio from the room listing for this stay). If no matching plan is found, GST slab 5%/18% by nightly rate applies.";
+    }
+    return "Tax uses GST @ 5% on rooms ≤ ₹7,499/night (after discount) and 18% above when live PMS room listing is unavailable.";
+  }, [uniquePropertyIds, availableRoomsByPropertyId]);
 
   async function sendDraft(draftIdx: number) {
     if (!lead?.id) return;
@@ -733,10 +806,17 @@ export const SendQuotationDialog = ({
         sentTo: { name: recipientName, email: recipientEmail, phone: recipientPhone },
         hotelQuotes: d.hotelQuotes.map((h) => {
           const nights = Math.max(1, Number(h.nights || 1));
+          const pid = (h.propertyId || "").trim();
+          const availList = pid ? availableRoomsByPropertyId[pid] : undefined;
           const rows = h.rows.map((row) => {
             const baseRate = Math.max(0, Number(row.baseRate || 0));
             const discountPercent = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
-            const t = computeQuotationRowTotals(baseRate, discountPercent, nights, discountCap);
+            const pmsRow = availList?.length ? pickAvailableRowForQuotationRow(availList, row) : undefined;
+            const pmsTotals =
+              pmsRow && pmsRow.totalBeforeTax > 0
+                ? { totalBeforeTax: pmsRow.totalBeforeTax, totalTax: pmsRow.totalTax }
+                : null;
+            const t = computeQuotationRowTotals(baseRate, discountPercent, nights, discountCap, pmsTotals);
             return {
               roomTypeId: row.roomTypeId,
               roomTypeName: row.roomTypeName,
@@ -972,7 +1052,15 @@ export const SendQuotationDialog = ({
                             const base = Math.max(0, Number(row.baseRate || 0));
                             const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
                             const n = Math.max(1, activeDraft.hotelQuotes[0].nights || 1);
-                            const t = computeQuotationRowTotals(base, disc, n, discountCap);
+                            const hq0 = activeDraft.hotelQuotes[0];
+                            const pid0 = (hq0.propertyId || "").trim();
+                            const avail0 = pid0 ? availableRoomsByPropertyId[pid0] : undefined;
+                            const pmsRow0 = avail0?.length ? pickAvailableRowForQuotationRow(avail0, row) : undefined;
+                            const pmsTotals0 =
+                              pmsRow0 && pmsRow0.totalBeforeTax > 0
+                                ? { totalBeforeTax: pmsRow0.totalBeforeTax, totalTax: pmsRow0.totalTax }
+                                : null;
+                            const t = computeQuotationRowTotals(base, disc, n, discountCap, pmsTotals0);
                             return {
                               roomTypeName: row.roomTypeName || "",
                               mealPlanName: row.mealPlanName || "",
@@ -1074,7 +1162,13 @@ export const SendQuotationDialog = ({
                                     const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
                                     const base = Math.max(0, Number(row.baseRate || 0));
                                     const nightsRow = Math.max(1, Number(hq.nights || 1));
-                                    const t = computeQuotationRowTotals(base, disc, nightsRow, discountCap);
+                                    const availH = pid ? availableRoomsByPropertyId[pid] : undefined;
+                                    const pmsH = availH?.length ? pickAvailableRowForQuotationRow(availH, row) : undefined;
+                                    const pmsTotalsH =
+                                      pmsH && pmsH.totalBeforeTax > 0
+                                        ? { totalBeforeTax: pmsH.totalBeforeTax, totalTax: pmsH.totalTax }
+                                        : null;
+                                    const t = computeQuotationRowTotals(base, disc, nightsRow, discountCap, pmsTotalsH);
                                     const ezeeMap = hq.propertyId ? ezeeMappingByPropertyId[hq.propertyId] : undefined;
                                     const roomOptions = roomTypeOptions(ezeeMap);
                                     const mealPlans = mealPlanOptionsForRoomType(ezeeMap, row.roomTypeId, row.roomTypeName);
@@ -1329,7 +1423,7 @@ export const SendQuotationDialog = ({
                                         </td>
                                         <td className="px-2 py-2 text-right">{formatCurrency(t.discountAmountTotal)}</td>
                                         <td className="px-2 py-2 text-right">{formatCurrency(t.discountedSubtotal)}</td>
-                                        <td className="px-2 py-2 text-right">{t.taxPercent}%</td>
+                                        <td className="px-2 py-2 text-right">{formatTaxPercentLabel(t.taxPercent)}%</td>
                                         <td className="px-2 py-2 text-right">{formatCurrency(t.taxTotal)}</td>
                                         <td className="px-2 py-2 text-right font-medium">{formatCurrency(t.roomTotal)}</td>
                                       </tr>

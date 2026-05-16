@@ -140,7 +140,7 @@ const quotationSchema = z.object({
               baseRate: z.preprocess(numberOrUndef, z.number().min(0)),
               discountPercent: z.preprocess(numberOrUndef, z.number().min(0).max(100)),
               discountedRate: z.preprocess(numberOrUndef, z.number().min(0)),
-              taxPercent: z.preprocess(numberOrUndef, z.number().refine((n) => n === 5 || n === 18, "taxPercent must be 5 or 18")),
+              taxPercent: z.preprocess(numberOrUndef, z.number().min(0).max(100)),
               taxAmount: z.preprocess(numberOrUndef, z.number().min(0)),
               total: z.preprocess(numberOrUndef, z.number().min(0)),
             })

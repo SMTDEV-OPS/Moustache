@@ -42,12 +42,9 @@ export async function buildLeadQueryForUser(
 
   if (scope === "team") {
     const descendantIds = await AccessControlService.getDescendants(userId);
-    if (descendantIds.length === 0) {
-      base.assignedToUserId = new Types.ObjectId("000000000000000000000000");
-      return base;
-    }
+    const uniqueIds = [...new Set([userId, ...descendantIds])];
     base.assignedToUserId = {
-      $in: descendantIds.map((id) => new Types.ObjectId(id)),
+      $in: uniqueIds.map((id) => new Types.ObjectId(id)),
     };
     return base;
   }

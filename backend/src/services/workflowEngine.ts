@@ -18,6 +18,8 @@ import { getPrimaryEmailAccount, sendEmail } from "./emailService";
 import { validateStageMove, reassignLead, leadEventBus } from "./leadService";
 import { getAvailableAgents } from "./allocationService";
 import { IEmailAddress } from "../models/emailMessage";
+import { PipelineModel } from "../models/pipeline";
+import { PipelineStageModel } from "../models/pipelineStage";
 
 // Event name mapping: internal -> trigger_event
 const EVENT_MAP: Record<string, string> = {
@@ -120,13 +122,32 @@ export async function buildLeadContext(
   }
 
   for (const [k, v] of Object.entries(leadAny)) {
-    if (v !== undefined && v !== null && !ctx[k] && typeof v !== "object") {
+    // Preserve legitimate falsy values like 0 / false
+    if (v !== undefined && v !== null && ctx[k] === undefined && typeof v !== "object") {
       ctx[k] = v;
     }
   }
 
+  // Event payload keys sometimes needed in conditions (do not merge full payload — pollutes ctx).
   if (extraPayload) {
-    Object.assign(ctx, extraPayload);
+    const passthrough = [
+      "toStageId",
+      "fromStageId",
+      "minutes_idle",
+      "missed_count",
+      "count",
+      "taskId",
+    ];
+    for (const k of passthrough) {
+      if (extraPayload[k] !== undefined) (ctx as any)[k] = extraPayload[k];
+    }
+  }
+
+  // Convenience for lead_field_changed triggers: allow conditions to reference the changed field directly.
+  // Example: field_slug="budget", new_value="5000" => ctx.budget = "5000"
+  if (extraPayload?.field_slug && Object.prototype.hasOwnProperty.call(extraPayload, "new_value")) {
+    const slug = String((extraPayload as any).field_slug);
+    (ctx as any)[slug] = (extraPayload as any).new_value;
   }
 
   return ctx;
@@ -231,8 +252,14 @@ function passesTriggerParams(
 ): boolean {
   if (!params || Object.keys(params).length === 0) return true;
 
-  if (params.minutes !== undefined && payload.minutes_idle !== undefined) {
-    if (params.minutes !== payload.minutes_idle) return false;
+  // Backward/forward compatible trigger param names:
+  // - UI (WorkflowBuilder) uses idle_minutes
+  // - engine historically used minutes
+  // - payload uses minutes_idle
+  const expectedMinutes =
+    params.idle_minutes ?? params.minutes ?? params.minutes_idle ?? undefined;
+  if (expectedMinutes !== undefined && payload.minutes_idle !== undefined) {
+    if (Number(expectedMinutes) !== Number(payload.minutes_idle)) return false;
   }
   if (params.count !== undefined && payload.missed_count !== undefined) {
     if (params.count !== payload.missed_count) return false;
@@ -241,6 +268,64 @@ function passesTriggerParams(
     if (params.to_stage_id !== payload.toStageId) return false;
   }
   return true;
+}
+
+function normalizeRecipientField(v: any): string | undefined {
+  if (!v) return undefined;
+  const s = String(v).trim().toLowerCase();
+  if (["lead mobile", "lead_mobile", "leadmobile"].includes(s)) return "lead_mobile";
+  if (["agent mobile", "agent_mobile", "agentmobile"].includes(s)) return "agent_mobile";
+  if (["lead email", "lead_email", "leademail"].includes(s)) return "lead_email";
+  if (["agent email", "agent_email", "agentemail"].includes(s)) return "agent_email";
+  if (["tl email", "tl_email", "tlemail"].includes(s)) return "tl_email";
+  return String(v);
+}
+
+function normalizeAssignTo(v: any): string | undefined {
+  if (!v) return undefined;
+  const s = String(v).trim().toLowerCase();
+  if (["agent", "assigned agent", "assigned_agent"].includes(s)) return "agent";
+  if (["tl", "team lead", "team_lead"].includes(s)) return "tl";
+  if (["manager"].includes(s)) return "manager";
+  return s;
+}
+
+function normalizeNotifyRecipient(v: any): string | undefined {
+  if (!v) return undefined;
+  const s = String(v).trim().toLowerCase();
+  if (["assigned agent", "assigned_agent", "assigned_agent_id"].includes(s)) return "assigned_agent";
+  if (["tl", "team lead", "team_lead"].includes(s)) return "tl";
+  if (["manager"].includes(s)) return "manager";
+  if (["specific user", "specific_user"].includes(s)) return "specific_user";
+  return s;
+}
+
+async function resolveStageIdFromName(stageName: string, _orgId: string): Promise<string | null> {
+  const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).lean();
+  if (!pipeline) return null;
+  const stage = await PipelineStageModel.findOne({
+    pipelineId: (pipeline as any)._id,
+    name: new RegExp(`^${stageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+  }).lean();
+  return stage?._id?.toString() ?? null;
+}
+
+/** Prefer the lead's current pipeline so "Discussion" resolves on the same board as the lead. */
+async function resolveStageIdFromNameForLead(leadId: string, stageName: string): Promise<string | null> {
+  const escaped = stageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nameRx = new RegExp(`^${escaped}$`, "i");
+  const lead = await LeadModel.findById(leadId).select("stageId").lean();
+  if (lead?.stageId) {
+    const current = await PipelineStageModel.findById(lead.stageId).select("pipelineId").lean();
+    if (current?.pipelineId) {
+      const stage = await PipelineStageModel.findOne({
+        pipelineId: current.pipelineId,
+        name: nameRx,
+      }).lean();
+      if (stage?._id) return stage._id.toString();
+    }
+  }
+  return resolveStageIdFromName(stageName, "");
 }
 
 /**
@@ -262,7 +347,10 @@ async function executeAction(
     switch (action.action_type as ActionType) {
       case "send_whatsapp": {
         const templateId = params.template_id || params.templateId;
-        const recipientField = params.recipient_field || "lead_mobile";
+        const recipientField =
+          params.recipient_field ||
+          normalizeRecipientField(params.recipient) ||
+          "lead_mobile";
         let phone = leadContext[recipientField];
         if (!phone && lead.guestId) {
           const guest = await GuestModel.findById(lead.guestId).lean();
@@ -283,11 +371,23 @@ async function executeAction(
 
       case "send_email": {
         const templateId = params.template_id || params.templateId;
-        const recipientField = params.recipient_field || "lead_email";
+        const recipientField =
+          params.recipient_field ||
+          normalizeRecipientField(params.recipient) ||
+          "lead_email";
         let email = leadContext[recipientField];
         if (!email && lead.guestId) {
           const guest = await GuestModel.findById(lead.guestId).lean();
           email = guest?.email;
+        }
+        // Best-effort: support TL email as recipient by resolving assigned user's manager email.
+        if (!email && recipientField === "tl_email" && lead.assignedToUserId) {
+          const assigned = await UserModel.findById(lead.assignedToUserId).select("reportsTo").lean();
+          const tlId = (assigned as any)?.reportsTo;
+          if (tlId) {
+            const tl = await UserModel.findById(tlId).select("email").lean();
+            email = (tl as any)?.email;
+          }
         }
         if (!email) {
           return { status: "failed", error: "No email for send_email" };
@@ -330,7 +430,10 @@ async function executeAction(
 
       case "create_task": {
         const title = params.title || "Workflow Task";
-        const assignTo = params.assign_to || "agent";
+        const assignTo =
+          params.assign_to ||
+          normalizeAssignTo(params.assignTo) ||
+          "agent";
         let ownerId = lead.assignedToUserId;
         if (assignTo === "tl" || assignTo === "manager") {
           if (lead.assignedToUserId) {
@@ -339,7 +442,11 @@ async function executeAction(
           }
         }
         if (!ownerId) return { status: "failed", error: "No assignee for task" };
-        const dueOffset = params.due_offset_hours || 0;
+        const dueOffset =
+          params.due_offset_hours ??
+          params.dueInHours ??
+          params.due_in_hours ??
+          0;
         const dueAt = new Date();
         dueAt.setHours(dueAt.getHours() + dueOffset);
         await TaskModel.create({
@@ -356,7 +463,17 @@ async function executeAction(
       }
 
       case "move_stage": {
-        const targetStageId = params.target_stage_id;
+        let targetStageId = params.target_stage_id as string | undefined;
+        // Stale ObjectIds (e.g. pipeline rebuilt) — fall back to stage name from Workflow Builder
+        if (targetStageId) {
+          const exists = await PipelineStageModel.findById(targetStageId).select("_id").lean();
+          if (!exists) targetStageId = undefined;
+        }
+        if (!targetStageId && params.stage) {
+          targetStageId =
+            (await resolveStageIdFromNameForLead(leadId, String(params.stage))) ??
+            (orgId ? (await resolveStageIdFromName(String(params.stage), orgId)) ?? undefined : undefined);
+        }
         if (!targetStageId) return { status: "failed", error: "Missing target_stage_id" };
         const validation = await validateStageMove(leadId, targetStageId, orgId);
         if (!validation.allowed) {
@@ -373,7 +490,11 @@ async function executeAction(
       }
 
       case "assign_lead": {
-        const strategy = params.strategy || "min_open_leads";
+        const rawStrategy = params.strategy;
+        const strategy =
+          rawStrategy === "Round Robin" || rawStrategy === "round_robin"
+            ? "min_open_leads"
+            : rawStrategy || "min_open_leads";
         const specificUserId = params.user_id;
         if (specificUserId) {
           const sysUser = await UserModel.findOne({ status: "ACTIVE" }).select("_id").lean();
@@ -407,7 +528,7 @@ async function executeAction(
       }
 
       case "notify_user": {
-        const recipient = params.recipient || "assigned_agent";
+        const recipient = normalizeNotifyRecipient(params.recipient) || "assigned_agent";
         const message = params.message ? resolveTemplateVariables(params.message, leadContext) : "Workflow notification";
         let userId: Types.ObjectId | undefined;
         if (recipient === "assigned_agent" && lead.assignedToUserId) {
@@ -430,7 +551,7 @@ async function executeAction(
       }
 
       case "update_field": {
-        const slug = params.field_slug;
+        const slug = params.field_slug ?? params.field;
         const value = params.value;
         if (!slug) return { status: "failed", error: "Missing field_slug" };
         const leadDoc = await LeadModel.findById(leadId);
@@ -473,7 +594,13 @@ async function executeAction(
       }
 
       case "cancel_pending_tasks": {
-        const taskType = params.task_type || "all";
+        const taskTypeRaw = params.task_type ?? params.taskType ?? "all";
+        const taskType =
+          String(taskTypeRaw).toLowerCase().includes("follow")
+            ? "followup"
+            : String(taskTypeRaw).toLowerCase().includes("all")
+              ? "all"
+              : taskTypeRaw;
         const q: any = { leadId: lead._id, status: "OPEN" };
         if (taskType === "followup") q.type = "followup";
         await TaskModel.updateMany(q, { status: "CANCELLED" });
@@ -520,6 +647,19 @@ export async function registerTrigger(
   for (const wf of workflows) {
     const params = (wf as any).trigger_params_json || {};
     if (!passesTriggerParams(params, payload, triggerEvent)) continue;
+
+    // Optional: for lead_field_changed, only run when one of these slugs changed (avoids noisy skips on unrelated updates).
+    const onlyOnFields = params.only_on_field_slugs;
+    if (
+      triggerEvent === "lead_field_changed" &&
+      Array.isArray(onlyOnFields) &&
+      onlyOnFields.length > 0
+    ) {
+      const changed = payload.field_slug;
+      if (!changed || !onlyOnFields.includes(String(changed))) {
+        continue;
+      }
+    }
 
     if (wf.run_once_per_lead && leadId) {
       const existing = await WorkflowExecutionLogModel.findOne({

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import {
   createEzeeBooking,
   readEzeeBooking,
 } from "@/services/ezeeBooking";
+import { useAuth } from "@/context/AuthContext";
 
 type HotelChoice = {
   hotelId: string;
@@ -150,6 +151,31 @@ function money(n: number): string {
   );
 }
 
+/** Scales PMS pre-tax nightly rates (InsertBooking `baserate` / RoomList) by discount %. */
+function computeDiscountedRates(
+  match: AvailableRoomRow,
+  nights: number,
+  discountPercent: number
+): { ratePerNight: number; nightlyRates: RoomRow["nightlyRates"] } {
+  const d = Math.min(100, Math.max(0, discountPercent));
+  const factor = 1 - d / 100;
+  const rawNights = match.nightlyRates ?? [];
+  if (rawNights.length > 0) {
+    const nightlyRates = rawNights.map((n) => ({
+      date: n.date,
+      rate: Math.round(n.rate * factor * 100) / 100,
+      extraAdult: n.extraAdult ?? 0,
+      extraChild: n.extraChild ?? 0,
+    }));
+    const total = nightlyRates.reduce((s, n) => s + n.rate, 0);
+    const ratePerNight = nights > 0 ? Math.round((total / nights) * 100) / 100 : 0;
+    return { ratePerNight, nightlyRates };
+  }
+  const base = nights > 0 ? match.totalBeforeTax / nights : 0;
+  const ratePerNight = Math.round(base * factor * 100) / 100;
+  return { ratePerNight, nightlyRates: [] };
+}
+
 function buildInitialRoomRows(lead: LeadDetail["lead"], hotelId: string): RoomRow[] {
   const firstItin = lead?.itineraries?.find((it: any) => {
     const pid = typeof it?.propertyId === "string" ? it.propertyId : it?.propertyId?._id;
@@ -182,6 +208,13 @@ export function BookRoomDialog({
   hotel: HotelChoice;
   onSuccess: () => void;
 }) {
+  const { user, can } = useAuth();
+  const discountCap = useMemo(() => {
+    if (user?.isAdmin) return 20;
+    if (can("leads.manage") || can("settings.manage") || can("quotations.manage")) return 20;
+    return 15;
+  }, [user?.isAdmin, can]);
+
   const [step, setStep] = useState<1 | 2 | 3 | "done">(1);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [available, setAvailable] = useState<AvailableRoomRow[]>([]);
@@ -191,6 +224,9 @@ export function BookRoomDialog({
   const [promotionCode, setPromotionCode] = useState("");
   const [lockedPromoCode, setLockedPromoCode] = useState<string | null>(null);
   const [promoError, setPromoError] = useState("");
+  /** Extra % off pre-tax nightly rates (after any PMS promotion); sent to eZee via lower `baserate`. */
+  const [bookingDiscountPercent, setBookingDiscountPercent] = useState(0);
+  const prevBookingDiscountRef = useRef(bookingDiscountPercent);
   const [error, setError] = useState<string | null>(null);
 
   const [checkIn, setCheckIn] = useState(hotel.checkIn);
@@ -230,6 +266,8 @@ export function BookRoomDialog({
     setPromotionCode("");
     setLockedPromoCode(null);
     setPromoError("");
+    setBookingDiscountPercent(0);
+    prevBookingDiscountRef.current = 0;
     setGuestGender(GUEST_GENDER_UNSET);
     setGuestDateOfBirth("");
     setGuestNationality("");
@@ -259,6 +297,35 @@ export function BookRoomDialog({
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load rooms"))
       .finally(() => setLoadingRooms(false));
   }, [open, hotel.hotelId, checkIn, checkOut, nights, lockedPromoCode]);
+
+  useEffect(() => {
+    if (!open || nights <= 0) return;
+
+    const prevDisc = prevBookingDiscountRef.current;
+    const disc = bookingDiscountPercent;
+    const discountChanged = prevDisc !== disc;
+    prevBookingDiscountRef.current = disc;
+
+    const applyFromPlan = () => {
+      setRows((prevRows) =>
+        prevRows.map((r) => {
+          if (!r.roomRateId) return r;
+          const match = available.find((x) => x.roomRateId === r.roomRateId);
+          if (!match) return r;
+          const { ratePerNight, nightlyRates } = computeDiscountedRates(match, nights, disc);
+          return { ...r, ratePerNight, nightlyRates };
+        })
+      );
+    };
+
+    if (disc > 0) {
+      applyFromPlan();
+      return;
+    }
+    if (discountChanged) {
+      applyFromPlan();
+    }
+  }, [bookingDiscountPercent, available, nights, open]);
 
   const handleApplyPromo = async () => {
     const code = promotionCode.trim();
@@ -370,7 +437,7 @@ export function BookRoomDialog({
             children: 0,
           };
         }
-        const ratePerNight = nights > 0 ? Math.round((first.totalBeforeTax / nights) * 100) / 100 : 0;
+        const { ratePerNight, nightlyRates } = computeDiscountedRates(first, nights, bookingDiscountPercent);
         const planCaps = {
           baseAdultOccupancy: Number(first.baseAdultOccupancy) > 0 ? Number(first.baseAdultOccupancy) : caps.baseAdultOccupancy,
           maxAdultOccupancy: Math.max(
@@ -390,12 +457,7 @@ export function BookRoomDialog({
           roomTypeName: first.roomTypeName,
           planName: first.planName,
           ratePerNight,
-          nightlyRates: (first.nightlyRates ?? []).map((n) => ({
-            date: n.date,
-            rate: n.rate,
-            extraAdult: n.extraAdult ?? 0,
-            extraChild: n.extraChild ?? 0,
-          })),
+          nightlyRates,
           physicalRoomId: undefined,
           physicalRoomName: undefined,
           ...planCaps,
@@ -412,7 +474,7 @@ export function BookRoomDialog({
         if (r.id !== rowId) return r;
         const match = available.find((x) => x.roomRateId === roomRateId);
         if (!match) return r;
-        const ratePerNight = nights > 0 ? Math.round((match.totalBeforeTax / nights) * 100) / 100 : 0;
+        const { ratePerNight, nightlyRates } = computeDiscountedRates(match, nights, bookingDiscountPercent);
         const baseAdult =
           Number(match.baseAdultOccupancy) > 0 ? Number(match.baseAdultOccupancy) : r.baseAdultOccupancy || 1;
         let maxAdult = Math.max(r.maxAdultOccupancy || 1, Number(match.maxAdultOccupancy) || 0, baseAdult);
@@ -430,12 +492,7 @@ export function BookRoomDialog({
           roomTypeName: match.roomTypeName,
           planName: match.planName,
           ratePerNight,
-          nightlyRates: (match.nightlyRates ?? []).map((n) => ({
-            date: n.date,
-            rate: n.rate,
-            extraAdult: n.extraAdult ?? 0,
-            extraChild: n.extraChild ?? 0,
-          })),
+          nightlyRates,
           baseAdultOccupancy: baseAdult,
           maxAdultOccupancy: maxAdult,
           maxChildOccupancy: maxChild,
@@ -457,6 +514,7 @@ export function BookRoomDialog({
           adults: Math.min(Math.max(1, caps.baseAdultOccupancy), caps.maxAdultOccupancy),
           children: 0,
           ratePerNight: 0,
+          nightlyRates: [],
           ...caps,
         },
       ];
@@ -479,13 +537,29 @@ export function BookRoomDialog({
       const amt = plan?.discount?.discountAmount;
       return sum + (typeof amt === "number" && Number.isFinite(amt) ? amt : 0);
     }, 0);
+    const manualDiscountSavings =
+      bookingDiscountPercent > 0
+        ? rows.reduce((sum, r) => {
+            if (!r.roomRateId || nights <= 0) return sum;
+            const plan = available.find((x) => x.roomRateId === r.roomRateId);
+            if (!plan) return sum;
+            const listNights = plan.nightlyRates ?? [];
+            let listTotal = listNights.reduce((s, n) => s + n.rate, 0);
+            if (listTotal <= 0) listTotal = plan.totalBeforeTax ?? 0;
+            const curNights = r.nightlyRates ?? [];
+            const curTotal =
+              curNights.length > 0 ? curNights.reduce((s, n) => s + n.rate, 0) : (Number(r.ratePerNight) || 0) * nights;
+            return sum + Math.max(0, listTotal - curTotal);
+          }, 0)
+        : 0;
     return {
       roomCharges,
       taxes,
       due: roomCharges + taxes,
       totalPromotionSavings,
+      manualDiscountSavings,
     };
-  }, [rows, nights, available]);
+  }, [rows, nights, available, bookingDiscountPercent]);
 
   const canContinueFromStep1 = nights > 0 && rows.every((r) => r.roomTypeId && r.roomRateId && r.rateTypeId && r.ratePerNight > 0);
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim());
@@ -684,6 +758,29 @@ export function BookRoomDialog({
                 {promoError ? <p className="text-xs text-red-600">{promoError}</p> : null}
               </div>
 
+              <div className="flex flex-col gap-1 max-w-md">
+                <Label className="text-xs text-muted-foreground">Additional discount (%)</Label>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={discountCap}
+                    step={0.5}
+                    value={String(bookingDiscountPercent)}
+                    onChange={(e) => {
+                      const v = Math.min(discountCap, Math.max(0, Number(e.target.value || 0)));
+                      setBookingDiscountPercent(Number.isFinite(v) ? v : 0);
+                    }}
+                    className="w-24"
+                  />
+                  <span className="text-xs text-muted-foreground pb-2">max {discountCap}% · pre-tax room rates only</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Applies to pre-tax nightly room rates for the reservation (the values eZee receives as per-night{" "}
+                  <span className="font-mono text-[10px]">baserate</span> in InsertBooking).
+                </p>
+              </div>
+
               <div className="rounded-md border">
                 <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs text-muted-foreground bg-muted/40">
                   <div className="col-span-2">Room type</div>
@@ -809,6 +906,8 @@ export function BookRoomDialog({
                           type="number"
                           min={0}
                           value={String(r.ratePerNight || 0)}
+                          readOnly={bookingDiscountPercent > 0}
+                          title={bookingDiscountPercent > 0 ? "Set additional discount to 0 to edit rates manually" : undefined}
                           onChange={(e) =>
                             setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, ratePerNight: Number(e.target.value) || 0 } : x)))
                           }
@@ -876,6 +975,12 @@ export function BookRoomDialog({
                   <div className="flex justify-between text-sm text-green-600">
                     <span>Est. savings (promo)</span>
                     <span>{money(pricing.totalPromotionSavings)}</span>
+                  </div>
+                ) : null}
+                {bookingDiscountPercent > 0 && pricing.manualDiscountSavings > 0 ? (
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span>Est. savings ({bookingDiscountPercent}% off list)</span>
+                    <span>{money(pricing.manualDiscountSavings)}</span>
                   </div>
                 ) : null}
                 <div className="h-px bg-border my-2" />

@@ -233,11 +233,18 @@ adminWorkflowsRouter.post("/:id/test", async (req, res, next) => {
     };
     const eventName = triggerToEvent[(wf as any).trigger_event] || (wf as any).trigger_event;
 
-    await registerTrigger(eventName, {
+    const onlyOn = (wf as any).trigger_params_json?.only_on_field_slugs;
+    const testPayload: Record<string, any> = {
       leadId,
       orgId: (wf as any).orgId?.toString(),
       workflowId: wf._id.toString(),
-    }, { dryRun: true });
+    };
+    // Satisfy only_on_field_slugs filter without overwriting DB-backed values in context
+    if (Array.isArray(onlyOn) && onlyOn.length > 0) {
+      testPayload.field_slug = onlyOn[0];
+    }
+
+    await registerTrigger(eventName, testPayload, { dryRun: true });
 
     const log = await WorkflowExecutionLogModel.findOne({
       workflowId: wf._id,

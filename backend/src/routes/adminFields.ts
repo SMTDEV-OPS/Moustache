@@ -133,6 +133,9 @@ router.post("/", validateFieldPayload, async (req: Request, res: Response) => {
         req.body.display_order = maxOrderField && maxOrderField.display_order !== undefined ? maxOrderField.display_order + 1 : 0;
         req.body.order = req.body.display_order; // keep legacy in sync
 
+        // Legacy unique index { module, fieldName }: missing fieldName is indexed as null and only one row per module is allowed.
+        req.body.fieldName = req.body.slug;
+
         const newField = new CustomFieldModel(req.body);
         await newField.save();
 
@@ -201,6 +204,10 @@ router.put("/:id", validateFieldPayload, async (req: Request, res: Response) => 
         }
 
         const existingField = await CustomFieldModel.findById(id).lean();
+        // Keep legacy fieldName aligned with slug so (module, fieldName) index stays valid and null duplicates cannot recur.
+        if (existingField?.slug) {
+            req.body.fieldName = existingField.slug;
+        }
         const updatedField = await CustomFieldModel.findByIdAndUpdate(
             id,
             { $set: req.body },

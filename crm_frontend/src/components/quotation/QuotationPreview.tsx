@@ -91,6 +91,14 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max).trim() + "…";
 }
 
+function formatTaxPercentLabel(n: number): string {
+  const x = Number(n) || 0;
+  if (!Number.isFinite(x)) return "0";
+  const rounded = Math.round(x * 100) / 100;
+  if (Number.isInteger(rounded)) return String(Math.round(rounded));
+  return rounded.toFixed(2).replace(/\.?0+$/, "");
+}
+
 function StarRow({ n }: { n: number }) {
   const capped = Math.min(5, Math.max(0, Math.round(n)));
   return (
@@ -199,7 +207,7 @@ export function QuotationPreview({
               <td className="py-2 pr-2 text-right align-top">{formatCurrency(r.discountAmountTotal)}</td>
               <td className="py-2 pr-2 text-right align-top">{formatCurrency(r.discountedSubtotal)}</td>
               <td className="py-2 pr-2 text-right align-top whitespace-nowrap">
-                {r.taxPercent}% · {formatCurrency(r.taxTotal)}
+                {formatTaxPercentLabel(r.taxPercent)}% · {formatCurrency(r.taxTotal)}
               </td>
               <td className="py-2 text-right align-top font-medium">{formatCurrency(r.roomTotal)}</td>
             </tr>
