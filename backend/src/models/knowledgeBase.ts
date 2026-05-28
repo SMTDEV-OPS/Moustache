@@ -6,6 +6,7 @@ export enum KnowledgeBaseType {
   FACTSHEET = "FACTSHEET",
   TEMPLATE = "TEMPLATE",
   RESOURCE = "RESOURCE",
+  PROPERTY_GUIDE = "PROPERTY_GUIDE",
 }
 
 export interface IKnowledgeBaseFile {
@@ -29,6 +30,8 @@ export interface IKnowledgeBase extends Document {
   description?: string;
   content?: Record<string, unknown>;
   files: IKnowledgeBaseFile[];
+  shareToken?: string;
+  shareEnabled?: boolean;
   isActive: boolean;
   createdBy: Types.ObjectId;
   updatedBy: Types.ObjectId;
@@ -65,6 +68,8 @@ const knowledgeBaseSchema = new Schema<IKnowledgeBase>(
     description: String,
     content: { type: Schema.Types.Mixed },
     files: [knowledgeBaseFileSchema],
+    shareToken: { type: String, index: true, sparse: true },
+    shareEnabled: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     createdBy: { ...UserRef, required: true },
     updatedBy: { ...UserRef, required: true },

@@ -15,6 +15,7 @@ import { LeadActivityModel, LeadActivityType } from "../models/leadActivity";
 import { CommunicationModel } from "../models/communication";
 import { badRequest, notFound, forbidden } from "../utils/httpError";
 import { createLead, reassignLead, validateStageMove, leadEventBus, dryRunAssignment } from "../services/leadService";
+import { findDuplicateLeads } from "../services/leadDuplicateService";
 import { assertLeadAccess } from "../utils/leadAccess";
 import { logAudit } from "../utils/auditLog";
 import { logger } from "../config/logger";
@@ -129,6 +130,36 @@ const leadCreateSchema = z.object({
   budget: z.number().optional(),
   bookingWindow: z.string().optional(),
   customerType: z.string().optional(),
+  occasion: z.string().optional(),
+  roomsRequested: z.number().int().min(0).optional(),
+  followUp: z
+    .object({
+      dueAt: z.string(),
+      notes: z.string().optional(),
+    })
+    .optional(),
+  preserveManualHeatLevel: z.boolean().optional(),
+});
+
+const duplicateCheckSchema = z.object({
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  accountId: z.string().optional(),
+  checkIn: z.string().optional(),
+  checkOut: z.string().optional(),
+  excludeLeadId: z.string().optional(),
+});
+
+leadsRouter.post("/check-duplicate", async (req, res, next) => {
+  try {
+    if (!req.user) throw badRequest("Missing authenticated user");
+    const parsed = duplicateCheckSchema.safeParse(req.body);
+    if (!parsed.success) throw badRequest("Invalid duplicate check payload");
+    const matches = await findDuplicateLeads(parsed.data);
+    res.json({ matches });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Get eligible users for manual assignment based on lead type
@@ -243,6 +274,12 @@ leadsRouter.post("/", async (req, res, next) => {
       budget: data.budget ?? data.customData?.budget,
       bookingWindow: data.bookingWindow ?? data.customData?.bookingWindow ?? data.customData?.booking_window,
       customerType: data.customerType ?? data.customData?.customerType ?? data.customData?.customer_type,
+      occasion: data.occasion,
+      roomsRequested: data.roomsRequested,
+      followUp: data.followUp
+        ? { dueAt: new Date(data.followUp.dueAt), notes: data.followUp.notes }
+        : undefined,
+      preserveManualHeatLevel: data.preserveManualHeatLevel ?? Boolean(data.heatLevel),
       // Pass assignment options
       assignmentMode: data.assignmentMode ?? "auto",
       assignedToUserId: data.assignedToUserId,
@@ -586,6 +623,13 @@ const leadUpdateSchema = z.object({
     .optional(),
   customData: z.record(z.any()).optional(),
   hotels: z.array(hotelSchema).optional(),
+  accountId: z.string().optional(),
+  occasion: z.string().optional(),
+  roomsRequested: z.number().optional(),
+  estimatedValue: z.string().optional(),
+  alternateContact: z.string().optional(),
+  specialRequests: z.string().optional(),
+  companyName: z.string().optional(),
 });
 
 leadsRouter.patch("/:id", async (req, res, next) => {
@@ -670,6 +714,18 @@ leadsRouter.patch("/:id", async (req, res, next) => {
     if (parsed.data.budget !== undefined) existing.budget = parsed.data.budget;
     if (parsed.data.bookingWindow !== undefined) existing.bookingWindow = parsed.data.bookingWindow;
     if (parsed.data.customerType !== undefined) existing.customerType = parsed.data.customerType;
+    if (parsed.data.occasion !== undefined) existing.occasion = parsed.data.occasion;
+    if (parsed.data.roomsRequested !== undefined) existing.roomsRequested = parsed.data.roomsRequested;
+    if (parsed.data.estimatedValue !== undefined) existing.estimatedValue = parsed.data.estimatedValue;
+    if (parsed.data.alternateContact !== undefined) existing.alternateContact = parsed.data.alternateContact;
+    if (parsed.data.specialRequests !== undefined) existing.specialRequests = parsed.data.specialRequests;
+    if (parsed.data.companyName !== undefined) existing.companyName = parsed.data.companyName;
+    if (parsed.data.accountId) {
+      const { Types } = await import("mongoose");
+      if (Types.ObjectId.isValid(parsed.data.accountId)) {
+        existing.accountId = new Types.ObjectId(parsed.data.accountId);
+      }
+    }
 
     // Handle contactDetails update (with normalization)
     if (parsed.data.contactDetails) {

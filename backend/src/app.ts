@@ -141,11 +141,19 @@ import { adminAuditLogRouter } from "./routes/adminAuditLog";
 import { webhookIntakeRouter } from "./routes/webhookIntake";
 import { adminIntegrationsRouter } from "./routes/adminIntegrations";
 import { dashboardRouter } from "./routes/dashboard";
+import { searchRouter } from "./routes/search";
+import { accountsDashboardRouter } from "./routes/accountsDashboard";
+import { salesTargetsRouter } from "./routes/salesTargets";
+import { holidaysRouter } from "./routes/holidays";
 import { allocationRouter } from "./routes/allocation";
 import allocationRoutingRulesRouter from "./routes/allocationRoutingRules";
 
 app.use("/api/filters", filtersRouter);
 app.use("/api/dashboard", dashboardRouter);
+app.use("/api/search", searchRouter);
+app.use("/api/accounts-dashboard", accountsDashboardRouter);
+app.use("/api/sales-targets", salesTargetsRouter);
+app.use("/api/holidays", holidaysRouter);
 app.use("/webhook/intake", webhookIntakeRouter);
 app.use("/api/admin/audit-log", adminAuditLogRouter);
 app.use("/api/admin/integrations", adminIntegrationsRouter);
@@ -160,6 +168,8 @@ app.use("/api/public/ivr-webhook", publicIvrWebhooksRouter);
 app.use("/api/public/whatsapp-webhook", publicWhatsappWebhooksRouter);
 app.use("/api/public/social-webhook", publicSocialWebhooksRouter);
 app.use("/api/public/email-webhook", publicEmailWebhooksRouter);
+import { knowledgePublicRouter } from "./routes/public/knowledgePublic";
+app.use("/api/public/knowledge", knowledgePublicRouter);
 
 app.use(errorHandler);
 

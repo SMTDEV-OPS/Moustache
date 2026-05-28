@@ -6,9 +6,47 @@ import { AccountModel } from "../models/account";
 import { requireAuth, hasPermission } from "../middleware/auth";
 import { uploadAccountDocument } from "../middleware/upload";
 import { StorageService } from "../services/storageService";
+import { config } from "../config/env";
 import { badRequest, notFound, forbidden } from "../utils/httpError";
 
 export const accountDocumentsRouter = Router();
+
+const LOCAL_DOC_DIR = path.join(process.cwd(), "uploads", "account-documents");
+
+function isS3Configured(): boolean {
+  return !!(
+    config.aws.bucketName &&
+    config.aws.accessKeyId &&
+    config.aws.secretAccessKey &&
+    config.aws.region
+  );
+}
+
+async function persistAccountDocumentFile(
+  buffer: Buffer,
+  originalName: string,
+  mimeType: string
+): Promise<{ fileUrl: string; storageType: "LOCAL" | "S3" }> {
+  if (isS3Configured()) {
+    try {
+      const key = await StorageService.uploadFile(
+        buffer,
+        originalName,
+        mimeType,
+        "account-documents"
+      );
+      return { fileUrl: key, storageType: "S3" };
+    } catch {
+      // fall through to local storage
+    }
+  }
+
+  fs.mkdirSync(LOCAL_DOC_DIR, { recursive: true });
+  const safeName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${originalName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const fullPath = path.join(LOCAL_DOC_DIR, safeName);
+  fs.writeFileSync(fullPath, buffer);
+  return { fileUrl: `account-documents/${safeName}`, storageType: "LOCAL" };
+}
 
 accountDocumentsRouter.use(requireAuth);
 
@@ -39,27 +77,31 @@ accountDocumentsRouter.post("/upload", (req: Request, res: Response, next: NextF
       const docType = (req.body.type || "OTHER") as string;
       const safeType = DOC_TYPES.includes(docType as any) ? docType : "OTHER";
 
+      const userId = req.user?.id;
+      if (!userId) {
+        return next(badRequest("Authenticated user is required to upload documents"));
+      }
+
       const file = req.file as Express.Multer.File & { buffer?: Buffer };
       if (!file.buffer) {
         return next(badRequest("File upload failed - no buffer"));
       }
 
-      const s3Key = await StorageService.uploadFile(
+      const stored = await persistAccountDocumentFile(
         file.buffer,
         file.originalname,
-        file.mimetype,
-        "account-documents"
+        file.mimetype
       );
 
       const doc = await AccountDocumentModel.create({
         accountId,
         name: file.originalname,
-        fileUrl: s3Key,
-        storageType: "S3",
+        fileUrl: stored.fileUrl,
+        storageType: stored.storageType,
         mimeType: file.mimetype,
         size: file.size,
         type: safeType,
-        uploadedByUserId: req.user!.id,
+        uploadedByUserId: userId,
       });
       const populated = await AccountDocumentModel.findById(doc._id)
         .populate("uploadedByUserId", "name email")

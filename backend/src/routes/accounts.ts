@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { importAccountRow } from "../utils/accountImportRow";
 import { z } from "zod";
 import * as XLSX from "xlsx";
 import { startOfWeek, endOfWeek } from "date-fns";
@@ -133,61 +134,24 @@ accountsRouter.post(
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const filename = (req.file.originalname || "").toLowerCase();
+      const isCsv = filename.endsWith(".csv") || req.file.mimetype === "text/csv";
+      const workbook = isCsv
+        ? XLSX.read(req.file.buffer.toString("utf8"), { type: "string" })
+        : XLSX.read(req.file.buffer, { type: "buffer" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+      const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet);
 
       let imported = 0;
       let skipped = 0;
       const errors: { row: number; reason: string }[] = [];
 
       for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        try {
-          const name = row["Company Name"]?.toString().trim();
-          if (!name) {
-            errors.push({ row: i + 2, reason: "Company Name is required" });
-            skipped++;
-            continue;
-          }
-
-          const existing = await AccountModel.findOne({
-            name: { $regex: new RegExp(`^${name}$`, "i") },
-          });
-          if (existing) {
-            errors.push({ row: i + 2, reason: `Account "${name}" already exists` });
-            skipped++;
-            continue;
-          }
-
-          await AccountModel.create({
-            name,
-            isHeadquarter: row["Is it a Headquarter?"]?.toString().toLowerCase() === "yes",
-            accountType: row["Account Type"] || undefined,
-            addressLine1: row["Add Line 1"] || "",
-            addressLine2: row["Add Line 2"] || "",
-            zip: row["ZIP"]?.toString() || "",
-            city: row["City "]?.toString().trim() || row["City"]?.toString().trim() || "",
-            subCity: row["Sub-City"] || "",
-            state: row["State"] || "",
-            country: row["Country"] || "India",
-            zone: row["Zone"] || "",
-            boardLine: row["Board Line"] || "",
-            email: row["Email"] || "",
-            industry: row["Industry"] || "",
-            gstin: row["GSTIN"]?.toString() || "",
-            panNumber: row["PAN Number"]?.toString() || "",
-            contractingType: row["Contracting Type"] || undefined,
-            profileStatus: "ACTIVE",
-            status: "ACTIVE",
-            // Required model fields with safe defaults for import flow
-            organizationType: "CUSTOM",
-            type: "OTHER",
-            accountLevel: "MASTER",
-          });
+        const result = await importAccountRow(rows[i], i + 2);
+        if (result.ok) {
           imported++;
-        } catch (err: any) {
-          errors.push({ row: i + 2, reason: err.message || "Unknown error" });
+        } else {
+          errors.push({ row: result.row, reason: result.reason });
           skipped++;
         }
       }

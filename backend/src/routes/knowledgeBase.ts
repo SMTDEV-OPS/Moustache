@@ -8,19 +8,51 @@ import {
   KnowledgeBaseType,
   KnowledgeBaseModel,
 } from "../models/knowledgeBase";
-import { uploadKnowledgeBase } from "../middleware/upload";
+import { uploadKnowledgeBase, uploadKnowledgeExcel } from "../middleware/upload";
+import { importPropertyKnowledgeFromBuffer } from "../services/knowledgeBaseImportService";
 import path from "path";
 import fs from "fs";
 import { Types } from "mongoose";
 import mongoose from "mongoose";
 import { StorageService } from "../services/storageService";
+import {
+  getHubList,
+  searchKnowledgeBase,
+  getGuidePayloadForProperty,
+  upsertPropertyGuide,
+  findGuideByPropertyId,
+  type PropertyGuideContent,
+} from "../services/propertyGuideService";
 
 export const knowledgeBaseRouter = Router();
 
 knowledgeBaseRouter.use(requireAuth);
 
+const RESERVED_IDS = new Set(["hub", "search", "guide", "import", "files"]);
+
+function assertValidObjectId(id: string, label = "id"): void {
+  if (!mongoose.Types.ObjectId.isValid(id) || RESERVED_IDS.has(id)) {
+    throw badRequest(`Invalid ${label}`);
+  }
+}
+
+const propertyGuideContentSchema = z.object({
+  contact: z.object({ phone: z.string().optional(), email: z.string().optional(), website: z.string().optional() }).optional(),
+  roomCategories: z.string().optional(),
+  rates: z.array(z.object({ room: z.string(), rate: z.string() })).optional(),
+  amenities: z.array(z.string()).optional(),
+  facilities: z.array(z.string()).optional(),
+  experiences: z.object({ attractions: z.string().optional(), tours: z.string().optional(), notes: z.string().optional() }).optional(),
+  sellingStory: z.object({ speciality: z.string().optional(), marketingPitch: z.string().optional() }).optional(),
+  policies: z.array(z.object({ title: z.string(), body: z.string() })).optional(),
+  gallery: z.array(z.object({ fileId: z.string(), caption: z.string().optional(), sortOrder: z.number() })).optional(),
+  legacyDriveUrl: z.string().optional(),
+  propertyType: z.string().optional(),
+  location: z.string().optional(),
+});
+
 const createKnowledgeBaseSchema = z.object({
-  type: z.enum(["PROPERTY", "FACTSHEET", "TEMPLATE", "RESOURCE"]),
+  type: z.enum(["PROPERTY", "FACTSHEET", "TEMPLATE", "RESOURCE", "PROPERTY_GUIDE"]),
   propertyId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
@@ -71,9 +103,117 @@ knowledgeBaseRouter.get("/", async (req, res, next) => {
   }
 });
 
+knowledgeBaseRouter.get("/hub", async (_req, res, next) => {
+  try {
+    const items = await getHubList();
+    res.json({ items });
+  } catch (err) {
+    next(err);
+  }
+});
+
+knowledgeBaseRouter.get("/search", async (req, res, next) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) {
+      return res.json({ properties: [], matches: [] });
+    }
+    const result = await searchKnowledgeBase(q);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+knowledgeBaseRouter.get("/guide/:propertyId", async (req, res, next) => {
+  try {
+    assertValidObjectId(req.params.propertyId, "propertyId");
+    const payload = await getGuidePayloadForProperty(req.params.propertyId);
+    res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+knowledgeBaseRouter.put(
+  "/guide/:propertyId",
+  requirePermissions(["knowledge-base.manage", "knowledgebase.manage"]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) throw badRequest("User not authenticated");
+      const parsed = propertyGuideContentSchema.safeParse(req.body.content);
+      if (!parsed.success) throw badRequest("Invalid guide content");
+      const guide = await upsertPropertyGuide(
+        req.params.propertyId,
+        req.body.content as PropertyGuideContent,
+        req.user.id,
+        {
+          shareEnabled: req.body.shareEnabled,
+          regenerateShareToken: req.body.regenerateShareToken,
+        }
+      );
+      const payload = await getGuidePayloadForProperty(req.params.propertyId);
+      res.json({ guide, payload });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+knowledgeBaseRouter.post(
+  "/import",
+  requirePermissions(["knowledge-base.manage", "knowledgebase.manage"]),
+  (req: Request, res: Response, next: NextFunction) => {
+    uploadKnowledgeExcel(req, res, async (err) => {
+      if (err) return next(badRequest(err.message || "File upload error"));
+      try {
+        if (!req.file?.buffer) throw badRequest("No Excel file uploaded");
+        if (!req.user?.id) throw badRequest("User not authenticated");
+        const body = req.body as Record<string, string | undefined>;
+        const result = await importPropertyKnowledgeFromBuffer(req.file.buffer, {
+          userId: req.user.id,
+          propertyId: body.propertyId,
+          city: body.city,
+          state: body.state,
+          country: body.country,
+        });
+        res.status(201).json(result);
+      } catch (e) {
+        next(e);
+      }
+    });
+  }
+);
+
+knowledgeBaseRouter.post(
+  "/:id/share-email",
+  requirePermissions(["knowledge-base.manage", "knowledgebase.manage"]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { to, publicUrl, propertyName } = req.body as {
+        to?: string;
+        publicUrl?: string;
+        propertyName?: string;
+      };
+      if (!to) throw badRequest("Recipient email required");
+      const subject = encodeURIComponent(`Property guide: ${propertyName || "Hotel"}`);
+      const body = encodeURIComponent(
+        `View the property guide for ${propertyName || "our hotel"}:\n\n${publicUrl || ""}`
+      );
+      res.json({
+        ok: true,
+        mailtoUrl: `mailto:${to}?subject=${subject}&body=${body}`,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // GET /knowledge-base/:id - Get single item
 knowledgeBaseRouter.get("/:id", async (req, res, next) => {
   try {
+    assertValidObjectId(req.params.id);
     const item = await KnowledgeBaseService.findById(req.params.id);
     res.json(item);
   } catch (err) {
@@ -84,7 +224,7 @@ knowledgeBaseRouter.get("/:id", async (req, res, next) => {
 // POST /knowledge-base - Create item (admin only)
 knowledgeBaseRouter.post(
   "/",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions(["knowledge-base.manage", "knowledgebase.manage"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = createKnowledgeBaseSchema.safeParse(req.body);
@@ -112,7 +252,7 @@ knowledgeBaseRouter.post(
 // PATCH /knowledge-base/:id - Update item (admin only)
 knowledgeBaseRouter.patch(
   "/:id",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions(["knowledge-base.manage", "knowledgebase.manage"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = updateKnowledgeBaseSchema.safeParse(req.body);
@@ -139,7 +279,7 @@ knowledgeBaseRouter.patch(
 // DELETE /knowledge-base/:id - Delete item (admin only)
 knowledgeBaseRouter.delete(
   "/:id",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions(["knowledge-base.manage", "knowledgebase.manage"]),
   async (req, res, next) => {
     try {
       await KnowledgeBaseService.delete(req.params.id);
@@ -153,7 +293,7 @@ knowledgeBaseRouter.delete(
 // POST /knowledge-base/:id/files - Upload files to item (admin only)
 knowledgeBaseRouter.post(
   "/:id/files",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions(["knowledge-base.manage", "knowledgebase.manage"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const item = await KnowledgeBaseModel.findById(req.params.id).lean();
@@ -197,7 +337,24 @@ knowledgeBaseRouter.post(
             files,
             req.user.id
           );
-          res.json(updatedItem);
+          if (updatedItem.type === KnowledgeBaseType.PROPERTY_GUIDE) {
+            const content = { ...(updatedItem.content as Record<string, unknown>) };
+            const gallery = Array.isArray(content.gallery) ? [...(content.gallery as Array<{ fileId: string; sortOrder: number; caption?: string }>)] : [];
+            let maxOrder = gallery.reduce((m, g) => Math.max(m, g.sortOrder), -1);
+            for (const f of updatedItem.files) {
+              if (!f.mimeType?.startsWith("image/") || !f._id) continue;
+              const fid = String(f._id);
+              if (gallery.some((g) => g.fileId === fid)) continue;
+              maxOrder += 1;
+              gallery.push({ fileId: fid, sortOrder: maxOrder, caption: f.originalName });
+            }
+            content.gallery = gallery;
+            await KnowledgeBaseModel.findByIdAndUpdate(updatedItem._id, {
+              $set: { content, updatedBy: req.user.id },
+            });
+          }
+          const fresh = await KnowledgeBaseService.findById(req.params.id);
+          res.json(fresh);
         } catch (error) {
           next(error);
         }
@@ -211,7 +368,7 @@ knowledgeBaseRouter.post(
 // DELETE /knowledge-base/:id/files/:fileId - Delete file from item (admin only)
 knowledgeBaseRouter.delete(
   "/:id/files/:fileId",
-  requirePermissions(["knowledgebase.manage"]),
+  requirePermissions(["knowledge-base.manage", "knowledgebase.manage"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) {

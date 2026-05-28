@@ -62,6 +62,10 @@ export interface IContact extends Document {
     /** Status: ACTIVE (default) or NA (hidden from active lists) */
     status?: "ACTIVE" | "NA";
 
+    /** Scheduled follow-up for this contact */
+    followUpDate?: Date | null;
+    followUpNote?: string;
+
     createdAt: Date;
     updatedAt: Date;
 }
@@ -162,6 +166,9 @@ const contactSchema = new Schema<IContact>(
             default: "ACTIVE",
             index: true,
         },
+
+        followUpDate: { type: Date, default: null },
+        followUpNote: { type: String, default: "" },
     },
     { timestamps: true }
 );

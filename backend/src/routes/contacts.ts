@@ -45,6 +45,8 @@ const contactSchema = z.object({
     clientStatus: z.enum(["PROMOTER", "NEUTRAL", "DETRACTOR"]).default("NEUTRAL"),
     tags: z.array(z.string()).optional(),
     status: z.enum(["ACTIVE", "NA"]).optional(),
+    followUpDate: z.coerce.date().optional().nullable(),
+    followUpNote: z.string().optional(),
 });
 
 // Get all contacts for an account (visibility enforced via contacts.* permissions)

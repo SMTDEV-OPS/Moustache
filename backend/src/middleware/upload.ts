@@ -62,7 +62,7 @@ export const uploadResource = upload;
  * Generic upload middleware that handles file uploads to memory
  */
 export const uploadKnowledgeBase = (
-  _type: "PROPERTY" | "FACTSHEET" | "TEMPLATE" | "RESOURCE"
+  _type: "PROPERTY" | "FACTSHEET" | "TEMPLATE" | "RESOURCE" | "PROPERTY_GUIDE"
 ) => {
   return upload.array("files", 10);
 };
@@ -72,4 +72,32 @@ export const uploadAccountDocument = multer({
   storage,
   fileFilter,
   limits: { fileSize: 50 * 1024 * 1024 },
+}).single("file");
+
+const excelFilter = (
+  _req: Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+) => {
+  const allowed = [
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+  const ext = file.originalname.toLowerCase();
+  if (
+    allowed.includes(file.mimetype) ||
+    ext.endsWith(".xlsx") ||
+    ext.endsWith(".xls")
+  ) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only Excel files (.xlsx, .xls) are allowed"));
+  }
+};
+
+/** Single Excel workbook for knowledge base property import. */
+export const uploadKnowledgeExcel = multer({
+  storage,
+  fileFilter: excelFilter,
+  limits: { fileSize: 20 * 1024 * 1024 },
 }).single("file");

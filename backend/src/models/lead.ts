@@ -54,6 +54,7 @@ export interface ILead extends Document {
   customerType?: string; // B2C, B2B, Corporate, Influencer, NRI, HNI, Reference
 
   occasion?: string;
+  roomsRequested?: number;
   isFirstTimeGuest: boolean;
   assignedToUserId?: Types.ObjectId;
   assignedRegionId?: Types.ObjectId;
@@ -152,6 +153,8 @@ const leadSchema = new Schema<ILead>(
     budget: Number,
     bookingWindow: String,
     customerType: String,
+    occasion: String,
+    roomsRequested: Number,
     callStatus: {
       type: String,
       enum: Object.values(CallStatus),

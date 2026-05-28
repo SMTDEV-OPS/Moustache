@@ -1,0 +1,18 @@
+repos:
+  - name: "PostcardCRM"
+    path: "/Users/adarsh/MyRepo/PostcardCRM"
+    indexed: "2026-02-26T09:29:56.697Z"
+    commit: "e6b1275"
+    files: 321
+    symbols: 1804
+    processes: 88
+  - name: "Postcard"
+    path: "/Users/adarsh/MyRepo/Postcard"
+    indexed: "2026-02-26T10:21:58.213Z"
+    commit: "fa5cc4e"
+    files: 339
+    symbols: 1829
+    processes: 87
+
+# Multiple repos indexed. Use repo parameter in tool calls:
+# gitnexus_search({query: "auth", repo: "PostcardCRM"})

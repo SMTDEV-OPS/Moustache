@@ -10,6 +10,7 @@ import { AccountModel } from "../models/account";
 import { getPrimaryEmailAccount, sendEmail } from "../services/emailService";
 import { buildApprovalChain } from "../services/contractApprovalService";
 import { createNotification } from "../services/notificationService";
+import { importContractSpreadsheet } from "../utils/contractRateImport";
 
 export const contractsRouter = Router();
 
@@ -299,7 +300,7 @@ contractsRouter.post("/:id/reject", async (req, res, next) => {
   }
 });
 
-// Upload pricing grid from Excel (.xlsx/.xls)
+// Upload rate grid from Excel/CSV (.xlsx, .xls, .csv)
 contractsRouter.post(
   "/:id/upload-excel",
   upload.single("file"),
@@ -312,40 +313,24 @@ contractsRouter.post(
       if (!contract) throw notFound("Contract not found");
       if (!req.file) throw badRequest("file is required");
 
-      const wb = XLSX.read(req.file.buffer, { type: "buffer" });
+      const isCsv = req.file.originalname.toLowerCase().endsWith(".csv");
+      const wb = isCsv
+        ? XLSX.read(req.file.buffer.toString("utf-8"), { type: "string", raw: false })
+        : XLSX.read(req.file.buffer, { type: "buffer", raw: false });
       const sheetName = wb.SheetNames[0];
+      if (!sheetName) throw badRequest("Spreadsheet has no sheets");
       const ws = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" }) as any[];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" }) as Record<string, unknown>[];
 
-      // Expect columns: roomCategory, rate, inclusions, rn, remarks (case-insensitive best effort)
-      const mapped = rows
-        .map((r) => {
-          const roomCategory =
-            r.roomCategory ||
-            r.RoomCategory ||
-            r["Room Category"] ||
-            r.category ||
-            r.Category;
-          const rateRaw = r.rate || r.Rate;
-          if (!roomCategory || rateRaw === "") return null;
-          const rate = Number(rateRaw);
-          if (Number.isNaN(rate)) return null;
-          const inclusions = r.inclusions || r.Inclusions || "";
-          const rnRaw = r.rn || r.RN || r["Room Nights"] || "";
-          const rn = rnRaw === "" ? undefined : Number(rnRaw);
-          const remarks =
-            r.remarks || r.Remarks || r["Additional Remarks"] || "";
-          return {
-            roomCategory: String(roomCategory),
-            rate,
-            inclusions: String(inclusions || ""),
-            rn: Number.isNaN(rn as any) ? undefined : rn,
-            remarks: String(remarks || ""),
-          };
-        })
-        .filter(Boolean) as any[];
-
-      (contract as any).pricingGrid = mapped;
+      const result = importContractSpreadsheet(rows);
+      if (result.format === "error") {
+        throw badRequest(result.message);
+      }
+      if (result.format === "rateGrid") {
+        (contract as any).rateGrid = result.rateGrid;
+      } else {
+        (contract as any).pricingGrid = result.pricingGrid;
+      }
       await contract.save();
       res.json(contract);
     } catch (err) {
