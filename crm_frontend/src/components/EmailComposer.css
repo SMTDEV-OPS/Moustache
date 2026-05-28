@@ -1,0 +1,195 @@
+/* Custom styles for Email Composer Quill Editor - Gmail-like */
+.email-composer-quill .ql-toolbar {
+  border-top: 1px solid #e2e8f0;
+  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+  padding: 8px 12px;
+  border-radius: 6px 6px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.email-composer-quill {
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+  min-height: 400px;
+  display: block;
+  touch-action: manipulation;
+}
+
+.email-composer-quill .ql-container {
+  border-bottom: 1px solid #e2e8f0;
+  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  font-family: inherit;
+  font-size: 14px;
+  background: #ffffff;
+  position: relative;
+  height: 350px;
+  pointer-events: auto;
+}
+
+.email-composer-quill .ql-editor {
+  min-height: 350px;
+  height: 100%;
+  padding: 20px;
+  color: #1e293b;
+  line-height: 1.6;
+  cursor: text;
+  pointer-events: auto;
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+.email-composer-quill .ql-editor:focus {
+  outline: none;
+}
+
+.email-composer-quill .ql-editor.ql-blank::before {
+  color: #94a3b8;
+  font-style: normal;
+  font-size: 14px;
+  left: 20px;
+  right: 20px;
+}
+
+.email-composer-quill .ql-toolbar {
+  pointer-events: auto;
+  z-index: 20;
+}
+
+.email-composer-quill .ql-toolbar button {
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.email-composer-quill .ql-toolbar .ql-formats {
+  margin-right: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.email-composer-quill .ql-toolbar .ql-formats:not(:last-child)::after {
+  content: "";
+  width: 1px;
+  height: 20px;
+  background: #e2e8f0;
+  margin-left: 4px;
+}
+
+.email-composer-quill .ql-toolbar button {
+  padding: 6px 8px;
+  margin: 0;
+  border-radius: 4px;
+  transition: all 0.2s;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.email-composer-quill .ql-toolbar button:hover,
+.email-composer-quill .ql-toolbar button.ql-active {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.email-composer-quill .ql-toolbar .ql-picker {
+  font-size: 13px;
+  height: 32px;
+}
+
+.email-composer-quill .ql-toolbar .ql-picker-label {
+  padding: 6px 8px;
+  border-radius: 4px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.email-composer-quill .ql-toolbar .ql-picker-label:hover {
+  background: #f1f5f9;
+}
+
+.email-composer-quill .ql-toolbar .ql-picker-options {
+  border-radius: 6px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  border: 1px solid #e2e8f0;
+  padding: 8px;
+}
+
+.email-composer-quill .ql-toolbar .ql-stroke {
+  stroke: #475569;
+  stroke-width: 2;
+}
+
+.email-composer-quill .ql-toolbar .ql-fill {
+  fill: #475569;
+}
+
+.email-composer-quill .ql-toolbar button:hover .ql-stroke,
+.email-composer-quill .ql-toolbar button.ql-active .ql-stroke {
+  stroke: #1e293b;
+}
+
+.email-composer-quill .ql-toolbar button:hover .ql-fill,
+.email-composer-quill .ql-toolbar button.ql-active .ql-fill {
+  fill: #1e293b;
+}
+
+/* Image styling in editor */
+.email-composer-quill .ql-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+/* Table styling in editor */
+.email-composer-quill .ql-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+}
+
+.email-composer-quill .ql-editor table td,
+.email-composer-quill .ql-editor table th {
+  border: 1px solid #e2e8f0;
+  padding: 8px;
+}
+
+.email-composer-quill .ql-editor table th {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+/* Code block styling */
+.email-composer-quill .ql-editor pre.ql-syntax {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+/* Blockquote styling */
+.email-composer-quill .ql-editor blockquote {
+  border-left: 4px solid #059669;
+  padding-left: 16px;
+  margin: 8px 0;
+  color: #64748b;
+  font-style: italic;
+}
