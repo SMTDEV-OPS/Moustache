@@ -223,7 +223,10 @@ async function seedEverything() {
       entity_type: "lead",
     });
     if (!exists) {
-      await CustomFieldModel.create(field);
+      await CustomFieldModel.create({
+        ...field,
+        fieldName: field.slug, // Set legacy fieldName to prevent MongoDB unique index conflict
+      });
       fieldsCreated++;
     }
   }

@@ -6,8 +6,7 @@ import { logger } from "../src/config/logger";
 import { RoleModel } from "../src/models/role";
 import { ProfileModel } from "../src/models/profile";
 import { UserModel } from "../src/models/user";
-import { TeamType } from "../src/models/common";
-import { ALL_PERMISSIONS } from "../src/constants/permissions";
+import { ALL_PERMISSIONS, MODULES } from "../src/constants/permissions";
 
 async function seed() {
   await mongoose.connect(config.mongoUri);
@@ -19,20 +18,36 @@ async function seed() {
   const adminPassword = "Admin@123";
 
   // 1. Seed the Admin Profile (Feature Permissions)
+  const modulePermissions = Object.values(MODULES).map((mod) => ({
+    module: mod,
+    view: true,
+    create: true,
+    edit: true,
+    delete: true,
+  }));
+
+  const setupKeys = ["users.manage", "roles.manage", "profiles.manage", "groups.manage", "settings.manage"];
+  const setupPermissions = setupKeys.map((key) => ({
+    key,
+    enabled: true,
+  }));
+
   let profile = await ProfileModel.findOne({ name: adminProfileName });
   if (!profile) {
     profile = await ProfileModel.create({
       name: adminProfileName,
       description: "System administrator profile with full permissions",
-      permissions: ALL_PERMISSIONS,
+      modulePermissions,
+      setupPermissions,
       isSystemProfile: true,
     });
     logger.info("Created Admin Profile");
   } else {
-    profile.permissions = ALL_PERMISSIONS;
+    profile.modulePermissions = modulePermissions;
+    profile.setupPermissions = setupPermissions;
     profile.isSystemProfile = true;
     await profile.save();
-    logger.info("Admin Profile already exists, updated permissions to ALL_PERMISSIONS");
+    logger.info("Admin Profile already exists, updated permissions to modulePermissions and setupPermissions");
   }
 
   // 2. Seed the Admin Role (Hierarchy / Data Access at the very top)
@@ -60,7 +75,6 @@ async function seed() {
       name: "System Admin",
       email: adminEmail,
       phone: "",
-      teamType: TeamType.OPERATIONS,
       regions: [],
       profileId: profile._id,
       roleId: role._id,
