@@ -1,53 +1,34 @@
-import { EzeePMSService } from "../src/services/pms/adapters/EzeePMSService";
-import { BookingRequest } from "../src/services/pms/IPMSService";
+import "dotenv/config";
+import mongoose from "mongoose";
+import { config } from "../src/config/env";
+import { PropertyModel } from "../src/models/property";
 
 async function verify() {
-    console.log("Starting verification of EzeePMSService...");
+    console.log("Connecting to MongoDB...");
+    await mongoose.connect(config.mongoUri);
+    console.log("Connected to MongoDB for verification.");
 
-    const service = new EzeePMSService({
-        hotelCode: "TEST_HOTEL",
-        authCode: "TEST_AUTH"
-    });
+    const count = await PropertyModel.countDocuments();
+    console.log(`Total properties in database: ${count}`);
 
-    const bookingReq: BookingRequest = {
-        checkInDate: "2023-10-20",
-        checkOutDate: "2023-10-25",
-        guest: {
-            firstName: "John",
-            lastName: "Doe",
-            email: "john.doe@example.com",
-            phone: "1234567890",
-            city: "New York",
-            country: "USA"
-        },
-        rooms: [
-            {
-                roomTypeId: "RT_001",
-                ratePlanId: "RP_001",
-                occupancy: { adults: 2, children: 0 },
-                price: 500
-            }
-        ],
-        totalAmount: 500,
-        comments: "Test Booking from Script",
-        leadId: "LEAD_123"
-    };
+    const sampleCodes = ["26548", "29072", "61329", "60611"];
+    console.log("\nVerifying sample properties from your list:");
 
-    try {
-        console.log("Attempting createBooking...");
-        const result = await service.createBooking(bookingReq);
-        console.log("Result:", result);
-    } catch (error) {
-        console.error("Expected error (network):", error instanceof Error ? error.message : error);
+    for (const code of sampleCodes) {
+        const prop = await PropertyModel.findOne({ "pmsConfig.hotelCode": code }).lean();
+        if (prop) {
+            console.log(`✅ Found Property Code ${code}:`);
+            console.log(`   Name: ${prop.name}`);
+            console.log(`   PMS Provider: ${prop.pmsProvider}`);
+            console.log(`   Hotel Code: ${prop.pmsConfig?.hotelCode}`);
+            console.log(`   Auth Code: ${prop.pmsConfig?.authCode}`);
+        } else {
+            console.log(`❌ Failed to find Property Code ${code}`);
+        }
     }
 
-    try {
-        console.log("Attempting getInventory...");
-        const inventory = await service.getInventory("2023-10-20", "2023-10-21");
-        console.log("Inventory Result:", inventory);
-    } catch (error) {
-        console.error("Expected error (network):", error instanceof Error ? error.message : error);
-    }
+    await mongoose.disconnect();
+    console.log("Disconnected from database.");
 }
 
-verify();
+verify().catch(console.error);
