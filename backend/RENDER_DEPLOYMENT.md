@@ -35,6 +35,10 @@ If using Render dashboard (not render.yaml):
 
 Set `FRONTEND_URL` to your Netlify site URL (e.g. `https://tubular-mooncake-84659c.netlify.app`) for OAuth redirects. CORS allows any `https://*.netlify.app` origin; use `ALLOWED_ORIGINS` for custom domains.
 
+### Database seeding (required for hotels / PMS)
+
+Render does **not** auto-seed MongoDB. After first deploy, run seeds — see [PRODUCTION_SEEDING.md](./PRODUCTION_SEEDING.md).
+
 ### Troubleshooting
 
 If you get "JavaScript heap out of memory" errors:

@@ -127,10 +127,7 @@ async function resolveSystemUserId(): Promise<Types.ObjectId> {
   );
 }
 
-async function main() {
-  await mongoose.connect(config.mongoUri);
-  logger.info("Connected to MongoDB for seedMoustacheProperties");
-
+export async function seedMoustacheProperties(): Promise<{ ok: number; fail: number }> {
   const systemUserId = await resolveSystemUserId();
 
   let ok = 0;
@@ -197,11 +194,20 @@ async function main() {
   }
 
   logger.info(`seedMoustacheProperties finished: ${ok} ok, ${fail} failed`);
+  return { ok, fail };
+}
+
+async function main() {
+  await mongoose.connect(config.mongoUri);
+  logger.info("Connected to MongoDB for seedMoustacheProperties");
+  const { fail } = await seedMoustacheProperties();
   await mongoose.disconnect();
   process.exit(fail > 0 ? 1 : 0);
 }
 
-main().catch((e) => {
-  logger.error("seedMoustacheProperties fatal", { error: e instanceof Error ? e.message : e });
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    logger.error("seedMoustacheProperties fatal", { error: e instanceof Error ? e.message : e });
+    process.exit(1);
+  });
+}

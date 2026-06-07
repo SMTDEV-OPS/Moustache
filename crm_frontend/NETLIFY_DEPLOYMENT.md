@@ -10,7 +10,7 @@ You **MUST** set the following environment variable in your Netlify dashboard:
 2. Navigate to **Site settings** → **Environment variables**
 3. Add a new variable:
    - **Key**: `VITE_API_BASE_URL`
-   - **Value**: `https://moustachecrm.onrender.com`
+   - **Value**: `https://moustache-kme8.onrender.com`
    - **Scopes**: Select "All scopes" (or specific scopes as needed)
 
 ### Deploy Branch
@@ -46,11 +46,14 @@ The `netlify.toml` file is already configured with:
 - Check if the build completed successfully
 
 **If API calls fail:**
-- Verify backend is running at `https://moustachecrm.onrender.com`
+- Verify backend is running at `https://moustache-kme8.onrender.com`
 - Check CORS settings in backend (should allow your Netlify domain)
 - Check browser console for CORS errors
 
+**If hotel lists are empty:**
+- Production MongoDB likely needs seeding — see [backend/PRODUCTION_SEEDING.md](../backend/PRODUCTION_SEEDING.md)
+- Confirm `GET /properties` returns data (not `[]`) while logged in
+
 ### CORS Configuration
 
-The backend uses an explicit CORS allowlist in `backend/src/config/cors.ts`. Set `FRONTEND_URL` on Render to your Netlify URL, or add it to `ALLOWED_ORIGINS` (comma-separated).
-
+The backend allows all `https://*.netlify.app` origins automatically. Set `FRONTEND_URL` on Render to your Netlify URL for OAuth redirects. Use `ALLOWED_ORIGINS` for custom domains.
