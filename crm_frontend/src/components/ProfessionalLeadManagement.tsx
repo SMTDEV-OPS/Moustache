@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageHelp } from "@/components/help/PageHelp";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -1270,9 +1271,12 @@ const ProfessionalLeadManagement = ({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">
-            {userRole === 'callcenter' ? 'My Leads' : 'Lead Management'}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">
+              {userRole === 'callcenter' ? 'My Leads' : 'Lead Management'}
+            </h1>
+            <PageHelp title="Leads" relatedView="admin-leads" />
+          </div>
           <p className="text-muted-foreground">
             {userRole === 'callcenter'
               ? 'Manage your assigned leads and track progress'

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageHelp } from "@/components/help/PageHelp";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -322,7 +323,10 @@ export const EmailSettings = () => {
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-semibold">Email Provider</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">Email Provider</h1>
+          <PageHelp title="Email setup" articleId="email-setup" />
+        </div>
         <p className="text-sm text-muted-foreground">
           Connect Gmail, Outlook, or SMTP/IMAP to send and receive email from the CRM
         </p>

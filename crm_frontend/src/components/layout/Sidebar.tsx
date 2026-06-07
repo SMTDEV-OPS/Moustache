@@ -18,6 +18,7 @@ import {
   Settings,
   Moon,
   Sun,
+  GraduationCap,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -264,6 +265,36 @@ export function Sidebar({
             </button>
           </div>
         )}
+
+        {/* Help */}
+        <div>
+          <div
+            className="text-[10px] font-medium uppercase tracking-[0.08em] text-text-faint px-5"
+            style={{ paddingTop: 16, paddingBottom: 6 }}
+          >
+            HELP
+          </div>
+          <button
+            type="button"
+            onClick={() => onViewChange("training")}
+            className={cn(
+              "w-full flex items-center gap-2.5 h-9 px-5 text-left text-sm transition-colors duration-150",
+              activeView === "training"
+                ? "bg-primary-light text-primary font-medium border-l-2 border-primary"
+                : "text-text-muted hover:bg-hover"
+            )}
+            style={{ paddingLeft: 20, paddingRight: 12 }}
+          >
+            <GraduationCap
+              size={16}
+              strokeWidth={1.5}
+              className={cn(activeView === "training" ? "text-primary" : "text-text-muted")}
+            />
+            <span className={cn(activeView === "training" && "text-primary font-medium")}>
+              Training
+            </span>
+          </button>
+        </div>
 
         {/* Resources */}
         {hasKnowledgeAccess && (

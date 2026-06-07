@@ -10,6 +10,7 @@ import {
 } from "@/services/knowledgeBase";
 import { toast } from "sonner";
 import { ResourceEditor } from "./ResourceEditor";
+import { useTraining } from "@/context/TrainingContext";
 
 interface ResourcesViewProps {
   propertyId: string;
@@ -22,6 +23,7 @@ export const ResourcesView = ({
   searchQuery = "",
   canManage = false,
 }: ResourcesViewProps) => {
+  const { openTraining } = useTraining();
   const [items, setItems] = useState<KnowledgeBaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingItem, setEditingItem] = useState<KnowledgeBaseItem | null>(null);
@@ -115,6 +117,17 @@ export const ResourcesView = ({
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-text-muted border border-border rounded-md px-3 py-2 bg-surface">
+        Looking for CRM how-to guides?{" "}
+        <button
+          type="button"
+          className="text-primary hover:underline font-medium"
+          onClick={() => openTraining("getting-started")}
+        >
+          Open Training
+        </button>
+        . Upload property PDFs and videos here for your team.
+      </p>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', serif" }}>

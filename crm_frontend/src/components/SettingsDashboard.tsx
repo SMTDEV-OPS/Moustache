@@ -247,6 +247,7 @@ export function SettingsDashboard({
       <PageHeader
         title="Setup"
         subtitle="Manage your CRM settings, automations, and more."
+        helpArticleId="setup-roles"
       />
       <div
         className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3"

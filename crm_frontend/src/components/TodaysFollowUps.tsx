@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageHelp } from "@/components/help/PageHelp";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -284,7 +285,10 @@ export const TodaysFollowUps = ({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Follow-ups</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-slate-900">Follow-ups</h1>
+            <PageHelp title="Follow-ups" relatedView="todays-followups" />
+          </div>
           <p className="text-slate-500 mt-1">Schedule and track guest follow-ups</p>
         </div>
         <Button

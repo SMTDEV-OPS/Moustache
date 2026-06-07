@@ -50,6 +50,8 @@ import { AuditLog } from "@/pages/setup/AuditLog";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import FollowUpReminder from "@/components/FollowUpReminder";
+import { TrainingProvider } from "@/context/TrainingContext";
+import { TrainingHub } from "@/pages/training/TrainingHub";
 
 interface ProfessionalCRMProps {
   userRole: string;
@@ -74,6 +76,7 @@ export const ProfessionalCRM = ({
   const [previousView, setPreviousView] = useState<string>('dashboard');
   const [pendingLeadView, setPendingLeadView] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [trainingArticleId, setTrainingArticleId] = useState<string | undefined>();
   const { data: taskSummary } = useQuery({
     queryKey: ["task-summary"],
     queryFn: getTaskSummary,
@@ -627,6 +630,18 @@ export const ProfessionalCRM = ({
             }}
           />
         );
+      case 'training':
+        return (
+          <TrainingHub
+            initialArticleId={trainingArticleId}
+            userRole={userRole}
+            isAdmin={!!isAdmin}
+            onArticleChange={setTrainingArticleId}
+            onNavigateToView={(view) => {
+              setActiveView(view);
+            }}
+          />
+        );
       default:
         return <AgentDashboard userName={userName} userRole={userRole} />;
     }
@@ -644,12 +659,25 @@ export const ProfessionalCRM = ({
     'setup/webhooks', 'setup/audit-log',
   ].includes(activeView);
 
+  const handleViewChange = (view: string) => {
+    if (view !== "training") {
+      setTrainingArticleId(undefined);
+    }
+    setActiveView(view);
+  };
+
+  const handleTrainingNavigate = (view: string, articleId?: string) => {
+    setTrainingArticleId(articleId);
+    setActiveView(view);
+  };
+
   return (
+    <TrainingProvider onNavigate={handleTrainingNavigate}>
     <AppShell
       sidebar={
         <Sidebar
           activeView={activeView}
-          onViewChange={setActiveView}
+          onViewChange={handleViewChange}
           userName={userName}
           userRole={userRole}
           roleDisplay={userRole === "callcenter" ? "Call Center" : userRole}
@@ -688,5 +716,6 @@ export const ProfessionalCRM = ({
       )}
       {renderContent()}
     </AppShell>
+    </TrainingProvider>
   );
 };

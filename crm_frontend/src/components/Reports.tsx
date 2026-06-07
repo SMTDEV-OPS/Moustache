@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHelp } from "@/components/help/PageHelp";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -252,7 +253,10 @@ const Reports = ({ userName }: ReportsProps) => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Management Reports</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-foreground">Management Reports</h1>
+            <PageHelp title="Reports" relatedView="reports" />
+          </div>
           <p className="text-muted-foreground">Comprehensive business analytics and insights</p>
         </div>
         <div className="flex items-center space-x-3">

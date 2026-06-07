@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageHelp } from "@/components/help/PageHelp";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -105,9 +106,12 @@ export const KnowledgeBaseMain = ({
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
-              Knowledge Base
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
+                Knowledge Base
+              </h1>
+              <PageHelp title="Knowledge Base" articleId="kb-overview" />
+            </div>
             <p className="text-muted-foreground mt-2">
               Select a category to view content for{" "}
               {properties.find((p) => p._id === selectedPropertyId)?.name}
@@ -290,9 +294,12 @@ export const KnowledgeBaseMain = ({
   return (
     <div className="space-y-6 p-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
-          Knowledge Base
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
+            Knowledge Base
+          </h1>
+          <PageHelp title="Knowledge Base" articleId="kb-overview" />
+        </div>
         <p className="text-muted-foreground mt-2">
           Select a hotel to view its knowledge base content
         </p>

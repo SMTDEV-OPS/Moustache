@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHelp } from "@/components/help/PageHelp";
 import {
   Users,
   Flame,
@@ -157,9 +158,12 @@ const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            Good {getGreeting()}!
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-slate-900">
+              Good {getGreeting()}!
+            </h1>
+            <PageHelp title="Dashboard" relatedView="dashboard" />
+          </div>
           <p className="text-slate-500 mt-1">Here's your hotel lead overview</p>
         </div>
         <div className="flex items-center gap-2">

@@ -428,6 +428,7 @@ export function IntegrationHub({ onNavigate }: IntegrationHubProps) {
       <PageHeader
         title="Integration Hub"
         subtitle="Connect external services to your CRM"
+        helpArticleId="integrations-overview"
       />
 
       {loading ? (
