@@ -20,7 +20,8 @@ import { SearchableSelect } from "@/components/ui/SearchableSelect";
 
 import type { Lead, LeadContactDetails, LeadGuests } from "@/services/leads";
 import { listProperties, type Property } from "@/services/properties";
-import { getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, type RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { aggregateInventoryByRoomType, getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, type RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { RoomRateFieldsWithFetch } from "@/components/leads/RoomRateFieldsWithFetch";
 import { useToast } from "@/hooks/use-toast";
 
 type CustomFieldLike = {
@@ -112,6 +113,14 @@ export function EditLeadDialog({
     adults: string;
     children: string;
     notes?: string;
+    mealPlanId?: string;
+    mealPlanName?: string;
+    ratePlanId?: string;
+    ratePlanName?: string;
+    estimatedRate?: number;
+    extraAdultRate?: number;
+    extraChildRate?: number;
+    rateSource?: "pms" | "manual";
   };
   type HotelDraft = {
     propertyId: string;
@@ -169,6 +178,14 @@ export function EditLeadDialog({
               adults: String(r.adults ?? 1),
               children: String(r.children ?? 0),
               notes: r.notes || "",
+              mealPlanId: r.mealPlanId || "",
+              mealPlanName: r.mealPlanName || "",
+              ratePlanId: r.ratePlanId || "",
+              ratePlanName: r.ratePlanName || "",
+              estimatedRate: r.estimatedRate !== undefined ? Number(r.estimatedRate) : undefined,
+              extraAdultRate: r.extraAdultRate !== undefined ? Number(r.extraAdultRate) : undefined,
+              extraChildRate: r.extraChildRate !== undefined ? Number(r.extraChildRate) : undefined,
+              rateSource: r.rateSource || undefined,
             })),
         }))
       );
@@ -244,11 +261,7 @@ export function EditLeadDialog({
               return;
             }
             const inv = Array.isArray(res) ? res : [];
-            const byRoomTypeId: Record<string, number> = {};
-            for (const row of inv) {
-              if (!row?.roomTypeId) continue;
-              byRoomTypeId[row.roomTypeId] = Number(row.availableCount ?? 0);
-            }
+            const byRoomTypeId = aggregateInventoryByRoomType(inv);
             setAvailabilityByHotelIdx((prev) => ({ ...prev, [hotelIdx]: { status: "ready", byRoomTypeId, key } }));
           })
           .catch((err) => {
@@ -358,6 +371,14 @@ export function EditLeadDialog({
             adults: Number(r.adults) || 1,
             children: Number(r.children) || 0,
             notes: r.notes || undefined,
+            mealPlanId: r.mealPlanId || undefined,
+            mealPlanName: r.mealPlanName || undefined,
+            ratePlanId: r.ratePlanId || undefined,
+            ratePlanName: r.ratePlanName || undefined,
+            estimatedRate: r.estimatedRate !== undefined ? Number(r.estimatedRate) : undefined,
+            extraAdultRate: r.extraAdultRate !== undefined ? Number(r.extraAdultRate) : undefined,
+            extraChildRate: r.extraChildRate !== undefined ? Number(r.extraChildRate) : undefined,
+            rateSource: r.rateSource || undefined,
           })),
       }));
     }
@@ -760,6 +781,35 @@ export function EditLeadDialog({
                                   disabled={!can("hotels")}
                                 />
                               </div>
+
+                              <RoomRateFieldsWithFetch
+                                propertyId={h.propertyId}
+                                fromDate={h.checkInDate}
+                                toDate={h.checkOutDate}
+                                roomTypeId={r.roomTypeId}
+                                roomTypeName={r.roomTypeName}
+                                value={{
+                                  mealPlanId: r.mealPlanId,
+                                  mealPlanName: r.mealPlanName,
+                                  ratePlanId: r.ratePlanId,
+                                  ratePlanName: r.ratePlanName,
+                                  estimatedRate: r.estimatedRate,
+                                  extraAdultRate: r.extraAdultRate,
+                                  extraChildRate: r.extraChildRate,
+                                  rateSource: r.rateSource,
+                                }}
+                                onChange={(patch) => {
+                                  setHotels((prev) => {
+                                    const copy = [...prev];
+                                    const rr = [...(copy[hotelIdx].roomsRequested || [])];
+                                    rr[roomIdx] = { ...rr[roomIdx], ...patch };
+                                    copy[hotelIdx] = { ...copy[hotelIdx], roomsRequested: rr };
+                                    return copy;
+                                  });
+                                }}
+                                disabled={!can("hotels")}
+                                compact
+                              />
 
                               <div className="md:col-span-6 flex justify-end">
                                 <Button

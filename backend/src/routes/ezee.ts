@@ -245,18 +245,22 @@ function buildEzeeInsertBookingData(params: {
   };
 }
 
-async function moveLeadToBooked(leadId: string) {
+async function moveLeadToBooked(leadId: string, performedByUserId?: unknown) {
   const lead = await LeadModel.findById(leadId);
   if (!lead) throw notFound("Lead not found");
+
+  const prevStatus = lead.status;
+  const prevStageId = lead.stageId?.toString();
 
   // Mark confirmed + closed (matches current BookingService behavior).
   lead.status = LeadStatus.CONFIRMED;
   lead.closedAt = new Date();
 
   // Move to WON/terminal stage in default pipeline if available.
+  let wonStage: { _id: unknown; name?: string } | null = null;
   const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).exec();
   if (pipeline) {
-    const wonStage = await PipelineStageModel.findOne({
+    wonStage = await PipelineStageModel.findOne({
       pipelineId: pipeline._id,
       isTerminal: true,
       terminalType: "WON",
@@ -267,6 +271,85 @@ async function moveLeadToBooked(leadId: string) {
   }
 
   await lead.save();
+
+  const { LeadActivityModel, LeadActivityType } = await import("../models/leadActivity");
+
+  if (prevStatus !== LeadStatus.CONFIRMED) {
+    await LeadActivityModel.create({
+      leadId,
+      type: LeadActivityType.STATUS_CHANGE,
+      fromStatus: prevStatus,
+      toStatus: LeadStatus.CONFIRMED,
+      note: "Lead marked confirmed after PMS booking",
+      performedByUserId,
+      performedAt: new Date(),
+    });
+  }
+
+  if (wonStage && prevStageId !== String(wonStage._id)) {
+    const prevStage = prevStageId ? await PipelineStageModel.findById(prevStageId).lean() : null;
+    const fromName = prevStage?.name || "Previous stage";
+    const toName = wonStage.name || "Won";
+    await LeadActivityModel.create({
+      leadId,
+      type: LeadActivityType.NOTE,
+      note: `Stage moved from ${fromName} to ${toName}`,
+      performedByUserId,
+      performedAt: new Date(),
+    });
+  }
+}
+
+async function moveLeadToCancelled(leadId: string, performedByUserId?: unknown) {
+  const lead = await LeadModel.findById(leadId);
+  if (!lead) throw notFound("Lead not found");
+
+  const prevStatus = lead.status;
+  const prevStageId = lead.stageId?.toString();
+
+  lead.status = LeadStatus.CANCELLED;
+  lead.closedAt = new Date();
+
+  let cancelledStage: { _id: unknown; name?: string } | null = null;
+  const pipeline = await PipelineModel.findOne({ module: "leads", isDefault: true }).exec();
+  if (pipeline) {
+    cancelledStage = await PipelineStageModel.findOne({
+      pipelineId: pipeline._id,
+      name: /^cancelled$/i,
+    }).exec();
+    if (cancelledStage) {
+      lead.stageId = cancelledStage._id as any;
+    }
+  }
+
+  await lead.save();
+
+  const { LeadActivityModel, LeadActivityType } = await import("../models/leadActivity");
+
+  if (prevStatus !== LeadStatus.CANCELLED) {
+    await LeadActivityModel.create({
+      leadId,
+      type: LeadActivityType.STATUS_CHANGE,
+      fromStatus: prevStatus,
+      toStatus: LeadStatus.CANCELLED,
+      note: "Lead marked cancelled after PMS booking cancellation",
+      performedByUserId,
+      performedAt: new Date(),
+    });
+  }
+
+  if (cancelledStage && prevStageId !== String(cancelledStage._id)) {
+    const prevStage = prevStageId ? await PipelineStageModel.findById(prevStageId).lean() : null;
+    const fromName = prevStage?.name || "Previous stage";
+    const toName = cancelledStage.name || "Cancelled";
+    await LeadActivityModel.create({
+      leadId,
+      type: LeadActivityType.NOTE,
+      note: `Stage moved from ${fromName} to ${toName}`,
+      performedByUserId,
+      performedAt: new Date(),
+    });
+  }
 }
 
 function normName(s: unknown): string {
@@ -682,6 +765,7 @@ ezeeRouter.post("/create-booking", async (req, res, next) => {
       `&check_out_date=${encodeURIComponent(body.data.checkOut)}`;
 
     let roomRateTotals = new Map<string, { beforeTax: number; tax: number }>();
+    let roomTypeRateTotals = new Map<string, { beforeTax: number; tax: number }>();
     try {
       const roomListResp = await axios.get(roomListUrl, { timeout: 15000 });
       const roomListData: any = roomListResp.data;
@@ -690,6 +774,8 @@ ezeeRouter.post("/create-booking", async (req, res, next) => {
         const roomListRows: any[] = Array.isArray(roomListData) ? roomListData : [];
         for (const row of roomListRows) {
           const roomRateId = String(row?.roomrateunkid ?? "").trim();
+          const roomTypeId = String(row?.roomtypeunkid ?? "").trim();
+          const rateTypeId = String(row?.ratetypeunkid ?? "").trim();
           if (!roomRateId) continue;
           const ex = row?.room_rates_info?.exclusive_tax ?? {};
           const tx = row?.room_rates_info?.tax ?? {};
@@ -697,6 +783,9 @@ ezeeRouter.post("/create-booking", async (req, res, next) => {
           const tax = Object.keys(tx || {}).reduce((s, k) => s + toNum(tx?.[k]), 0);
           if (beforeTax > 0 || tax > 0) {
             roomRateTotals.set(roomRateId, { beforeTax, tax });
+            if (roomTypeId && rateTypeId) {
+              roomTypeRateTotals.set(`${roomTypeId}_${rateTypeId}`, { beforeTax, tax });
+            }
           }
         }
       }
@@ -850,10 +939,17 @@ ezeeRouter.post("/create-booking", async (req, res, next) => {
 
     const roomsForDb = body.data.rooms.map((r) => {
       const baseTotal = (Number(r.baseRate) || 0) * nights;
-      const totals = roomRateTotals.get(String(r.roomRateId).trim());
+      let totals = roomRateTotals.get(String(r.roomRateId).trim());
+      if (!totals && r.roomTypeId && r.rateTypeId) {
+        totals = roomTypeRateTotals.get(`${String(r.roomTypeId).trim()}_${String(r.rateTypeId).trim()}`);
+      }
       const ratio = totals && totals.beforeTax > 0 ? totals.tax / totals.beforeTax : 0;
-      const taxTotal = ratio > 0 ? baseTotal * ratio : 0;
-      const totalAmount = baseTotal + taxTotal;
+      const nightlyTax =
+        Array.isArray(r.nightlyRates) && r.nightlyRates.length > 0
+          ? r.nightlyRates.reduce((s, n) => s + toNum((n as { tax?: number }).tax), 0)
+          : 0;
+      const taxTotal = ratio > 0 ? baseTotal * ratio : nightlyTax > 0 ? nightlyTax : 0;
+      const totalAmount = baseTotal > 0 ? baseTotal + taxTotal : 0;
       return {
       roomTypeId: r.roomTypeId,
       roomTypeName: r.roomTypeName,
@@ -888,7 +984,22 @@ ezeeRouter.post("/create-booking", async (req, res, next) => {
       processedInPms,
     });
 
-    await moveLeadToBooked(body.data.leadId);
+    const { logPmsBookingCreated } = await import("../utils/pmsActivityLog");
+    await logPmsBookingCreated(body.data.leadId, {
+      bookingRef,
+      propertyId: body.data.hotelId,
+      roomCount: roomsForDb.length,
+      grandTotal,
+      performedByUserId: (req as any).user?.id,
+    });
+
+    const { LeadItineraryModel } = await import("../models/leadItinerary");
+    await LeadItineraryModel.deleteMany({
+      leadId: body.data.leadId,
+      propertyId: body.data.hotelId,
+    });
+
+    await moveLeadToBooked(body.data.leadId, (req as any).user?.id);
 
     res.json({ bookingRef, raw: data, processedInPms });
   } catch (err) {
@@ -966,6 +1077,27 @@ ezeeRouter.post("/cancel-booking", async (req, res, next) => {
       { leadId: body.data.leadId, propertyId: body.data.hotelId, ezeeBookingRef: body.data.bookingRef },
       { $set: { status: "cancelled" } }
     );
+
+    const { logPmsBookingCancelled } = await import("../utils/pmsActivityLog");
+    await logPmsBookingCancelled(body.data.leadId, {
+      bookingRef: body.data.bookingRef,
+      propertyId: body.data.hotelId,
+      performedByUserId: (req as any).user?.id,
+    });
+
+    const { LeadItineraryModel } = await import("../models/leadItinerary");
+    await LeadItineraryModel.deleteMany({
+      leadId: body.data.leadId,
+      propertyId: body.data.hotelId,
+    });
+
+    const remainingConfirmed = await LeadBookingModel.countDocuments({
+      leadId: body.data.leadId,
+      status: "confirmed",
+    });
+    if (remainingConfirmed === 0) {
+      await moveLeadToCancelled(body.data.leadId, (req as any).user?.id);
+    }
 
     res.json({ ok: true, raw: data });
   } catch (err) {

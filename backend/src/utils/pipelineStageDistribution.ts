@@ -57,6 +57,8 @@ export async function buildLeadsPipelineStageDistribution(
       byNameMatch("payment request", "payment") ?? byNameMatch("discussion") ?? firstStageId,
     [LeadStatus.ON_HOLD]: byNameMatch("discussion") ?? firstStageId,
     [LeadStatus.CONFIRMED]: won?._id.toString() ?? firstStageId,
+    [LeadStatus.CANCELLED]:
+      byNameMatch("cancelled") ?? lost?._id.toString() ?? firstStageId,
     [LeadStatus.LOST]: lost?._id.toString() ?? firstStageId,
     [LeadStatus.CLOSED_AUTO]: lost?._id.toString() ?? firstStageId,
   };

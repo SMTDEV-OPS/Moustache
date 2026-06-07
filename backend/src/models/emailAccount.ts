@@ -3,6 +3,7 @@ import { UserRef } from "./common";
 import CryptoJS from "crypto-js";
 
 export type EmailProvider = "GMAIL" | "OUTLOOK" | "SMTP_IMAP";
+export type EmailAuthMode = "OAUTH" | "WORKSPACE_DWD";
 export type SyncStatus = "IDLE" | "SYNCING" | "ERROR";
 
 export interface IOAuthCredentials {
@@ -31,6 +32,7 @@ export interface IIMAPConfig {
 export interface IEmailAccount extends Document {
   userId: Types.ObjectId;
   provider: EmailProvider;
+  authMode?: EmailAuthMode;
   email: string;
   isActive: boolean;
   isPrimary: boolean;
@@ -113,6 +115,11 @@ const emailAccountSchema = new Schema<IEmailAccount>(
       type: String,
       enum: ["GMAIL", "OUTLOOK", "SMTP_IMAP"],
       required: true,
+    },
+    authMode: {
+      type: String,
+      enum: ["OAUTH", "WORKSPACE_DWD"],
+      default: "OAUTH",
     },
     email: { type: String, required: true, index: true },
     isActive: { type: Boolean, default: true, index: true },

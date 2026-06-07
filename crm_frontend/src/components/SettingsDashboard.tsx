@@ -192,10 +192,11 @@ export function SettingsDashboard({
         },
         {
           name: "Email Provider",
-          description: "Configure SMTP/IMAP settings.",
+          description: "Connect Gmail, Outlook, or SMTP/IMAP.",
           path: "setup/email-provider",
           icon: Mail,
-          setupGuide: "Enter your SMTP host, port, and credentials to send emails from the CRM. Add IMAP for inbox sync if supported.",
+          setupGuide:
+            "Connect Gmail, Outlook, or SMTP/IMAP to send and receive email from the CRM. Enable lead capture to auto-create leads from inbound messages. Set a primary account for outbound email from leads.",
         },
         {
           name: "Call Quality",
@@ -219,14 +220,16 @@ export function SettingsDashboard({
           description: "Connect external services to your CRM.",
           path: "setup/integrations",
           icon: Plug,
-          setupGuide: "Connect providers (e.g. calendar, CRM sync). OAuth or API keys may be required. Map fields for data sync.",
+          setupGuide:
+            "Connect WATI (WhatsApp), Exotel (IVR), Gmail, Outlook, and more. API-key providers show a webhook URL to paste in the external system. Email providers open the Email Provider setup. Ezee PMS is configured per property in Property Management.",
         },
         {
-          name: "API & Webhooks",
-          description: "Configure webhooks and external APIs.",
+          name: "Lead Import",
+          description: "Bulk upload leads from CSV.",
           path: "setup/webhooks",
           icon: Code,
-          setupGuide: "Add webhook URLs to receive lead/contact events. Configure API keys and rate limits for external integrations.",
+          setupGuide:
+            "Upload a CSV with Name and Phone or Email columns to import leads in bulk. For webhook integrations, use Integration Hub to connect providers and copy webhook URLs.",
         },
         {
           name: "Audit Log",

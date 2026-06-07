@@ -3,17 +3,31 @@ import { logger } from "../../config/logger";
 import { IEmailAccount, EmailAccountModel } from "../../models/emailAccount";
 import { IEmailMessage, IEmailAddress, EmailMessageModel } from "../../models/emailMessage";
 import { SendEmailOptions } from "./imapProvider";
+import { createWorkspaceJwt } from "../googleWorkspaceAuth";
 
 export class GmailProvider {
   private account: IEmailAccount;
   private gmail: any;
+  private ready = false;
 
   constructor(account: IEmailAccount) {
     this.account = account;
-    this.initializeGmail();
   }
 
-  private initializeGmail() {
+  private isWorkspaceDwd(): boolean {
+    return this.account.authMode === "WORKSPACE_DWD";
+  }
+
+  private async ensureReady(): Promise<void> {
+    if (this.ready && this.gmail) return;
+
+    if (this.isWorkspaceDwd()) {
+      const jwt = await createWorkspaceJwt(this.account.email);
+      this.gmail = google.gmail({ version: "v1", auth: jwt });
+      this.ready = true;
+      return;
+    }
+
     if (!this.account.oauth) {
       throw new Error("OAuth credentials not found for Gmail account");
     }
@@ -30,16 +44,17 @@ export class GmailProvider {
     });
 
     this.gmail = google.gmail({ version: "v1", auth: oauth2Client });
+    this.ready = true;
   }
 
-  /**
-   * Refresh OAuth token if expired
-   */
   async refreshTokenIfNeeded(): Promise<void> {
+    if (this.isWorkspaceDwd()) return;
+    await this.ensureReady();
+
     if (!this.account.oauth) return;
 
     if (this.account.oauth.expiresAt > new Date()) {
-      return; // Token still valid
+      return;
     }
 
     const oauth2Client = new google.auth.OAuth2(
@@ -54,7 +69,6 @@ export class GmailProvider {
 
     const { credentials } = await oauth2Client.refreshAccessToken();
 
-    // Update account with new tokens (should be saved to DB)
     this.account.oauth.accessToken = credentials.access_token || this.account.oauth.accessToken;
     if (credentials.expiry_date) {
       this.account.oauth.expiresAt = new Date(credentials.expiry_date);
@@ -66,13 +80,10 @@ export class GmailProvider {
     });
   }
 
-  /**
-   * Send an email via Gmail API
-   */
   async sendEmail(options: SendEmailOptions): Promise<string> {
+    await this.ensureReady();
     await this.refreshTokenIfNeeded();
 
-    // Build email message
     const to = options.to.map((addr) => (addr.name ? `${addr.name} <${addr.email}>` : addr.email)).join(", ");
     const cc = options.cc?.map((addr) => (addr.name ? `${addr.name} <${addr.email}>` : addr.email)).join(", ");
     const bcc = options.bcc?.map((addr) => (addr.name ? `${addr.name} <${addr.email}>` : addr.email)).join(", ");
@@ -100,15 +111,12 @@ export class GmailProvider {
     return response.data.id;
   }
 
-  /**
-   * Fetch new emails from Gmail
-   */
   async fetchEmails(folder: string = "INBOX", since?: Date): Promise<any[]> {
+    await this.ensureReady();
     await this.refreshTokenIfNeeded();
 
     const query: string[] = [];
-    
-    // Map folder to Gmail label
+
     if (folder === "INBOX") {
       query.push("in:inbox");
     } else if (folder === "SENT") {
@@ -124,7 +132,6 @@ export class GmailProvider {
       query.push(`after:${timestamp}`);
     }
 
-    // Get list of messages
     const listResponse = await this.gmail.users.messages.list({
       userId: "me",
       q: query.join(" "),
@@ -135,7 +142,6 @@ export class GmailProvider {
       return [];
     }
 
-    // Fetch full message details
     const messages = await Promise.all(
       listResponse.data.messages.map(async (msg: any) => {
         const messageResponse = await this.gmail.users.messages.get({
@@ -151,6 +157,15 @@ export class GmailProvider {
   }
 
   async setupWatch(pubSubTopic: string): Promise<void> {
+    if (this.isWorkspaceDwd()) {
+      logger.info("Skipping Gmail watch setup for Workspace DWD account", {
+        accountId: String(this.account._id),
+        email: this.account.email,
+      });
+      return;
+    }
+
+    await this.ensureReady();
     await this.refreshTokenIfNeeded();
 
     const response = await this.gmail.users.watch({
@@ -173,6 +188,9 @@ export class GmailProvider {
   }
 
   async stopWatch(): Promise<void> {
+    if (this.isWorkspaceDwd()) return;
+
+    await this.ensureReady();
     await this.refreshTokenIfNeeded();
 
     await this.gmail.users.stop({
@@ -189,6 +207,7 @@ export class GmailProvider {
   }
 
   async fetchEmailsByHistory(startHistoryId: string): Promise<any[]> {
+    await this.ensureReady();
     await this.refreshTokenIfNeeded();
 
     let pageToken: string | undefined;
@@ -246,9 +265,6 @@ export class GmailProvider {
     return messages;
   }
 
-  /**
-   * Convert Gmail message to IEmailMessage format
-   */
   static gmailMessageToEmailMessage(
     gmailMsg: any,
     accountId: string,
@@ -283,7 +299,6 @@ export class GmailProvider {
     const messageId = getHeader("message-id") || `gmail-${gmailMsg.id}`;
     const inReplyTo = getHeader("in-reply-to");
 
-    // Extract body
     let bodyText = "";
     let bodyHtml = "";
     const extractBody = (part: any) => {
@@ -329,4 +344,3 @@ export class GmailProvider {
     };
   }
 }
-

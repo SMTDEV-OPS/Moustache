@@ -379,7 +379,7 @@ publicIvrWebhooksRouter.post("/", async (req, res, next) => {
                             return await LeadModel.findOne({
                                 "contactDetails.phone": callerPhone,
                                 status: {
-                                    $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED],
+                                    $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED, LeadStatus.CANCELLED],
                                 },
                             })
                                 .sort({ createdAt: -1 })

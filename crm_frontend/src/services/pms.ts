@@ -52,7 +52,7 @@ export const checkAvailability = async (
     to: string
 ): Promise<RoomAvailability[]> => {
     const response = await fetch(
-        `${API_BASE_URL}/pms/${propertyId}/inventory?from=${from}&to=${to}`,
+        `${API_BASE_URL}/pms/${propertyId}/availability?from=${from}&to=${to}`,
         {
             headers: withAuthHeaders(),
         }
@@ -62,7 +62,18 @@ export const checkAvailability = async (
         throw new Error("Failed to fetch inventory");
     }
 
-    return response.json();
+    const data = await response.json();
+    if (
+        data &&
+        typeof data === "object" &&
+        !Array.isArray(data) &&
+        "available" in data &&
+        (data as { available: boolean }).available === false
+    ) {
+        throw new Error(String((data as { error?: string }).error || "PMS unavailable"));
+    }
+
+    return Array.isArray(data) ? data : [];
 };
 
 export const getRates = async (
@@ -286,6 +297,20 @@ type AvailabilityInventoryRow = {
   availableCount?: number;
   roomTypeName?: string;
 };
+
+/** Minimum available count per room type across all date rows (multi-night stays). */
+export function aggregateInventoryByRoomType(
+  rows: { roomTypeId?: string; availableCount?: number }[]
+): Record<string, number> {
+  const byRoomTypeId: Record<string, number> = {};
+  for (const row of rows) {
+    if (!row?.roomTypeId) continue;
+    const count = Number(row.availableCount ?? 0);
+    const prev = byRoomTypeId[row.roomTypeId];
+    byRoomTypeId[row.roomTypeId] = prev === undefined ? count : Math.min(prev, count);
+  }
+  return byRoomTypeId;
+}
 
 type LiveAvailabilityResponse =
   | { available: false; error?: string }

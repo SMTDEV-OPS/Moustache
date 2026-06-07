@@ -11,6 +11,34 @@ import axios from "axios";
 
 export const adminIntegrationsRouter = Router();
 
+function getApiKeyFromConfig(config: Record<string, unknown>): string {
+  const key = config.api_key ?? config.apiKey;
+  return typeof key === "string" ? key.trim() : "";
+}
+
+async function verifyProviderCredentials(
+  provider: string,
+  config: Record<string, unknown>
+): Promise<boolean> {
+  const apiKey = getApiKeyFromConfig(config);
+  if (provider === "WATI") {
+    if (!apiKey) return false;
+    try {
+      const resp = await axios.get("https://live-server.wati.io/api/v1/health", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        timeout: 5000,
+      });
+      return resp.status === 200;
+    } catch {
+      return false;
+    }
+  }
+  if (provider === "Exotel") {
+    return Boolean(apiKey);
+  }
+  return Boolean(apiKey);
+}
+
 adminIntegrationsRouter.use(requireAuth);
 adminIntegrationsRouter.use(requirePermissions([PERMISSIONS.SETTINGS.MANAGE]));
 
@@ -127,6 +155,14 @@ adminIntegrationsRouter.put("/:id", async (req, res, next) => {
     if (parsed.data.is_active !== undefined) {
       doc.is_active = parsed.data.is_active;
     }
+
+    if (parsed.data.config_json) {
+      const config = parsed.data.config_json;
+      const verified = await verifyProviderCredentials(doc.provider, config);
+      doc.status = verified ? "connected" : "pending";
+      if (verified) doc.last_verified_at = new Date();
+    }
+
     await doc.save();
 
     res.json(toSafeResponse(doc));
@@ -157,25 +193,7 @@ adminIntegrationsRouter.post("/:id/verify", async (req, res, next) => {
 
     const config = decryptConfig(doc.config_json);
 
-    let verified = false;
-    if (doc.provider === "WATI" && config.api_key) {
-      try {
-        const resp = await axios.get(
-          "https://live-server.wati.io/api/v1/health",
-          {
-            headers: { Authorization: `Bearer ${config.api_key}` },
-            timeout: 5000,
-          }
-        );
-        verified = resp.status === 200;
-      } catch (e: any) {
-        verified = false;
-      }
-    }
-    // Other providers: stub
-    else {
-      verified = true;
-    }
+    const verified = await verifyProviderCredentials(doc.provider, config);
 
     doc.last_verified_at = new Date();
     doc.status = verified ? "connected" : "error";

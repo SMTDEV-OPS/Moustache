@@ -33,6 +33,8 @@ interface DashboardProps {
   onViewAllLeads?: () => void;
 }
 
+const DASHBOARD_POLL_MS = 900_000;
+
 const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
   const { toast } = useToast();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -40,26 +42,35 @@ const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
   const [loading, setLoading] = useState(true);
   const [scope, setScope] = useState<"own" | "team" | "all">("own");
 
+  const loadDashboardData = async (options?: { silent?: boolean }) => {
+    try {
+      if (!options?.silent) setLoading(true);
+      const data = await getDashboardData(scope);
+      setDashboardData(data);
+    } catch (error) {
+      if (!options?.silent) {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to load dashboard data",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      if (!options?.silent) setLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadDashboardData();
     void loadUsers();
   }, [scope]);
 
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      const data = await getDashboardData(scope);
-      setDashboardData(data);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to load dashboard data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void loadDashboardData({ silent: true });
+    }, DASHBOARD_POLL_MS);
+    return () => window.clearInterval(interval);
+  }, [scope]);
 
   const loadUsers = async () => {
     try {
@@ -94,10 +105,16 @@ const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
       QUOTATION_SHARED: "bg-amber-50 text-amber-600 border-amber-200",
       PAYMENT_PENDING: "bg-yellow-50 text-yellow-600 border-yellow-200",
       CONFIRMED: "bg-emerald-50 text-emerald-600 border-emerald-200",
+      CANCELLED: "bg-orange-50 text-orange-600 border-orange-200",
       LOST: "bg-slate-100 text-slate-500 border-slate-200",
       CLOSED_AUTO: "bg-gray-100 text-gray-500 border-gray-200",
     };
     return styles[status] || styles.NEW;
+  };
+
+  const getStatusLabel = (lead: Lead): string => {
+    if (lead.stageName?.trim()) return lead.stageName.trim();
+    return lead.status.replace(/_/g, " ");
   };
 
   const getGuestName = (lead: Lead): string => {
@@ -334,7 +351,7 @@ const Dashboard = ({ onViewLead, onViewAllLeads }: DashboardProps) => {
                             {lead.heatLevel}
                           </Badge>
                           <Badge variant="outline" className={getStatusBadge(lead.status)}>
-                            {lead.status.replace(/_/g, " ")}
+                            {getStatusLabel(lead)}
                           </Badge>
                         </div>
                       </div>

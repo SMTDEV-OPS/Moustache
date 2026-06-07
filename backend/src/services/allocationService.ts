@@ -261,7 +261,7 @@ export async function getWorkloadsForDate(orgId: string | null, date?: string): 
         {
             $match: {
                 assignedToUserId: { $in: userIds },
-                status: { $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED] },
+                status: { $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED, LeadStatus.CANCELLED] },
             },
         },
         { $group: { _id: "$assignedToUserId", count: { $sum: 1 } } },

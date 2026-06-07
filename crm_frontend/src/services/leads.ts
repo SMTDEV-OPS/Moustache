@@ -19,6 +19,7 @@ export type LeadStatus =
   | "IN_PROGRESS"
   | "TENTATIVE"
   | "CONFIRMED"
+  | "CANCELLED"
   | "LOST"
   | "CLOSED_AUTO"
   // Backend values
@@ -147,6 +148,7 @@ export interface Lead {
   leadType: string;
   status: LeadStatus;
   stageId?: string; // New dynamic pipeline stage
+  stageName?: string;
   heatLevel: HeatLevel;
   score?: number;     // New field
   budget?: number;    // New field

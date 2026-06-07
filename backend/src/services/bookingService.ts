@@ -142,6 +142,14 @@ export class BookingService {
         // lead.closedReason = ClosedReason.BOOKED; // If enum existed
         await lead.save();
 
+        const { logPmsBookingCreated } = await import("../utils/pmsActivityLog");
+        await logPmsBookingCreated(lead._id, {
+            bookingRef: pmsResponse?.pmsBookingId,
+            propertyId: property._id.toString(),
+            roomCount: 1,
+            grandTotal: bookingDetails.price,
+        });
+
         return { reservation, pmsResponse };
     }
 }

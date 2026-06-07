@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { backendLogin, backendLogout, BackendLoginResult } from "../services/auth";
 import { setAuthToken, getAuthToken, API_BASE_URL } from "../services/api";
+import { ensureWorkspaceEmailAccount } from "../services/email";
 import { useToast } from "@/hooks/use-toast";
 
 interface User {
@@ -53,6 +54,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     if (response.ok) {
                         const data = await response.json();
                         setUser(data.user);
+                        void ensureWorkspaceEmailAccount().catch(() => null);
                     } else {
                         // Token invalid
                         setAuthToken(null);
@@ -74,6 +76,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const result = await backendLogin(email, password);
             // backendLogin already sets the token in api service
             setUser(result.user as User);
+            void ensureWorkspaceEmailAccount().catch(() => null);
             toast({ title: "Login successful", description: `Welcome back, ${result.user.name}` });
         } catch (error) {
             toast({

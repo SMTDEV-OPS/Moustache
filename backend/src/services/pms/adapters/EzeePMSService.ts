@@ -48,6 +48,37 @@ function collectEzeeRateTypeXmlNodes(parsed: unknown): any[] {
     return out;
 }
 
+/**
+ * Inventory XML (`getdataAPI.php`, Request_Type Inventory): entries are under
+ * `RES_Response.RoomInfo → Source[*] → RoomTypes → RoomType[*]`.
+ */
+function collectEzeeInventoryRoomTypeXmlNodes(parsed: unknown): any[] {
+    const r = parsed as Record<string, any> | null | undefined;
+    if (!r || typeof r !== "object") return [];
+
+    const resFirst = ezeeXml2jsArray(r.RES_Response ?? r.Res_Response ?? r.res_response)[0];
+    if (!resFirst || typeof resFirst !== "object") return [];
+
+    const roomInfoFirst = ezeeXml2jsArray(resFirst.RoomInfo)[0];
+    if (!roomInfoFirst || typeof roomInfoFirst !== "object") return [];
+
+    const out: any[] = [];
+    const sources = ezeeXml2jsArray(roomInfoFirst.Source);
+    if (sources.length > 0) {
+        for (const source of sources) {
+            if (!source || typeof source !== "object") continue;
+            const roomTypesHead = ezeeXml2jsArray(source.RoomTypes)[0];
+            if (!roomTypesHead) continue;
+            out.push(...ezeeXml2jsArray(roomTypesHead.RoomType));
+        }
+    }
+    if (out.length === 0) {
+        const roomTypesHead = ezeeXml2jsArray(roomInfoFirst.RoomTypes)[0];
+        if (roomTypesHead) out.push(...ezeeXml2jsArray(roomTypesHead.RoomType));
+    }
+    return out;
+}
+
 export interface EzeeReservationRoom {
     roomTypeCode?: string;
     roomTypeName?: string;
@@ -231,30 +262,32 @@ export class EzeePMSService implements IPMSService {
 
             const result = await parseStringPromise(response.data);
             const inventoryList: RoomAvailability[] = [];
+            const roomTypeNodes = collectEzeeInventoryRoomTypeXmlNodes(result);
 
-            if (
-                result.RES_Response &&
-                result.RES_Response.RoomInfo &&
-                result.RES_Response.RoomInfo[0].Source
-            ) {
-                const sources = result.RES_Response.RoomInfo[0].Source;
-                for (const source of sources) {
-                    if (source.RoomTypes && source.RoomTypes[0].RoomType) {
-                        for (const rt of source.RoomTypes[0].RoomType) {
-                            inventoryList.push({
-                                roomTypeId: rt.RoomTypeID[0],
-                                roomTypeName: "Unknown", // API doesn't return name here, might need separate lookup
-                                date: rt.FromDate[0], // Assuming 1 day range per entry if simplified, or handling range
-                                availableCount: parseInt(rt.Availability[0], 10),
-                            });
-                        }
-                    }
-                }
+            for (const rt of roomTypeNodes) {
+                const roomTypeId = String(rt?.RoomTypeID?.[0] ?? rt?.RoomTypeId?.[0] ?? "").trim();
+                if (!roomTypeId) continue;
+                const availabilityRaw = rt?.Availability?.[0] ?? rt?.Available?.[0];
+                inventoryList.push({
+                    roomTypeId,
+                    roomTypeName: "Unknown",
+                    date: String(rt?.FromDate?.[0] ?? rt?.Date?.[0] ?? ""),
+                    availableCount: parseInt(String(availabilityRaw ?? "0"), 10) || 0,
+                });
+            }
+
+            if (inventoryList.length === 0) {
+                logger.warn("eZee getInventory returned no room types", {
+                    hotelCode: this.hotelCode,
+                    startDate,
+                    endDate,
+                    responseSnippet: String(response.data).slice(0, 500),
+                });
             }
 
             return inventoryList;
         } catch (error) {
-            console.error("Error fetching inventory from eZee:", error);
+            logger.error("Error fetching inventory from eZee", { hotelCode: this.hotelCode }, error instanceof Error ? error : new Error(String(error)));
             throw new Error("Failed to fetch inventory");
         }
     }

@@ -197,6 +197,7 @@ function UserDrawer({ open, onClose, editingUser, users, roles, profiles, onSave
         if (!form.name.trim()) errs.name = "Name is required";
         if (!form.email.trim()) errs.email = "Email is required";
         else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = "Invalid email address";
+        if (!form.phone.trim()) errs.phone = "Phone number is required";
         if (!editingUser && !form.password) errs.password = "Password is required";
         if (!editingUser && form.password && form.password.length < 6) errs.password = "Password must be at least 6 characters";
         if (editingUser && form.password && form.password.length < 6) errs.password = "Password must be at least 6 characters";
@@ -216,8 +217,7 @@ function UserDrawer({ open, onClose, editingUser, users, roles, profiles, onSave
             const payload: Record<string, unknown> = {
                 name: form.name.trim(),
                 email: form.email.trim(),
-                phone: form.phone.trim() || undefined,
-
+                phone: form.phone.trim(),
                 reportsTo: form.reportsTo === "none" ? null : form.reportsTo,
             };
             if (form.roleId) payload.roleId = form.roleId;
@@ -232,7 +232,12 @@ function UserDrawer({ open, onClose, editingUser, users, roles, profiles, onSave
 
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
-                throw new Error(data.message || "Failed to save user");
+                const message =
+                    data?.message ||
+                    data?.error?.message ||
+                    (typeof data?.error === "string" ? data.error : null) ||
+                    "Failed to save user";
+                throw new Error(message);
             }
 
             toast({
@@ -336,14 +341,22 @@ function UserDrawer({ open, onClose, editingUser, users, roles, profiles, onSave
                             </div>
 
                             <div className="space-y-1.5">
-                                <Label htmlFor="um-phone" className="text-sm font-medium">Phone Number</Label>
+                                <Label htmlFor="um-phone" className="text-sm font-medium">Phone Number *</Label>
                                 <Input
                                     id="um-phone"
                                     type="tel"
                                     placeholder="+91 98765 43210"
                                     value={form.phone}
                                     onChange={(e) => set("phone", e.target.value)}
+                                    className={errors.phone ? "border-destructive" : ""}
                                 />
+                                {errors.phone && (
+                                    <p className="text-xs text-destructive flex items-center gap-1">
+                                        <AlertCircle className="h-3 w-3" />
+                                        {errors.phone}
+                                    </p>
+                                )}
+                                <p className="text-xs text-muted-foreground">Include country code (e.g. +91 for India).</p>
                             </div>
                         </div>
                     </div>

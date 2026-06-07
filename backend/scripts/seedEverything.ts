@@ -112,15 +112,24 @@ async function seedEverything() {
       },
       {
         pipelineId: pipeline._id,
-        name: "Lost",
+        name: "Cancelled",
         order: 6,
+        isTerminal: true,
+        terminalType: "LOST",
+        color: "#f97316",
+        mandatory_fields_json: [],
+      },
+      {
+        pipelineId: pipeline._id,
+        name: "Lost",
+        order: 7,
         isTerminal: true,
         terminalType: "LOST",
         color: "#ef4444",
         mandatory_fields_json: [],
       },
     ]);
-    results["Pipeline Stages"] = "6 created";
+    results["Pipeline Stages"] = "7 created";
   } else {
     results["Pipeline Stages"] = `${stageCount} already exist`;
   }

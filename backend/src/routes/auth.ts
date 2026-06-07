@@ -7,6 +7,7 @@ import { signJwt, requireAuth } from "../middleware/auth";
 import { logger } from "../config/logger";
 import { AccessControlService } from "../services/auth/AccessControlService";
 import { logAudit } from "../utils/auditLog";
+import { ensureWorkspaceEmailAccount } from "../services/workspaceEmailService";
 
 export const authRouter = Router();
 
@@ -72,6 +73,14 @@ authRouter.post("/login", async (req, res, next) => {
     });
 
     logAudit("login", "user", user.id, null, { email: user.email }, req, { userId: user.id });
+
+    void ensureWorkspaceEmailAccount(user.id, user.email).catch((err) => {
+      logger.warn("Workspace email auto-provision failed on login", {
+        userId: user.id,
+        email: user.email,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     const { permissions, isAdmin } = await AccessControlService.getUserPermissions(user.id);
 

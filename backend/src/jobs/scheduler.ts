@@ -39,7 +39,7 @@ async function runAutoClosureJob() {
 
   const leads = await LeadModel.find({
     _id: { $in: itineraryMatch },
-    status: { $nin: [LeadStatus.CONFIRMED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO] },
+    status: { $nin: [LeadStatus.CONFIRMED, LeadStatus.CANCELLED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO] },
   });
 
   for (const lead of leads) {
@@ -169,7 +169,7 @@ async function runLeadUnattendedJob() {
   try {
     const { LeadActivityModel } = await import("../models/leadActivity");
     const now = new Date();
-    const terminals = [LeadStatus.CONFIRMED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO];
+    const terminals = [LeadStatus.CONFIRMED, LeadStatus.CANCELLED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO];
     const thresholds = [30, 720]; // 30 min, 12h
     for (const minutes of thresholds) {
       const cutoff = new Date(now.getTime() - minutes * 60 * 1000);
@@ -248,7 +248,7 @@ async function runScheduledWorkflowsJob() {
       const leadQuery: Record<string, any> = {
         stageId: payStage._id,
         updatedAt: { $lt: oneHourAgo },
-        status: { $nin: [LeadStatus.CONFIRMED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO] },
+        status: { $nin: [LeadStatus.CONFIRMED, LeadStatus.CANCELLED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO] },
       };
       if (orgId) leadQuery.orgId = orgId;
       const leads = await LeadModel.find(leadQuery).limit(100).lean();

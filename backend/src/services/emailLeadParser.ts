@@ -105,7 +105,7 @@ export async function processInboundEmailForLeads(
                 if (guest) {
                     lead = await LeadModel.findOne({
                         guestId: guest._id,
-                        status: { $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED] },
+                        status: { $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED, LeadStatus.CANCELLED] },
                     });
                 }
 

@@ -21,7 +21,8 @@ import { PERMISSIONS } from "@/constants/permissions";
 import { canReassignLeadByProfile } from "@/lib/leadFieldEdit";
 import { listAccounts, Account, AccountType } from "@/services/accounts";
 import { CustomFieldsService, CustomFieldDefinition } from "@/services/customFields";
-import { getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { aggregateInventoryByRoomType, getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { RoomRateFieldsWithFetch } from "@/components/leads/RoomRateFieldsWithFetch";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import {
   COUNTRY_PHONE_OPTIONS,
@@ -407,6 +408,14 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
       adults: string;
       children: string;
       notes?: string;
+      mealPlanId?: string;
+      mealPlanName?: string;
+      ratePlanId?: string;
+      ratePlanName?: string;
+      estimatedRate?: number;
+      extraAdultRate?: number;
+      extraChildRate?: number;
+      rateSource?: "pms" | "manual";
     }[];
   }
 
@@ -485,11 +494,7 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
               return;
             }
             const inv = Array.isArray(res) ? res : [];
-            const byRoomTypeId: Record<string, number> = {};
-            for (const row of inv) {
-              if (!row?.roomTypeId) continue;
-              byRoomTypeId[row.roomTypeId] = Number(row.availableCount ?? 0);
-            }
+            const byRoomTypeId = aggregateInventoryByRoomType(inv);
             setAvailabilityByHotelIdx((prev) => ({ ...prev, [idx]: { status: "ready", byRoomTypeId, key } }));
           })
           .catch((err) => {
@@ -1135,6 +1140,14 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
           adults: Number(r.adults) || 1,
           children: Number(r.children) || 0,
           notes: r.notes || undefined,
+          mealPlanId: r.mealPlanId || undefined,
+          mealPlanName: r.mealPlanName || undefined,
+          ratePlanId: r.ratePlanId || undefined,
+          ratePlanName: r.ratePlanName || undefined,
+          estimatedRate: r.estimatedRate !== undefined ? Number(r.estimatedRate) : undefined,
+          extraAdultRate: r.extraAdultRate !== undefined ? Number(r.extraAdultRate) : undefined,
+          extraChildRate: r.extraChildRate !== undefined ? Number(r.extraChildRate) : undefined,
+          rateSource: r.rateSource || undefined,
         })),
       })),
         // PMS Booking fields from live availability
@@ -2552,6 +2565,26 @@ export const AdminLeads = ({ canManageUsers, permissions, isAdmin, onViewLead }:
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
+
+                          <RoomRateFieldsWithFetch
+                            propertyId={hotel.propertyId}
+                            fromDate={hotel.checkInDate}
+                            toDate={hotel.checkOutDate}
+                            roomTypeId={r.roomTypeId}
+                            roomTypeName={r.roomTypeName}
+                            value={{
+                              mealPlanId: r.mealPlanId,
+                              mealPlanName: r.mealPlanName,
+                              ratePlanId: r.ratePlanId,
+                              ratePlanName: r.ratePlanName,
+                              estimatedRate: r.estimatedRate,
+                              extraAdultRate: r.extraAdultRate,
+                              extraChildRate: r.extraChildRate,
+                              rateSource: r.rateSource,
+                            }}
+                            onChange={(patch) => updateRoomRequest(index, roomIndex, patch)}
+                            compact
+                          />
                         </div>
                       ))}
                     </div>

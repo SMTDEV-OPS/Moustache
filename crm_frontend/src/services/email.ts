@@ -1,5 +1,6 @@
 import { API_BASE_URL, withAuthHeaders } from "./api";
 
+export type EmailAuthMode = "OAUTH" | "WORKSPACE_DWD";
 export type EmailProvider = "GMAIL" | "OUTLOOK" | "SMTP_IMAP";
 export type SyncStatus = "IDLE" | "SYNCING" | "ERROR";
 
@@ -11,6 +12,7 @@ export interface EmailAddress {
 export interface EmailAccount {
   id: string;
   provider: EmailProvider;
+  authMode?: EmailAuthMode;
   email: string;
   isActive: boolean;
   isPrimary: boolean;
@@ -76,6 +78,18 @@ export interface SendEmailPayload {
   replyTo?: string;
 }
 
+const parseApiError = async (response: Response, fallback: string): Promise<string> => {
+  try {
+    const data = await response.json();
+    if (typeof data?.message === "string" && data.message) return data.message;
+    if (typeof data?.error?.message === "string" && data.error.message) return data.error.message;
+    if (typeof data?.error === "string" && data.error) return data.error;
+  } catch {
+    // ignore
+  }
+  return fallback;
+};
+
 const mapEmailAccount = (raw: any): EmailAccount => {
   const { _id, id, ...rest } = raw;
   return {
@@ -102,14 +116,7 @@ export const listEmailAccounts = async (): Promise<EmailAccount[]> => {
   });
 
   if (!response.ok) {
-    let message = "Unable to fetch email accounts";
-    try {
-      const data = await response.json();
-      if (data?.message) message = data.message;
-    } catch {
-      // ignore
-    }
-    throw new Error(message);
+    throw new Error(await parseApiError(response, "Unable to fetch email accounts"));
   }
 
   const raw = (await response.json()) as any[];
@@ -149,11 +156,9 @@ export const connectGmailWithPopup = async (): Promise<Promise<{ email: string; 
       }),
       body: JSON.stringify({ popup: true }),
     })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
-          return response.json().then((data) => {
-            throw new Error(data?.message || "Unable to start Gmail connection");
-          });
+          throw new Error(await parseApiError(response, "Unable to start Gmail connection"));
         }
         return response.json();
       })
@@ -237,6 +242,99 @@ export const completeGmailConnection = async (code: string, userId: string): Pro
   return {
     account: mapEmailAccount(data.account),
   };
+};
+
+export interface GoogleWorkspaceConfigPublic {
+  enabled: boolean;
+  domain: string;
+  serviceAccountClientEmail: string;
+  hasPrivateKey: boolean;
+  delegatedAdminEmail?: string;
+  lastVerifiedAt?: string;
+  isConfigured: boolean;
+  isVerified: boolean;
+  userInDomain?: boolean;
+}
+
+export interface EnsureWorkspaceResult {
+  provisioned: boolean;
+  workspace: GoogleWorkspaceConfigPublic;
+  account: (Pick<EmailAccount, "id" | "provider" | "email" | "syncStatus" | "lastSyncAt"> & {
+    authMode?: EmailAuthMode;
+  }) | null;
+}
+
+export const getWorkspaceStatus = async (): Promise<GoogleWorkspaceConfigPublic> => {
+  const response = await fetch(`${API_BASE_URL}/email/workspace/status`, {
+    headers: withAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Unable to fetch workspace status"));
+  }
+  return response.json();
+};
+
+export const getWorkspaceConfig = async (): Promise<GoogleWorkspaceConfigPublic> => {
+  const response = await fetch(`${API_BASE_URL}/email/settings/workspace`, {
+    headers: withAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Unable to fetch workspace config"));
+  }
+  return response.json();
+};
+
+export const saveWorkspaceConfig = async (payload: {
+  enabled: boolean;
+  domain: string;
+  serviceAccountClientEmail: string;
+  serviceAccountPrivateKey?: string;
+  delegatedAdminEmail?: string;
+}): Promise<GoogleWorkspaceConfigPublic> => {
+  const response = await fetch(`${API_BASE_URL}/email/settings/workspace`, {
+    method: "PATCH",
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Unable to save workspace config"));
+  }
+  return response.json();
+};
+
+export const verifyWorkspaceConfig = async (
+  testEmail?: string
+): Promise<{ verified: boolean; config: GoogleWorkspaceConfigPublic }> => {
+  const response = await fetch(`${API_BASE_URL}/email/settings/workspace/verify`, {
+    method: "POST",
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(testEmail ? { testEmail } : {}),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Workspace verification failed"));
+  }
+  return response.json();
+};
+
+export const disconnectWorkspaceConfig = async (): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/email/settings/workspace`, {
+    method: "DELETE",
+    headers: withAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Unable to disconnect workspace"));
+  }
+};
+
+export const ensureWorkspaceEmailAccount = async (): Promise<EnsureWorkspaceResult> => {
+  const response = await fetch(`${API_BASE_URL}/email/accounts/ensure-workspace`, {
+    method: "POST",
+    headers: withAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Unable to provision workspace inbox"));
+  }
+  return response.json();
 };
 
 export const connectOutlook = async (): Promise<{ authUrl: string }> => {

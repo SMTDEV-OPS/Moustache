@@ -237,6 +237,14 @@ const roomRequestSchema = z.object({
   adults: z.number().int().min(1).optional(),
   children: z.number().int().min(0).optional(),
   notes: z.string().optional(),
+  mealPlanId: z.string().optional(),
+  mealPlanName: z.string().optional(),
+  ratePlanId: z.string().optional(),
+  ratePlanName: z.string().optional(),
+  estimatedRate: z.number().optional(),
+  extraAdultRate: z.number().optional(),
+  extraChildRate: z.number().optional(),
+  rateSource: z.enum(["pms", "manual"]).optional(),
 });
 
 const hotelSchema = z.object({
@@ -798,6 +806,7 @@ leadsRouter.get("/summary", async (req, res, next) => {
         .sort({ createdAt: -1 })
         .limit(5)
         .populate("guestId", "name phone email")
+        .populate("stageId", "name color")
         .lean(),
       LeadModel.find({ ...filter, ...checkInWindow })
         .select("leadNumber checkIn createdAt")
@@ -903,7 +912,13 @@ leadsRouter.get("/summary", async (req, res, next) => {
       if (o.checkIn) {
         checkInDate = new Date(o.checkIn as Date).toISOString().slice(0, 10);
       }
-      return { ...o, id, checkInDate };
+      const stageRaw = o.stageId;
+      let stageName: string | undefined;
+      if (stageRaw && typeof stageRaw === "object" && stageRaw !== null) {
+        const name = (stageRaw as { name?: unknown }).name;
+        if (typeof name === "string" && name.trim()) stageName = name.trim();
+      }
+      return { ...o, id, checkInDate, stageName };
     });
 
     // Pipeline stage distribution (default leads pipeline)
@@ -1150,6 +1165,7 @@ leadsRouter.patch("/:id", async (req, res, next) => {
       if (
         [
           LeadStatus.CONFIRMED,
+          LeadStatus.CANCELLED,
           LeadStatus.LOST,
           LeadStatus.CLOSED_AUTO,
         ].includes(parsed.data.status)
@@ -1292,6 +1308,18 @@ leadsRouter.patch("/:id", async (req, res, next) => {
       const previousStageId = existing.stageId;
       existing.stageId = parsed.data.stageId as any;
 
+      const [fromStage, toStage] = await Promise.all([
+        previousStageId ? PipelineStageModel.findById(previousStageId).lean() : null,
+        PipelineStageModel.findById(parsed.data.stageId).lean(),
+      ]);
+      await LeadActivityModel.create({
+        leadId: existing._id,
+        type: LeadActivityType.NOTE,
+        note: `Stage moved from ${fromStage?.name || "Previous stage"} to ${toStage?.name || "New stage"}`,
+        performedByUserId: req.user?.id,
+        performedAt: new Date(),
+      });
+
       // Emit event locally without awaiting or breaking the request
       logAudit(
         "stage_moved",
@@ -1313,6 +1341,8 @@ leadsRouter.patch("/:id", async (req, res, next) => {
 
     if (parsed.data.hotels !== undefined) {
       const { LeadItineraryModel } = await import("../models/leadItinerary");
+      const { logPmsItineraryChanges } = await import("../utils/pmsActivityLog");
+      const prevItineraries = await LeadItineraryModel.find({ leadId: existing._id }).lean();
       // For simplicity, replace all itineraries for this lead
       await LeadItineraryModel.deleteMany({ leadId: existing._id });
       if (parsed.data.hotels.length > 0) {
@@ -1330,6 +1360,7 @@ leadsRouter.patch("/:id", async (req, res, next) => {
         }));
         await LeadItineraryModel.insertMany(itinerariesToInsert);
       }
+      await logPmsItineraryChanges(existing._id, prevItineraries, parsed.data.hotels, req.user?.id);
     }
 
     await existing.save();

@@ -14,6 +14,14 @@ export interface ILeadItinerary extends Document {
         adults?: number;
         children?: number;
         notes?: string;
+        mealPlanId?: string;
+        mealPlanName?: string;
+        ratePlanId?: string;
+        ratePlanName?: string;
+        estimatedRate?: number;
+        extraAdultRate?: number;
+        extraChildRate?: number;
+        rateSource?: "pms" | "manual";
     }[];
     roomPreference?: string;
     numberOfGuests?: string;
@@ -29,6 +37,14 @@ const roomRequestSchema = new Schema(
         adults: { type: Number, min: 1 },
         children: { type: Number, min: 0 },
         notes: { type: String },
+        mealPlanId: { type: String },
+        mealPlanName: { type: String },
+        ratePlanId: { type: String },
+        ratePlanName: { type: String },
+        estimatedRate: { type: Number },
+        extraAdultRate: { type: Number },
+        extraChildRate: { type: Number },
+        rateSource: { type: String, enum: ["pms", "manual"] },
     },
     { _id: false }
 );

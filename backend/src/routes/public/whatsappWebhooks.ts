@@ -75,7 +75,7 @@ publicWhatsappWebhooksRouter.post("/", async (req, res, next) => {
                     lead = await LeadModel.findOne({
                         guestId: guest._id,
                         status: {
-                            $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED]
+                            $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED, LeadStatus.CANCELLED]
                         }
                     });
                 }

@@ -786,7 +786,7 @@ export async function assignToLeastLoadedUser(): Promise<{
     {
       $match: {
         assignedToUserId: { $in: activeUsers.map((u) => u._id) },
-        status: { $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED] },
+        status: { $nin: [LeadStatus.LOST, LeadStatus.CLOSED_AUTO, LeadStatus.CONFIRMED, LeadStatus.CANCELLED] },
       },
     },
     {

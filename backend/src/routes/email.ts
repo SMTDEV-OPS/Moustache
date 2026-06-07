@@ -20,6 +20,14 @@ import { Client } from "@microsoft/microsoft-graph-client";
 import { logger } from "../config/logger";
 import { config } from "../config/env";
 import { GmailProvider } from "../services/email/gmailProvider";
+import {
+  ensureWorkspaceEmailAccount,
+  verifyWorkspaceConnection,
+  getPublicWorkspaceConfig,
+  toPublicWorkspaceConfig,
+  clearWorkspaceConfig,
+  isEmailInWorkspaceDomain,
+} from "../services/workspaceEmailService";
 
 export const emailRouter = Router();
 
@@ -306,6 +314,7 @@ emailRouter.get("/accounts", async (req, res, next) => {
     const sanitized = accounts.map((acc) => ({
       id: acc._id,
       provider: acc.provider,
+      authMode: acc.authMode || "OAUTH",
       email: acc.email,
       isActive: acc.isActive,
       isPrimary: acc.isPrimary,
@@ -356,6 +365,41 @@ emailRouter.get("/accounts/me", async (req, res, next) => {
     res.json({
       email: account.email,
       provider,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /email/accounts/ensure-workspace - Auto-provision Workspace inbox (idempotent)
+emailRouter.post("/accounts/ensure-workspace", async (req, res, next) => {
+  try {
+    const userId = (req as any).user?.id;
+    const userEmail = (req as any).user?.email;
+    if (!userId || !userEmail) {
+      throw badRequest("User not authenticated");
+    }
+
+    const workspace = await getPublicWorkspaceConfig();
+    const userInDomain = workspace.isVerified && userEmail
+      ? isEmailInWorkspaceDomain(userEmail, workspace.domain)
+      : false;
+
+    const account = await ensureWorkspaceEmailAccount(userId, userEmail);
+
+    res.json({
+      provisioned: Boolean(account),
+      workspace: { ...workspace, userInDomain },
+      account: account
+        ? {
+            id: account._id,
+            provider: account.provider,
+            authMode: account.authMode,
+            email: account.email,
+            syncStatus: account.syncStatus,
+            lastSyncAt: account.lastSyncAt,
+          }
+        : null,
     });
   } catch (err) {
     next(err);
@@ -1053,6 +1097,183 @@ emailRouter.patch("/settings/allowed-providers", requirePermissions(["email.mana
       updatedBy: settings.updatedBy,
       updatedAt: settings.updatedAt,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================
+// Google Workspace (Domain-Wide Delegation)
+// ============================================
+
+// GET /email/workspace/status - Public workspace status for authenticated users
+emailRouter.get("/workspace/status", async (req, res, next) => {
+  try {
+    const userEmail = (req as any).user?.email;
+    const workspace = await getPublicWorkspaceConfig();
+    const userInDomain = workspace.isVerified && userEmail
+      ? isEmailInWorkspaceDomain(userEmail, workspace.domain)
+      : false;
+
+    res.json({ ...workspace, userInDomain });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /email/settings/workspace - Get Workspace config (admin, no private key)
+emailRouter.get("/settings/workspace", requirePermissions(["email.manage"]), async (req, res, next) => {
+  try {
+    const config = await getPublicWorkspaceConfig();
+    res.json(config);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const workspaceConfigSchema = z.object({
+  enabled: z.boolean(),
+  domain: z.string().min(1),
+  serviceAccountClientEmail: z.string().min(1),
+  serviceAccountPrivateKey: z.string().optional(),
+  delegatedAdminEmail: z.string().email().optional().or(z.literal("")),
+});
+
+// PATCH /email/settings/workspace - Save Workspace config
+emailRouter.patch("/settings/workspace", requirePermissions(["email.manage"]), async (req, res, next) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw badRequest("User not authenticated");
+    }
+
+    const parsed = workspaceConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest("Invalid workspace configuration payload");
+    }
+
+    const settings = await getEmailSettings();
+    const existing = settings.googleWorkspace;
+    const privateKey =
+      parsed.data.serviceAccountPrivateKey?.trim() ||
+      existing?.serviceAccountPrivateKey ||
+      "";
+
+    if (parsed.data.enabled && !privateKey) {
+      throw badRequest("Service account private key is required");
+    }
+
+    const googleWorkspace = {
+      enabled: parsed.data.enabled,
+      domain: parsed.data.domain.trim().toLowerCase().replace(/^@/, ""),
+      serviceAccountClientEmail: parsed.data.serviceAccountClientEmail.trim(),
+      serviceAccountPrivateKey: privateKey,
+      delegatedAdminEmail: parsed.data.delegatedAdminEmail?.trim() || undefined,
+      lastVerifiedAt: existing?.lastVerifiedAt,
+    };
+
+    await EmailSettingsModel.findOneAndUpdate(
+      { key: "email_settings_singleton" },
+      {
+        $set: {
+          googleWorkspace,
+          updatedBy: new Types.ObjectId(userId),
+        },
+      },
+      { upsert: true }
+    ).exec();
+
+    logger.info("Google Workspace config updated", {
+      userId,
+      domain: googleWorkspace.domain,
+      enabled: googleWorkspace.enabled,
+    });
+
+    res.json(toPublicWorkspaceConfig(googleWorkspace));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const verifyWorkspaceSchema = z.object({
+  testEmail: z.string().email().optional(),
+});
+
+// POST /email/settings/workspace/verify - Test DWD impersonation
+emailRouter.post("/settings/workspace/verify", requirePermissions(["email.manage"]), async (req, res, next) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw badRequest("User not authenticated");
+    }
+
+    const parsed = verifyWorkspaceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest("Invalid verify payload");
+    }
+
+    const settings = await getEmailSettings();
+    const ws = settings.googleWorkspace;
+    if (!ws?.enabled || !ws.domain || !ws.serviceAccountClientEmail || !ws.serviceAccountPrivateKey) {
+      throw badRequest("Google Workspace is not fully configured");
+    }
+
+    const testEmail =
+      parsed.data.testEmail?.trim() ||
+      ws.delegatedAdminEmail?.trim() ||
+      (req as any).user?.email;
+
+    if (!testEmail) {
+      throw badRequest("Test email is required for verification");
+    }
+
+    if (!isEmailInWorkspaceDomain(testEmail, ws.domain)) {
+      throw badRequest(`Test email must belong to the configured domain (${ws.domain})`);
+    }
+
+    await verifyWorkspaceConnection(testEmail);
+
+    const updatedWorkspace = {
+      ...ws,
+      delegatedAdminEmail: ws.delegatedAdminEmail || testEmail,
+      lastVerifiedAt: new Date(),
+    };
+
+    await EmailSettingsModel.findOneAndUpdate(
+      { key: "email_settings_singleton" },
+      {
+        $set: {
+          googleWorkspace: updatedWorkspace,
+          updatedBy: new Types.ObjectId(userId),
+        },
+      },
+      { upsert: true }
+    ).exec();
+
+    logger.info("Google Workspace verified", { userId, testEmail, domain: ws.domain });
+
+    res.json({
+      verified: true,
+      config: toPublicWorkspaceConfig(updatedWorkspace),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /email/settings/workspace - Disconnect Workspace integration
+emailRouter.delete("/settings/workspace", requirePermissions(["email.manage"]), async (req, res, next) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw badRequest("User not authenticated");
+    }
+
+    await clearWorkspaceConfig(userId);
+
+    logger.info("Google Workspace disconnected", { userId });
+
+    res.json({ disconnected: true });
   } catch (err) {
     next(err);
   }

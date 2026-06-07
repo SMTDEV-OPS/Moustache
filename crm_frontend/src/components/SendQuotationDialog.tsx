@@ -10,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { createQuotation, listQuotations, type Quotation, type SendVia } from "@/services/quotations";
 import type { Lead, LeadDetail } from "@/services/leads";
+import type { LeadBooking } from "@/services/leadBookings";
+import { isItineraryPendingForBookings, itineraryPropertyIdFromRaw } from "@/lib/pendingTravel";
 import { listEmailAccounts, type EmailAccount } from "@/services/email";
 import { API_BASE_URL, withAuthHeaders } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
@@ -17,9 +19,18 @@ import { useAuth } from "@/context/AuthContext";
 import {
   type EzeeSeparateSourceMapping,
 } from "@/services/pms";
+import {
+  type EzeeRatesLookupMap,
+  mealPlanOptionsForRoomType,
+  pmsRatePatchFromLookup,
+  rateLookupKey,
+  resolveEzeeRoomType,
+  resolveRatePlanForSelection,
+  roomTypeOptionsFromMapping,
+} from "@/services/ezeeRates";
 import { fetchAvailableRooms, type AvailableRoomRow } from "@/services/ezeeBooking";
 import { QuotationPreview, type QuotationFormat, type QuotationPreviewRow } from "@/components/quotation/QuotationPreview";
-import { FileText, Mail, MessageCircle, Send, Clock, CheckCircle, AlertTriangle, Eye } from "lucide-react";
+import { FileText, Mail, MessageCircle, Send, Clock, CheckCircle, AlertTriangle, Eye, RotateCcw } from "lucide-react";
 
 type ItineraryLike = {
   propertyId?: string | { _id: string; name?: string };
@@ -36,150 +47,6 @@ type ItineraryLike = {
   }[];
 };
 
-type MealPlanOption = { id: string; name: string };
-type EzeeRatesLookupMap = Record<string, { base: number; extraAdult?: number; extraChild?: number }>;
-
-function isDefaultUnmappedName(name: unknown): boolean {
-  return String(name || "")
-    .trim()
-    .toLowerCase()
-    .includes("default unmapped");
-}
-
-/** Exclude only the PMS "Default Unmapped" rate type by label — do not use ID suffix (Room Only can share ...0001 on some properties). */
-function isEzeeDefaultUnmappedRateType(mapping: EzeeSeparateSourceMapping | undefined, rateTypeId: string | undefined): boolean {
-  const id = String(rateTypeId || "").trim();
-  if (!id || !mapping) return false;
-  const rt = (mapping.rateTypes ?? []).find((x) => String(x.id || "").trim() === id);
-  return isDefaultUnmappedName(rt?.name);
-}
-
-function normName(s?: string) {
-  const raw = String(s || "")
-    .trim()
-    .toLowerCase()
-    // normalize common eZee formatting differences
-    .replace(/\(a\/c\)|a\/c|a\\\/c/gi, "ac")
-    .replace(/non\s*-?\s*ac/gi, "non ac")
-    .replace(/&/g, " and ")
-    .replace(/\bwith\b/g, " ")
-    // strip punctuation to spaces
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return raw;
-}
-
-function resolveEzeeRoomTypeId(
-  mapping: EzeeSeparateSourceMapping | undefined,
-  roomTypeId?: string,
-  roomTypeName?: string
-): string | undefined {
-  const rid = roomTypeId?.trim();
-  if (rid && (mapping?.roomTypes ?? []).some((rt) => rt.id?.trim() === rid)) return rid;
-  const n = normName(roomTypeName);
-  if (!n) return rid || undefined;
-  const mRoomTypes = mapping?.roomTypes ?? [];
-  const hits = mRoomTypes.filter((rt) => normName(rt.name) === n);
-  if (hits.length === 1) return hits[0].id?.trim() || rid || undefined;
-  // Fuzzy fallback: allow partial containment (handles "(A/C)" vs "with AC", etc.)
-  const fuzzy = mRoomTypes.filter((rt) => {
-    const rn = normName(rt.name);
-    if (!rn) return false;
-    return rn.includes(n) || n.includes(rn);
-  });
-  if (fuzzy.length === 1) return fuzzy[0].id?.trim() || rid || undefined;
-  return rid || undefined;
-}
-
-function resolveEzeeRoomType(mapping: EzeeSeparateSourceMapping | undefined, roomTypeId?: string, roomTypeName?: string) {
-  const rid = resolveEzeeRoomTypeId(mapping, roomTypeId, roomTypeName);
-  if (!mapping || !rid) return undefined;
-  const hit = (mapping.roomTypes ?? []).find((rt) => rt.id?.trim() === rid);
-  if (!hit) return undefined;
-  if (isDefaultUnmappedName(hit.name)) return undefined;
-  return { id: hit.id.trim(), name: (hit.name || "").trim() || `Room ${hit.id.trim()}` };
-}
-
-function roomTypeOptions(mapping: EzeeSeparateSourceMapping | undefined): { id: string; name: string }[] {
-  return (mapping?.roomTypes ?? [])
-    .map((rt) => ({ id: String(rt.id || "").trim(), name: String(rt.name || "").trim() }))
-    .filter((rt) => rt.id && !isDefaultUnmappedName(rt.name))
-    .map((rt) => ({ id: rt.id, name: rt.name || `Room ${rt.id}` }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/**
- * Meal plan dropdown options are RateTypes contextual to the selected room type.
- * Derived by filtering RatePlans by RoomTypeID and extracting unique RateTypeIDs.
- */
-function mealPlanOptionsForRoomType(
-  mapping: EzeeSeparateSourceMapping | undefined,
-  roomTypeId?: string,
-  roomTypeName?: string
-): MealPlanOption[] {
-  if (!mapping) return [];
-  const rid = resolveEzeeRoomTypeId(mapping, roomTypeId, roomTypeName);
-  if (!rid) return [];
-
-  const plans = (mapping.ratePlans ?? [])
-    .map((p) => ({
-      roomTypeId: String(p.roomTypeId || "").trim(),
-      rateTypeId: String(p.rateTypeId || "").trim(),
-      id: String(p.id || "").trim(),
-      name: String(p.name || "").trim(),
-    }))
-    .filter((p) => p.roomTypeId === rid)
-    // Do not suffix-filter RatePlan IDs; some real plans use ...0000001.
-    .filter((p) => p.id && !isDefaultUnmappedName(p.name))
-    .filter((p) => p.rateTypeId && !isEzeeDefaultUnmappedRateType(mapping, p.rateTypeId));
-
-  const uniqueRateTypeIds = Array.from(new Set(plans.map((p) => p.rateTypeId)));
-  const out: MealPlanOption[] = [];
-  for (const rateTypeId of uniqueRateTypeIds) {
-    const rt = (mapping.rateTypes ?? []).find((x) => String(x.id || "").trim() === rateTypeId);
-    const name = String(rt?.name || "").trim();
-    out.push({ id: rateTypeId, name: name || "Meal plan" });
-  }
-  out.sort((a, b) => a.name.localeCompare(b.name));
-  return out;
-}
-
-function resolveRatePlanForSelection(
-  mapping: EzeeSeparateSourceMapping | undefined,
-  roomTypeId: string | undefined,
-  roomTypeName: string | undefined,
-  rateTypeId: string | undefined
-): { ratePlanId: string; ratePlanName: string } | undefined {
-  if (!mapping) return undefined;
-  const rid = resolveEzeeRoomTypeId(mapping, roomTypeId, roomTypeName);
-  const rtId = String(rateTypeId || "").trim();
-  if (!rid || !rtId) return undefined;
-  if (isEzeeDefaultUnmappedRateType(mapping, rtId)) return undefined;
-
-  const matched = (mapping.ratePlans ?? [])
-    .map((p) => ({
-      id: String(p.id || "").trim(),
-      roomTypeId: String(p.roomTypeId || "").trim(),
-      rateTypeId: String(p.rateTypeId || "").trim(),
-      name: String(p.name || "").trim(),
-    }))
-    .filter((p) => p.id && !isDefaultUnmappedName(p.name))
-    .filter((p) => p.roomTypeId === rid && p.rateTypeId === rtId);
-
-  if (matched.length === 0) return undefined;
-  matched.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
-  const first = matched[0];
-  return { ratePlanId: first.id, ratePlanName: first.name || `Rate plan ${first.id}` };
-}
-
-function rateLookupKey(roomTypeId: string | undefined, ratePlanId: string | undefined): string | undefined {
-  const rt = String(roomTypeId || "").trim();
-  const rp = String(ratePlanId || "").trim();
-  if (!rt || !rp) return undefined;
-  return `${rt}_${rp}`;
-}
-
 function formatTaxPercentLabel(n: number): string {
   const x = Number(n) || 0;
   if (!Number.isFinite(x)) return "0";
@@ -187,26 +54,6 @@ function formatTaxPercentLabel(n: number): string {
   if (Number.isInteger(rounded)) return String(Math.round(rounded));
   const s = rounded.toFixed(2).replace(/\.?0+$/, "");
   return s;
-}
-
-/** When user changes room type or meal plan, always sync base / extras from PMS (editable after). */
-function pmsRatePatchFromLookup(
-  key: string | undefined,
-  rateMap: EzeeRatesLookupMap | undefined
-): Pick<RoomRowDraft, "baseRate" | "extraAdultRate" | "extraChildRate" | "rateUnavailable"> {
-  if (!key || !rateMap) {
-    return { baseRate: "", extraAdultRate: undefined, extraChildRate: undefined, rateUnavailable: false };
-  }
-  const hit = rateMap[key];
-  if (hit?.base !== undefined) {
-    return {
-      baseRate: hit.base,
-      extraAdultRate: hit.extraAdult,
-      extraChildRate: hit.extraChild,
-      rateUnavailable: false,
-    };
-  }
-  return { baseRate: "", extraAdultRate: undefined, extraChildRate: undefined, rateUnavailable: true };
 }
 
 type RoomRowDraft = {
@@ -310,6 +157,7 @@ interface SendQuotationDialogProps {
   onOpenChange: (open: boolean) => void;
   lead: Lead | null;
   leadDetail?: LeadDetail | null;
+  leadBookings?: LeadBooking[];
   guestName?: string;
   guestEmail?: string;
   guestPhone?: string;
@@ -322,6 +170,7 @@ export const SendQuotationDialog = ({
   onOpenChange,
   lead,
   leadDetail,
+  leadBookings = [],
   guestName,
   guestEmail,
   guestPhone,
@@ -374,8 +223,10 @@ export const SendQuotationDialog = ({
   const leadForDialog = (leadDetail?.lead ?? lead) as any;
   const itineraries: ItineraryLike[] = useMemo(() => {
     const raw: any[] = Array.isArray(leadForDialog?.itineraries) ? leadForDialog.itineraries : [];
-    return raw;
-  }, [leadForDialog]);
+    return raw.filter((it) =>
+      isItineraryPendingForBookings(itineraryPropertyIdFromRaw(it), leadBookings)
+    );
+  }, [leadForDialog, leadBookings]);
 
   const uniquePropertyIds = useMemo(() => {
     const ids = new Set<string>();
@@ -466,7 +317,7 @@ export const SendQuotationDialog = ({
       });
     }
     const mapping = pid ? ezeeMappingByPropertyId[pid] : undefined;
-    const rtOptions = roomTypeOptions(mapping);
+    const rtOptions = roomTypeOptionsFromMapping(mapping);
     const rateMap = pid ? ezeeRateMapByPropertyId[pid] : undefined;
 
     return {
@@ -882,8 +733,8 @@ export const SendQuotationDialog = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-[min(100vw-2rem,72rem)] max-h-[90vh] flex flex-col overflow-hidden p-0">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
               Send Quotation
@@ -895,6 +746,7 @@ export const SendQuotationDialog = ({
             </DialogTitle>
           </DialogHeader>
 
+          <div className="flex-1 overflow-y-auto px-6 min-h-0">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "create" | "history")}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="create">
@@ -982,7 +834,7 @@ export const SendQuotationDialog = ({
                               type="button"
                               size="sm"
                               variant={i === activeDraftIdx ? "default" : "outline"}
-                              className="gap-1.5 max-w-[220px]"
+                              className="gap-1.5 shrink-0"
                               onClick={() => {
                                 setActiveDraftIdx(i);
                                 setQuoteView("build");
@@ -1140,7 +992,7 @@ export const SendQuotationDialog = ({
                               </Alert>
                             ) : null}
 
-                            <div className="overflow-auto rounded-md border">
+                            <div className="hidden lg:block overflow-x-auto rounded-md border">
                               <table className="min-w-[1150px] w-full text-sm">
                                 <thead className="bg-muted/40">
                                   <tr className="[&>th]:px-2 [&>th]:py-2 [&>th]:text-left [&>th]:text-xs [&>th]:font-medium">
@@ -1170,7 +1022,7 @@ export const SendQuotationDialog = ({
                                         : null;
                                     const t = computeQuotationRowTotals(base, disc, nightsRow, discountCap, pmsTotalsH);
                                     const ezeeMap = hq.propertyId ? ezeeMappingByPropertyId[hq.propertyId] : undefined;
-                                    const roomOptions = roomTypeOptions(ezeeMap);
+                                    const roomOptions = roomTypeOptionsFromMapping(ezeeMap);
                                     const mealPlans = mealPlanOptionsForRoomType(ezeeMap, row.roomTypeId, row.roomTypeName);
                                     const hasPmsOptions = (roomOptions.length > 0 && (ezeeMap?.ratePlans?.length ?? 0) > 0 && (ezeeMap?.rateTypes?.length ?? 0) > 0);
                                     const noPlansForRoom = hasPmsOptions && row.roomTypeId && mealPlans.length === 0;
@@ -1353,6 +1205,34 @@ export const SendQuotationDialog = ({
                                           />
                                         </td>
                                         <td className="px-2 py-2 text-right align-top">
+                                          <div className="flex items-center justify-end gap-1 mb-1">
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-7 px-2 text-xs"
+                                              disabled={!row.mealPlanId || !row.roomTypeId}
+                                              onClick={() => {
+                                                const plan = resolveRatePlanForSelection(ezeeMap, row.roomTypeId, row.roomTypeName, row.mealPlanId);
+                                                const key = rateLookupKey(row.roomTypeId, plan?.ratePlanId);
+                                                const ratePatch = pmsRatePatchFromLookup(key, rateMap);
+                                                setDrafts((prev) => {
+                                                  const next = [...prev];
+                                                  const d = next[activeDraftIdx];
+                                                  const h = d.hotelQuotes[hIdx];
+                                                  const rows = [...h.rows];
+                                                  rows[rIdx] = { ...rows[rIdx], ...ratePatch };
+                                                  d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                                  next[activeDraftIdx] = { ...d };
+                                                  return next;
+                                                });
+                                              }}
+                                              title="Reset to PMS rate"
+                                            >
+                                              <RotateCcw className="h-3 w-3 mr-1" />
+                                              PMS
+                                            </Button>
+                                          </div>
                                           <Input
                                             type="number"
                                             min={0}
@@ -1432,6 +1312,129 @@ export const SendQuotationDialog = ({
                                 </tbody>
                               </table>
                             </div>
+
+                            <div className="lg:hidden space-y-3">
+                              {hq.rows.map((row, rIdx) => {
+                                const disc = Math.min(discountCap, Math.max(0, Number(row.discountPercent || 0)));
+                                const base = Math.max(0, Number(row.baseRate || 0));
+                                const nightsRow = Math.max(1, Number(hq.nights || 1));
+                                const availH = pid ? availableRoomsByPropertyId[pid] : undefined;
+                                const pmsH = availH?.length ? pickAvailableRowForQuotationRow(availH, row) : undefined;
+                                const pmsTotalsH =
+                                  pmsH && pmsH.totalBeforeTax > 0
+                                    ? { totalBeforeTax: pmsH.totalBeforeTax, totalTax: pmsH.totalTax }
+                                    : null;
+                                const t = computeQuotationRowTotals(base, disc, nightsRow, discountCap, pmsTotalsH);
+                                const ezeeMap = hq.propertyId ? ezeeMappingByPropertyId[hq.propertyId] : undefined;
+                                const rateMap = hq.propertyId ? ezeeRateMapByPropertyId[hq.propertyId] : undefined;
+                                return (
+                                  <div key={row.rowId || rIdx} className="rounded-md border p-3 space-y-2 text-sm">
+                                    <div className="font-medium">{row.roomTypeName || row.roomTypeId || "Room"}</div>
+                                    <div className="text-xs text-muted-foreground">{row.mealPlanName || "—"}</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <Label className="text-xs">Adults</Label>
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          value={String(row.adults ?? 0)}
+                                          onChange={(e) => {
+                                            const v = Math.max(0, Number(e.target.value || 0));
+                                            setDrafts((prev) => {
+                                              const next = [...prev];
+                                              const d = next[activeDraftIdx];
+                                              const h = d.hotelQuotes[hIdx];
+                                              const rows = [...h.rows];
+                                              rows[rIdx] = { ...rows[rIdx], adults: v };
+                                              d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                              next[activeDraftIdx] = { ...d };
+                                              return next;
+                                            });
+                                          }}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label className="text-xs">Children</Label>
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          value={String(row.children ?? 0)}
+                                          onChange={(e) => {
+                                            const v = Math.max(0, Number(e.target.value || 0));
+                                            setDrafts((prev) => {
+                                              const next = [...prev];
+                                              const d = next[activeDraftIdx];
+                                              const h = d.hotelQuotes[hIdx];
+                                              const rows = [...h.rows];
+                                              rows[rIdx] = { ...rows[rIdx], children: v };
+                                              d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                              next[activeDraftIdx] = { ...d };
+                                              return next;
+                                            });
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <Label className="text-xs">Base / night (₹)</Label>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 px-2 text-xs"
+                                          disabled={!row.mealPlanId || !row.roomTypeId}
+                                          onClick={() => {
+                                            const plan = resolveRatePlanForSelection(ezeeMap, row.roomTypeId, row.roomTypeName, row.mealPlanId);
+                                            const key = rateLookupKey(row.roomTypeId, plan?.ratePlanId);
+                                            const ratePatch = pmsRatePatchFromLookup(key, rateMap);
+                                            setDrafts((prev) => {
+                                              const next = [...prev];
+                                              const d = next[activeDraftIdx];
+                                              const h = d.hotelQuotes[hIdx];
+                                              const rows = [...h.rows];
+                                              rows[rIdx] = { ...rows[rIdx], ...ratePatch };
+                                              d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                              next[activeDraftIdx] = { ...d };
+                                              return next;
+                                            });
+                                          }}
+                                        >
+                                          <RotateCcw className="h-3 w-3 mr-1" />
+                                          Reset PMS
+                                        </Button>
+                                      </div>
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        value={row.baseRate === "" ? "" : String(row.baseRate)}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          setDrafts((prev) => {
+                                            const next = [...prev];
+                                            const d = next[activeDraftIdx];
+                                            const h = d.hotelQuotes[hIdx];
+                                            const rows = [...h.rows];
+                                            if (raw === "") rows[rIdx] = { ...rows[rIdx], baseRate: "" };
+                                            else {
+                                              const v = Math.max(0, Number(raw));
+                                              rows[rIdx] = { ...rows[rIdx], baseRate: Number.isFinite(v) ? v : 0 };
+                                            }
+                                            d.hotelQuotes = d.hotelQuotes.map((x, i) => (i === hIdx ? { ...h, rows } : x));
+                                            next[activeDraftIdx] = { ...d };
+                                            return next;
+                                          });
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between text-xs pt-1 border-t">
+                                      <span>Room total</span>
+                                      <span className="font-medium">{formatCurrency(t.roomTotal)}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                             <div className="flex justify-between items-center">
                               <Button
                                 type="button"
@@ -1446,7 +1449,7 @@ export const SendQuotationDialog = ({
                                     const rateMapAdd = pid ? ezeeRateMapByPropertyId[pid] : undefined;
                                     const last = h.rows[h.rows.length - 1];
                                     const hasPmsOptions =
-                                      (roomTypeOptions(ezeeMap).length > 0 &&
+                                      (roomTypeOptionsFromMapping(ezeeMap).length > 0 &&
                                         (ezeeMap?.ratePlans?.length ?? 0) > 0 &&
                                         (ezeeMap?.rateTypes?.length ?? 0) > 0);
                                     const opts = hasPmsOptions
@@ -1537,9 +1540,10 @@ export const SendQuotationDialog = ({
               </ScrollArea>
             </TabsContent>
           </Tabs>
+          </div>
 
           {activeTab === "create" && (
-            <DialogFooter className="flex items-center justify-between gap-2">
+            <DialogFooter className="flex items-center justify-between gap-2 px-6 py-4 shrink-0 border-t bg-background">
               <div className="text-xs text-muted-foreground">
                 {drafts.length > 0 && activeDraft ? (
                   <>Grand total: <span className="font-medium text-foreground">{formatCurrency(calcDraftSummary(activeDraft).grandTotal)}</span></>

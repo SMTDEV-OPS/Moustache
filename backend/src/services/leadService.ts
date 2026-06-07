@@ -476,7 +476,8 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
         $nin: [
           LeadStatus.LOST,
           LeadStatus.CLOSED_AUTO,
-          LeadStatus.CONFIRMED
+          LeadStatus.CONFIRMED,
+          LeadStatus.CANCELLED
         ]
       }
     })
@@ -726,6 +727,8 @@ export async function createLead(input: CreateLeadInput): Promise<ILead> {
       numberOfGuests: hotel.numberOfGuests,
     }));
     await LeadItineraryModel.insertMany(itinerariesToInsert);
+    const { logPmsItineraryOnCreate } = await import("../utils/pmsActivityLog");
+    await logPmsItineraryOnCreate(lead._id, input.hotels, input.createdByUserId);
   }
 
   // Schedule follow-ups (fire and forget) using the FollowupRule Engine

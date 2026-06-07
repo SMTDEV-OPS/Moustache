@@ -22,8 +22,14 @@ import {
   updateEmail,
   deleteEmail,
   listEmailFolders,
+  listEmailAccounts,
+  ensureWorkspaceEmailAccount,
+  getWorkspaceStatus,
+  connectGmailWithPopup,
   type EmailFolder,
   type EmailMessage,
+  type EmailAccount,
+  type GoogleWorkspaceConfigPublic,
 } from "@/services/email";
 import { SharedEmailComposer } from "@/components/email/SharedEmailComposer";
 
@@ -75,6 +81,10 @@ export const EmailClient = () => {
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [isThreadLoading, setIsThreadLoading] = useState(false);
   const [composer, setComposer] = useState<ComposerState>({ open: false, mode: "compose" });
+  const [workspaceStatus, setWorkspaceStatus] = useState<GoogleWorkspaceConfigPublic | null>(null);
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+  const [inboxBootstrapping, setInboxBootstrapping] = useState(true);
+  const [connectingOAuth, setConnectingOAuth] = useState(false);
 
   const fallbackFolders = useMemo<FolderUi[]>(
     () => [
@@ -89,6 +99,112 @@ export const EmailClient = () => {
   useEffect(() => {
     selectedFolderRef.current = selectedFolder;
   }, [selectedFolder]);
+
+  const bootstrapInbox = useCallback(async () => {
+    try {
+      setInboxBootstrapping(true);
+      await ensureWorkspaceEmailAccount().catch(() => null);
+      const [status, accounts] = await Promise.all([
+        getWorkspaceStatus().catch(() => null),
+        listEmailAccounts().catch(() => []),
+      ]);
+      setWorkspaceStatus(status);
+      setEmailAccounts(accounts);
+    } finally {
+      setInboxBootstrapping(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void bootstrapInbox();
+  }, [bootstrapInbox]);
+
+  const hasEmailAccount = emailAccounts.some((a) => a.isActive);
+  const workspaceSyncing = emailAccounts.some((a) => a.authMode === "WORKSPACE_DWD" && a.syncStatus === "SYNCING");
+  const showWorkspaceLoading = inboxBootstrapping || (workspaceSyncing && !hasEmailAccount);
+
+  const handleOAuthConnect = async () => {
+    try {
+      setConnectingOAuth(true);
+      await connectGmailWithPopup();
+      await bootstrapInbox();
+      void loadFolders();
+      void loadMessages();
+      toast({ title: "Gmail connected" });
+    } catch (err) {
+      toast({
+        title: "Connection failed",
+        description: err instanceof Error ? err.message : "Unable to connect Gmail",
+        variant: "destructive",
+      });
+    } finally {
+      setConnectingOAuth(false);
+    }
+  };
+
+  const renderInboxGate = () => {
+    if (showWorkspaceLoading) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-sm">Setting up your inbox...</p>
+        </div>
+      );
+    }
+
+    if (hasEmailAccount) return null;
+
+    if (workspaceStatus?.isVerified && workspaceStatus.userInDomain) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-sm font-medium text-foreground">Syncing your Workspace inbox</p>
+          <p className="text-sm">Your account was provisioned automatically. Messages will appear shortly.</p>
+        </div>
+      );
+    }
+
+    if (!workspaceStatus?.isConfigured) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+          <Inbox className="h-10 w-10" />
+          <p className="text-sm font-medium text-foreground">Email not configured</p>
+          <p className="text-sm max-w-md">
+            Ask your admin to configure Gmail in Settings → Integration Hub. Once connected, Workspace users get their inbox automatically.
+          </p>
+        </div>
+      );
+    }
+
+    if (workspaceStatus.isConfigured && !workspaceStatus.userInDomain) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+          <Mail className="h-10 w-10" />
+          <p className="text-sm font-medium text-foreground">Connect your email</p>
+          <p className="text-sm max-w-md">
+            Your CRM email is outside the configured Workspace domain ({workspaceStatus.domain}). Connect Gmail with OAuth as a fallback.
+          </p>
+          <Button onClick={() => void handleOAuthConnect()} disabled={connectingOAuth}>
+            {connectingOAuth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Connect Gmail
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+        <Inbox className="h-10 w-10" />
+        <p className="text-sm font-medium text-foreground">No email account connected</p>
+        <Button onClick={() => void handleOAuthConnect()} disabled={connectingOAuth}>
+          {connectingOAuth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Connect Gmail
+        </Button>
+      </div>
+    );
+  };
+
+  const inboxGate = renderInboxGate();
 
   const loadFolders = useCallback(async () => {
     try {
@@ -244,6 +360,14 @@ export const EmailClient = () => {
   }, [loadFolders, loadMessages, toast]);
 
   const messageForComposer = selectedMessage || threadMessages[threadMessages.length - 1];
+
+  if (inboxGate) {
+    return (
+      <div className="h-[calc(100vh-8rem)] overflow-hidden rounded-lg border bg-card">
+        {inboxGate}
+      </div>
+    );
+  }
 
   return (
     <div className="h-[calc(100vh-8rem)] overflow-hidden rounded-lg border bg-card">

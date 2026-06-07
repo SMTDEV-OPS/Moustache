@@ -32,4 +32,22 @@ export class PMSFactory {
 
         throw new Error(`Unsupported PMS Provider: ${property.pmsProvider}`);
     }
+
+    /**
+     * Like getPMS but never throws — returns a user-facing error string instead.
+     */
+    static async safeGetPMS(
+        propertyId: string
+    ): Promise<{ pms: IPMSService | null; error?: string }> {
+        try {
+            const pms = await this.getPMS(propertyId);
+            if (!pms) return { pms: null, error: "No PMS configured" };
+            return { pms };
+        } catch (err) {
+            return {
+                pms: null,
+                error: err instanceof Error ? err.message : "PMS configuration error",
+            };
+        }
+    }
 }

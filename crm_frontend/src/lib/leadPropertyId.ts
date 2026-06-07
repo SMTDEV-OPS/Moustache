@@ -25,7 +25,8 @@ function coerceMongoIdString(raw: unknown): string | null {
 /** Resolve Mongo property id from a lead or nested lead on detail. */
 export function extractLeadPropertyId(
   lead: unknown,
-  nestedLead?: unknown
+  nestedLead?: unknown,
+  bookings?: Array<{ propertyId?: unknown }>
 ): string | null {
   const candidates: unknown[] = [
     (lead as { propertyId?: unknown })?.propertyId,
@@ -36,6 +37,12 @@ export function extractLeadPropertyId(
       nestedLead as { itineraries?: Array<{ propertyId?: unknown }> }
     )?.itineraries?.[0]?.propertyId,
   ];
+
+  if (bookings?.length) {
+    for (const b of bookings) {
+      candidates.push(b.propertyId);
+    }
+  }
 
   for (const raw of candidates) {
     const id = coerceMongoIdString(raw);

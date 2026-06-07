@@ -33,7 +33,7 @@ async function checkInactiveLeads() {
         const leads = await LeadModel.find({
             orgId: threshold.orgId,
             thresholdId: threshold._id,
-            status: { $nin: [LeadStatus.CONFIRMED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO] }
+            status: { $nin: [LeadStatus.CONFIRMED, LeadStatus.CANCELLED, LeadStatus.LOST, LeadStatus.CLOSED_AUTO] }
         });
 
         for (const lead of leads) {

@@ -22,6 +22,7 @@ export const UserRoleManagement = () => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"create" | "role-mapping">("create");
@@ -110,10 +111,10 @@ export const UserRoleManagement = () => {
   };
 
   const handleCreateUser = async () => {
-    if (!email || !password) {
+    if (!email || !password || !phone.trim()) {
       toast({
         title: "Error",
-        description: "Email and password are required",
+        description: "Email, phone, and password are required",
         variant: "destructive",
       });
       return;
@@ -124,7 +125,9 @@ export const UserRoleManagement = () => {
       await createUser({
         name: `${firstName} ${lastName}`.trim() || email.trim(),
         email: email.trim(),
-        password,      });
+        phone: phone.trim(),
+        password,
+      });
 
       toast({
         title: "Success",
@@ -134,6 +137,7 @@ export const UserRoleManagement = () => {
       setFirstName("");
       setLastName("");
       setEmail("");
+      setPhone("");
       setPassword("");
       await loadData();
     } catch (err) {
@@ -499,6 +503,18 @@ export const UserRoleManagement = () => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="user@example.com"
+            required
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="user-phone">Phone *</Label>
+          <Input
+            id="user-phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+91 98765 43210"
             required
           />
         </div>

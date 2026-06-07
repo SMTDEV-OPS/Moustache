@@ -28,6 +28,7 @@ import {
   Plus,
   IndianRupee,
   Building2,
+  BedDouble,
 } from "lucide-react";
 import { Button, Badge, PageHeader } from "@/components/shared";
 import { getLeadDetail, LeadDetail, LeadActivity, LeadCommunication, updateLead, addLeadNote, LeadStatus, HeatLevel, getLeadContactInfo, LeadContactDetails } from "@/services/leads";
@@ -44,6 +45,16 @@ import { getCommunicationTimeline, updateCallStatus, type CommunicationTimelineI
 import { Textarea } from "@/components/ui/textarea";
 import { API_BASE_URL, withAuthHeaders, getAuthToken } from "@/services/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { EditContactDetailsDialog } from "@/components/EditContactDetailsDialog";
@@ -59,7 +70,12 @@ import { KBQuickDrawer } from "@/components/knowledge/directory/KBQuickDrawer";
 import { extractLeadPropertyId } from "@/lib/leadPropertyId";
 import { getProperty } from "@/services/properties";
 import { BookRoomDialog } from "@/components/BookRoomDialog";
+import { BookingDetailDialog } from "@/components/booking/BookingDetailDialog";
 import { listLeadBookings, type LeadBooking, cancelEzeeBooking } from "@/services/leadBookings";
+import {
+  bookingPropertyId,
+  isItineraryPendingForBookings,
+} from "@/lib/pendingTravel";
 
 interface LeadDetailPageProps {
   leadId: string;
@@ -105,6 +121,9 @@ const formatTimelineMessage = (activity: LeadActivity, users: User[]): string =>
       if (activity.fromStatus && activity.toStatus) {
         return `Status changed from ${activity.fromStatus} to ${activity.toStatus}`;
       }
+      if (activity.note?.trim()) {
+        return activity.note.trim();
+      }
       return `Status changed to ${activity.toStatus || "unknown"}`;
 
     case "AUTO_ASSIGNED":
@@ -140,9 +159,28 @@ const formatTimelineMessage = (activity: LeadActivity, users: User[]): string =>
     case "CLIENT_RESPONSE":
       return `Client response received`;
 
+    case "PMS_ROOM_UPDATED":
+      return activity.note || "Room details updated from PMS";
+
+    case "PMS_RATE_UPDATED":
+      return activity.note || "Rate updated";
+
+    case "PMS_BOOKING_CREATED":
+      return activity.note || "Booking created in PMS";
+
+    case "PMS_BOOKING_CANCELLED":
+      return activity.note || "Booking cancelled in PMS";
+
     default:
       return activity.note || activity.type;
   }
+};
+
+function activityTimelineBody(activity: LeadActivity, title: string): string {
+  const note = activity.note?.trim();
+  if (!note || activity.type === "NOTE") return "";
+  if (note === title.trim()) return "";
+  return note;
 };
 
 // Helper function to format communication messages
@@ -202,6 +240,14 @@ const getActivityIcon = (type: string) => {
       return <CheckCircle className="h-4 w-4 text-green-600" />;
     case "CLIENT_RESPONSE":
       return <Mail className="h-4 w-4 text-blue-500" />;
+    case "PMS_ROOM_UPDATED":
+      return <BedDouble className="h-4 w-4 text-indigo-500" />;
+    case "PMS_RATE_UPDATED":
+      return <IndianRupee className="h-4 w-4 text-amber-600" />;
+    case "PMS_BOOKING_CREATED":
+      return <CheckCircle className="h-4 w-4 text-emerald-600" />;
+    case "PMS_BOOKING_CANCELLED":
+      return <XCircle className="h-4 w-4 text-red-500" />;
     default:
       return <Clock className="h-4 w-4 text-gray-500" />;
   }
@@ -270,7 +316,7 @@ function formatYmdForDisplay(ymd?: string): string {
   }
 }
 
-function normalizeItineraries(lead: any): NormalizedItinerary[] {
+function normalizeItineraries(lead: any, bookings: LeadBooking[] = []): NormalizedItinerary[] {
   const raw = Array.isArray(lead?.itineraries) ? lead.itineraries : [];
   const fromItins: NormalizedItinerary[] = raw
     .map((it: any) => {
@@ -331,6 +377,13 @@ function normalizeItineraries(lead: any): NormalizedItinerary[] {
     roomsRequested: fallbackRooms,
   };
 
+  if (bookings.length > 0) {
+    const fid = fallback.propertyId ? String(fallback.propertyId) : undefined;
+    if (!fid || bookings.some((b) => bookingPropertyId(b) === fid)) {
+      return [];
+    }
+  }
+
   if (fallback.propertyId || fallback.hotelName || fallback.checkInDate || fallback.checkOutDate || fallback.roomsRequested.length) {
     return [fallback];
   }
@@ -372,6 +425,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [isSavingStatus, setIsSavingStatus] = useState(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [activityNote, setActivityNote] = useState("");
+  const [activityFilter, setActivityFilter] = useState<"all" | "emails">("all");
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [isEditContactDialogOpen, setIsEditContactDialogOpen] = useState(false);
   const [isEditLeadDialogOpen, setIsEditLeadDialogOpen] = useState(false);
@@ -403,6 +457,15 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   const [selectedHotelForBooking, setSelectedHotelForBooking] = useState<
     { hotelId: string; hotelName: string; checkIn: string; checkOut: string } | null
   >(null);
+  const [bookingDetailOpen, setBookingDetailOpen] = useState(false);
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const [cancelBookingTarget, setCancelBookingTarget] = useState<LeadBooking | null>(null);
+  const [isCancellingBooking, setIsCancellingBooking] = useState(false);
+
+  const formatBookingMoney = (n: number | undefined | null) => {
+    if (n === undefined || n === null || !Number.isFinite(n)) return "—";
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
+  };
 
   const canScoreCall = !!isAdmin || permissions?.includes("leads.manage") || permissions?.includes("settings.manage");
 
@@ -692,17 +755,21 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
     );
   }, [communicationTimeline]);
 
-  const nonEmailTimelineItems = useMemo(() => {
-    return timelineItems.filter((item) => {
-      if (item.type === "activity") return true;
-      const comm = item.data as LeadCommunication & { channel?: string };
-      return (comm.channel || "").toUpperCase() !== "EMAIL";
-    });
-  }, [timelineItems]);
-
   // Must be defined before any early returns to preserve Hook order.
   const leadForMemos = (leadDetail?.lead ?? null) as any;
-  const itineraries = useMemo(() => normalizeItineraries(leadForMemos), [leadForMemos]);
+  const itineraries = useMemo(
+    () => normalizeItineraries(leadForMemos, leadBookings),
+    [leadForMemos, leadBookings]
+  );
+
+  const pendingItineraries = useMemo(() => {
+    return itineraries.filter((it) => isItineraryPendingForBookings(it.propertyId, leadBookings));
+  }, [itineraries, leadBookings]);
+
+  const hasBookableTravel = useMemo(
+    () => pendingItineraries.some((it) => it.propertyId && it.checkInDate && it.checkOutDate),
+    [pendingItineraries]
+  );
 
   const statusBadgeVariant = (status: string) => {
     switch (status) {
@@ -748,7 +815,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
   }
 
   const lead = leadDetail.lead;
-  const leadPropertyId = extractLeadPropertyId(lead);
+  const leadPropertyId = extractLeadPropertyId(lead, undefined, leadBookings);
   const assignedUser = users.find((u) => u.id === lead.assignedToUserId);
 
   // Prefer contactDetails (inquiry snapshot), fall back to guest
@@ -1026,6 +1093,8 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
               variant="secondary"
               icon={FileText}
               size="sm"
+              disabled={!hasBookableTravel}
+              title={!hasBookableTravel ? "Add a travel plan (hotel, check-in, check-out) to send a quotation" : undefined}
               onClick={() => setIsQuotationDialogOpen(true)}
             >
               Send Quotation
@@ -1034,9 +1103,12 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
               variant="secondary"
               icon={Calendar}
               size="sm"
+              disabled={!hasBookableTravel}
+              title={!hasBookableTravel ? "Add a travel plan (hotel, check-in, check-out) to book a room" : undefined}
               onClick={async () => {
+                if (!hasBookableTravel) return;
                 try {
-                  const candidates = itineraries
+                  const candidates = pendingItineraries
                     .filter((it) => it.propertyId && it.checkInDate && it.checkOutDate)
                     .map((it) => ({
                       hotelId: String(it.propertyId),
@@ -1235,11 +1307,22 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             }}
           >
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Travel</div>
-            {itineraries.length === 0 ? (
-              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No hotel bookings added yet.</div>
+            {pendingItineraries.length === 0 ? (
+              <div className="space-y-3">
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  {leadBookings.length > 0
+                    ? "No pending travel. To send a quotation or book again, add a new travel plan."
+                    : "No hotel bookings added yet."}
+                </div>
+                {canOpenEditLead ? (
+                  <Button variant="secondary" size="sm" icon={Plus} onClick={() => setIsEditLeadDialogOpen(true)}>
+                    Add travel plan
+                  </Button>
+                ) : null}
+              </div>
             ) : (
               <div className="space-y-4">
-                {itineraries.map((it, idx) => {
+                {pendingItineraries.map((it, idx) => {
                   const title = it.hotelName || it.propertyName || "Hotel";
                   const dateLine = `${formatYmdForDisplay(it.checkInDate)} → ${formatYmdForDisplay(it.checkOutDate)}`;
                   const rooms = it.roomsRequested || [];
@@ -1347,71 +1430,94 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
             ) : leadBookings.length === 0 ? (
               <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No bookings yet.</div>
             ) : (
-              <div className="overflow-hidden rounded-md" style={{ border: "1px solid var(--border-light)" }}>
-                <div className="grid grid-cols-12 gap-2 px-3 py-2" style={{ background: "var(--surface-2)", fontSize: 11, color: "var(--text-faint)" }}>
-                  <div className="col-span-2">Booking Ref</div>
-                  <div className="col-span-3">Hotel</div>
-                  <div className="col-span-2">Check-in</div>
-                  <div className="col-span-2">Check-out</div>
-                  <div className="col-span-1 text-right">Rooms</div>
-                  <div className="col-span-1 text-right">Total</div>
-                  <div className="col-span-1 text-right">Actions</div>
-                </div>
-                {leadBookings.map((b) => {
-                  const propName = typeof b.propertyId === "string" ? b.propertyId : (b.propertyId as any)?.name;
-                  const roomsCount = Array.isArray(b.rooms) ? b.rooms.length : 0;
-                  const total = typeof b.grandTotal === "number" ? b.grandTotal : 0;
-                  return (
-                    <div key={b._id} className="grid grid-cols-12 gap-2 px-3 py-2 border-t items-center" style={{ borderColor: "var(--border-light)" }}>
-                      <div className="col-span-2 text-sm min-w-0" style={{ color: "var(--text)" }}>
-                        <div className="truncate">{b.ezeeBookingRef}</div>
-                        {b.processedInPms === false ? (
-                          <div className="text-[11px] text-amber-600 font-medium mt-0.5">Pending PMS confirmation</div>
-                        ) : null}
-                      </div>
-                      <div className="col-span-3 text-sm truncate" style={{ color: "var(--text)" }}>{propName || "—"}</div>
-                      <div className="col-span-2 text-sm" style={{ color: "var(--text)" }}>{new Date(b.checkIn).toLocaleDateString("en-IN")}</div>
-                      <div className="col-span-2 text-sm" style={{ color: "var(--text)" }}>{new Date(b.checkOut).toLocaleDateString("en-IN")}</div>
-                      <div className="col-span-1 text-sm text-right" style={{ color: "var(--text)" }}>{roomsCount}</div>
-                      <div className="col-span-1 text-sm text-right" style={{ color: "var(--text)" }}>{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(total)}</div>
-                      <div className="col-span-1 flex justify-end gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            toast({
-                              title: "Booking",
-                              description: `${b.guestName || "Guest"} · ${b.ezeeBookingRef}`,
-                            });
-                          }}
-                        >
-                          View
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          disabled={b.status !== "confirmed"}
-                          onClick={async () => {
-                            try {
-                              const hotelId = typeof b.propertyId === "string" ? b.propertyId : (b.propertyId as any)?._id;
-                              await cancelEzeeBooking({ leadId, hotelId, bookingRef: b.ezeeBookingRef });
-                              toast({ title: "Cancelled", description: "Booking cancelled successfully." });
-                              void loadLeadBookings(leadId);
-                            } catch (e) {
-                              toast({
-                                title: "Cancel failed",
-                                description: e instanceof Error ? e.message : "Try again.",
-                                variant: "destructive",
-                              });
-                            }
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="-mx-1 px-1 overflow-x-auto rounded-md" style={{ border: "1px solid var(--border-light)" }}>
+                <table className="w-full table-fixed text-sm min-w-[680px]">
+                  <colgroup>
+                    <col className="w-[10%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[6%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[22%]" />
+                  </colgroup>
+                  <thead>
+                    <tr className="text-left text-xs" style={{ background: "var(--surface-2)", color: "var(--text-faint)" }}>
+                      <th className="px-2 py-2 font-medium">Booking Ref</th>
+                      <th className="px-2 py-2 font-medium">Hotel</th>
+                      <th className="px-2 py-2 font-medium">Check-in</th>
+                      <th className="px-2 py-2 font-medium">Check-out</th>
+                      <th className="px-2 py-2 font-medium text-right">Rooms</th>
+                      <th className="px-2 py-2 font-medium text-right">Total</th>
+                      <th className="px-2 py-2 font-medium">Status</th>
+                      <th className="px-2 py-2 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leadBookings.map((b) => {
+                      const propName =
+                        typeof b.propertyId === "string" ? b.propertyId : (b.propertyId as { name?: string })?.name;
+                      const roomsCount = b.rooms?.length ?? 0;
+                      const isCancelled = (b.status ?? "confirmed") === "cancelled";
+                      return (
+                        <tr key={b._id} className="border-t" style={{ borderColor: "var(--border-light)" }}>
+                          <td className="px-2 py-2 align-middle" style={{ color: "var(--text)" }}>
+                            <div className="truncate">{b.ezeeBookingRef}</div>
+                            {b.processedInPms === false ? (
+                              <div className="text-[11px] text-amber-600 font-medium mt-0.5">Pending PMS</div>
+                            ) : null}
+                          </td>
+                          <td className="px-2 py-2 align-middle" style={{ color: "var(--text)" }}>
+                            <span className="line-clamp-2 break-words">{propName || "—"}</span>
+                          </td>
+                          <td className="px-2 py-2 align-middle whitespace-nowrap text-xs" style={{ color: "var(--text)" }}>
+                            {new Date(b.checkIn).toLocaleDateString("en-IN")}
+                          </td>
+                          <td className="px-2 py-2 align-middle whitespace-nowrap text-xs" style={{ color: "var(--text)" }}>
+                            {new Date(b.checkOut).toLocaleDateString("en-IN")}
+                          </td>
+                          <td className="px-2 py-2 align-middle text-right" style={{ color: "var(--text)" }}>
+                            {roomsCount}
+                          </td>
+                          <td className="px-2 py-2 align-middle text-right whitespace-nowrap text-xs" style={{ color: "var(--text)" }}>
+                            {formatBookingMoney(b.grandTotal)}
+                          </td>
+                          <td className="px-2 py-2 align-middle">
+                            <Badge
+                              label={isCancelled ? "Cancelled" : "Confirmed"}
+                              variant={isCancelled ? "default" : "stage_active"}
+                            />
+                          </td>
+                          <td className="px-2 py-2 align-middle min-w-[148px]">
+                            <div className="flex justify-end gap-1 whitespace-nowrap">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="px-2 h-8"
+                                onClick={() => {
+                                  setSelectedBookingId(b._id);
+                                  setBookingDetailOpen(true);
+                                }}
+                              >
+                                View
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="px-2 h-8"
+                                disabled={isCancelled}
+                                onClick={() => setCancelBookingTarget(b)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -1493,104 +1599,142 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
               padding: 20,
             }}
           >
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Activity</div>
-            <div className="mb-4">
-              <div className="mb-2 flex items-center justify-between">
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Email Threads</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Activity</div>
+              <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    setReplyToEmailItem(null);
-                    setEmailComposerOpen(true);
-                  }}
+                  variant={activityFilter === "all" ? "primary" : "secondary"}
+                  onClick={() => setActivityFilter("all")}
                 >
-                  New Email
+                  All
+                </Button>
+                <Button
+                  size="sm"
+                  variant={activityFilter === "emails" ? "primary" : "secondary"}
+                  onClick={() => setActivityFilter("emails")}
+                >
+                  Emails
                 </Button>
               </div>
-              <EmailThreadView
-                items={emailTimelineItems}
-                onReply={(message) => {
-                  setReplyToEmailItem(message);
-                  setReplyComposerOpen(true);
-                }}
-              />
             </div>
-            <div style={{ borderLeft: "2px solid var(--border-light)", paddingLeft: 16 }}>
-              {nonEmailTimelineItems.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 16 }}>No activity yet</p>
-              ) : (
-                nonEmailTimelineItems.map((item, index) => {
-                  const isActivity = item.type === "activity";
-                  const activity = isActivity ? (item.data as LeadActivity) : null;
-                  const comm = !isActivity ? (item.data as LeadCommunication & { channel?: string }) : null;
-                  let iconBg = "#f3f4f6";
-                  let iconColor = "#374151";
-                  let IconComponent = FileText;
-                  if (isActivity && activity) {
-                    if (activity.type === "NOTE") {
-                      iconBg = "#f3f4f6";
-                      iconColor = "#374151";
-                      IconComponent = FileText;
-                    } else if (activity.type === "STATUS_CHANGE") {
-                      iconBg = "var(--primary-light)";
-                      iconColor = "var(--primary)";
-                      IconComponent = GitBranch;
-                    } else if (["LEAD_CREATED", "QUOTE_SENT", "PAYMENT_LINK_SENT", "PAYMENT_RECEIVED", "CLIENT_RESPONSE"].includes(activity.type)) {
-                      iconBg = "#fffbeb";
-                      iconColor = "#f59e0b";
-                      IconComponent = Star;
-                    } else if (activity.type === "FOLLOW_UP") {
-                      iconBg = "#f0fdf4";
-                      iconColor = "#166534";
-                      IconComponent = CheckSquare;
-                    } else {
-                      IconComponent = FileText;
+
+            {activityFilter === "emails" ? (
+              <div className="mb-4">
+                <div className="mb-2 flex items-center justify-end">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setReplyToEmailItem(null);
+                      setEmailComposerOpen(true);
+                    }}
+                  >
+                    New Email
+                  </Button>
+                </div>
+                <EmailThreadView
+                  items={emailTimelineItems}
+                  onReply={(message) => {
+                    setReplyToEmailItem(message);
+                    setReplyComposerOpen(true);
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ borderLeft: "2px solid var(--border-light)", paddingLeft: 16 }}>
+                {timelineItems.length === 0 ? (
+                  <p style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 16 }}>No activity yet</p>
+                ) : (
+                  timelineItems.map((item, index) => {
+                    const isActivity = item.type === "activity";
+                    const activity = isActivity ? (item.data as LeadActivity) : null;
+                    const comm = !isActivity ? (item.data as LeadCommunication & { channel?: string; summary?: string }) : null;
+                    const isEmailComm = comm && (comm.channel || "").toUpperCase() === "EMAIL";
+
+                    let iconBg = "#f3f4f6";
+                    let iconEl = <FileText className="w-4 h-4 text-gray-500" />;
+
+                    if (isActivity && activity) {
+                      iconEl = getActivityIcon(activity.type);
+                      if (activity.type === "STATUS_CHANGE") {
+                        iconBg = "var(--primary-light)";
+                      } else if (activity.type === "FOLLOW_UP") {
+                        iconBg = "#f0fdf4";
+                      } else if (
+                        [
+                          "LEAD_CREATED",
+                          "QUOTE_SENT",
+                          "PAYMENT_LINK_SENT",
+                          "PAYMENT_RECEIVED",
+                          "CLIENT_RESPONSE",
+                          "PMS_ROOM_UPDATED",
+                          "PMS_RATE_UPDATED",
+                          "PMS_BOOKING_CREATED",
+                          "PMS_BOOKING_CANCELLED",
+                        ].includes(activity.type)
+                      ) {
+                        iconBg = "#fffbeb";
+                      }
+                    } else if (comm) {
+                      if (comm.channel === "CALL") {
+                        iconBg = "#dbeafe";
+                        iconEl = <Phone className="h-4 w-4 text-blue-700" />;
+                      } else if (comm.channel === "WHATSAPP") {
+                        iconBg = "#d1fae5";
+                        iconEl = <MessageSquare className="h-4 w-4 text-green-700" />;
+                      } else if (isEmailComm) {
+                        iconBg = "#fce7f3";
+                        iconEl = <Mail className="h-4 w-4 text-pink-800" />;
+                      } else {
+                        iconEl = getCommunicationIcon(comm.channel || "");
+                      }
                     }
-                  } else if (comm) {
-                    if (comm.channel === "CALL") {
-                      iconBg = "#dbeafe";
-                      iconColor = "#1e40af";
-                      IconComponent = Phone;
-                    } else if (comm.channel === "WHATSAPP") {
-                      iconBg = "#d1fae5";
-                      iconColor = "#065f46";
-                      IconComponent = MessageSquare;
-                    } else if (comm.channel === "EMAIL") {
-                      iconBg = "#fce7f3";
-                      iconColor = "#9d174d";
-                      IconComponent = Mail;
-                    }
-                  }
-                  const title = isActivity && activity ? formatTimelineMessage(activity, users) : comm ? formatCommunicationMessage(comm, users) : "";
-                  const body = isActivity && activity?.note && activity.type !== "NOTE" ? activity.note : comm?.summary || "";
-                  return (
-                    <div key={index} className="flex gap-3 pb-4" style={{ position: "relative" }}>
-                      <div
-                        style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: "50%",
-                          background: iconBg,
-                          color: iconColor,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <IconComponent className="w-4 h-4" />
+
+                    const title =
+                      isActivity && activity
+                        ? formatTimelineMessage(activity, users)
+                        : comm
+                          ? formatCommunicationMessage(comm, users)
+                          : "";
+                    const body =
+                      comm?.summary ||
+                      (isActivity && activity ? activityTimelineBody(activity, title) : "");
+
+                    return (
+                      <div key={`${item.type}-${index}`} className="flex gap-3 pb-4" style={{ position: "relative" }}>
+                        <div
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: "50%",
+                            background: iconBg,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {iconEl}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{title}</div>
+                          {body ? (
+                            <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }} className="line-clamp-2">
+                              {body}
+                            </div>
+                          ) : null}
+                          <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 4 }}>
+                            {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{title}</div>
-                        {body && <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>{body}</div>}
-                        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 4 }}>{formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}</div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
             <div className="mt-4">
               <Textarea
                 value={activityNote}
@@ -1920,6 +2064,63 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         />
       ) : null}
 
+      <BookingDetailDialog
+        open={bookingDetailOpen}
+        onOpenChange={setBookingDetailOpen}
+        leadId={leadId}
+        bookingId={selectedBookingId}
+      />
+
+      <AlertDialog open={!!cancelBookingTarget} onOpenChange={(open) => !open && setCancelBookingTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel booking</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel booking #{cancelBookingTarget?.ezeeBookingRef}? This will cancel the reservation in eZee.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancellingBooking} onClick={() => setCancelBookingTarget(null)}>
+              No
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isCancellingBooking}
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!cancelBookingTarget) return;
+                setIsCancellingBooking(true);
+                try {
+                  const hotelId =
+                    typeof cancelBookingTarget.propertyId === "string"
+                      ? cancelBookingTarget.propertyId
+                      : (cancelBookingTarget.propertyId as { _id?: string })?._id;
+                  if (!hotelId) throw new Error("Hotel not found for this booking");
+                  await cancelEzeeBooking({
+                    leadId,
+                    hotelId,
+                    bookingRef: cancelBookingTarget.ezeeBookingRef,
+                  });
+                  toast({ title: "Cancelled", description: "Booking cancelled successfully." });
+                  setCancelBookingTarget(null);
+                  void loadLeadBookings(leadId);
+                  void loadLeadDetail();
+                } catch (err) {
+                  toast({
+                    title: "Cancel failed",
+                    description: err instanceof Error ? err.message : "Try again.",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setIsCancellingBooking(false);
+                }
+              }}
+            >
+              {isCancellingBooking ? "Cancelling…" : "Yes, cancel"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <SharedEmailComposer
         isOpen={emailComposerOpen}
         mode="compose"
@@ -1977,6 +2178,7 @@ export const LeadDetailPage = ({ leadId, onBack, permissions, isAdmin }: LeadDet
         }}
         lead={lead}
         leadDetail={leadDetail}
+        leadBookings={leadBookings}
         onQuotationSent={() => {
           toast({
             title: "Success",

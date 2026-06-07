@@ -152,9 +152,9 @@ pmsRouter.get(
                 throw badRequest("Invalid date range. Use YYYY-MM-DD format.");
             }
 
-            const pms = await PMSFactory.getPMS(propertyId);
+            const { pms, error: pmsError } = await PMSFactory.safeGetPMS(propertyId);
             if (!pms) {
-                return res.json({ available: false, error: "No PMS configured" });
+                return res.json({ available: false, error: pmsError ?? "No PMS configured" });
             }
 
             const fetchTimeout = new Promise<never>((_, reject) => 

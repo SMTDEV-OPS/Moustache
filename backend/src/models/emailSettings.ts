@@ -1,14 +1,42 @@
 import { Schema, model, Document, Types } from "mongoose";
+import { encryptPassword, decryptPassword } from "./emailAccount";
+
+export interface IGoogleWorkspaceConfig {
+  enabled: boolean;
+  domain: string;
+  serviceAccountClientEmail: string;
+  serviceAccountPrivateKey: string;
+  delegatedAdminEmail?: string;
+  lastVerifiedAt?: Date;
+}
 
 export interface IEmailSettings extends Document {
-  key: string; // Unique key for singleton pattern
+  key: string;
   allowedProviders: ("GMAIL" | "OUTLOOK" | "SMTP_IMAP")[];
-  updatedBy: Types.ObjectId | string; // User ID who last updated
+  googleWorkspace?: IGoogleWorkspaceConfig;
+  updatedBy: Types.ObjectId | string;
   updatedAt: Date;
   createdAt: Date;
 }
 
 const SETTINGS_KEY = "email_settings_singleton";
+
+const googleWorkspaceSchema = new Schema<IGoogleWorkspaceConfig>(
+  {
+    enabled: { type: Boolean, default: false },
+    domain: { type: String, default: "" },
+    serviceAccountClientEmail: { type: String, default: "" },
+    serviceAccountPrivateKey: {
+      type: String,
+      default: "",
+      set: (value: string) => (value ? encryptPassword(value) : ""),
+      get: (value: string) => (value ? decryptPassword(value) : ""),
+    },
+    delegatedAdminEmail: { type: String },
+    lastVerifiedAt: { type: Date },
+  },
+  { _id: false, toJSON: { getters: true }, toObject: { getters: true } }
+);
 
 const emailSettingsSchema = new Schema<IEmailSettings>(
   {
@@ -16,27 +44,24 @@ const emailSettingsSchema = new Schema<IEmailSettings>(
     allowedProviders: {
       type: [String],
       enum: ["GMAIL", "OUTLOOK", "SMTP_IMAP"],
-      default: ["GMAIL", "OUTLOOK", "SMTP_IMAP"], // All providers allowed by default
+      default: ["GMAIL", "OUTLOOK", "SMTP_IMAP"],
     },
+    googleWorkspace: { type: googleWorkspaceSchema },
     updatedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
   },
   { timestamps: true }
 );
 
-// Helper function to get or create settings
 export async function getEmailSettings(): Promise<IEmailSettings> {
-  // Explicitly query by key field, not _id
   let settings = await EmailSettingsModel.findOne({ key: SETTINGS_KEY }).exec();
   if (!settings) {
-    // Create with a dummy system user ID (you might want to use a real system user)
     settings = await EmailSettingsModel.create({
       key: SETTINGS_KEY,
       allowedProviders: ["GMAIL", "OUTLOOK", "SMTP_IMAP"],
-      updatedBy: new Types.ObjectId("000000000000000000000000"), // System user
+      updatedBy: new Types.ObjectId("000000000000000000000000"),
     });
   }
   return settings;
 }
 
 export const EmailSettingsModel = model<IEmailSettings>("EmailSettings", emailSettingsSchema);
-

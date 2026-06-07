@@ -12,8 +12,11 @@ export interface CreateUserPayload {
   name: string;
   email: string;
   password: string;
-    phone?: string;
+  phone: string;
   regions?: string[];
+  roleId?: string;
+  profileId?: string | null;
+  reportsTo?: string | null;
 }
 
 export const createUser = async (payload: CreateUserPayload): Promise<User> => {

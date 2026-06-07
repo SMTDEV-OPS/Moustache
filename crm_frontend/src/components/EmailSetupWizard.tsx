@@ -40,14 +40,27 @@ interface EmailSetupWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete: () => void;
+  /** Skip provider picker and open connect step for this provider */
+  initialProvider?: EmailProvider;
 }
 
 type WizardStep = "provider" | "connect" | "test" | "success";
+
+const SESSION_PROVIDER_MAP: Record<string, EmailProvider> = {
+  gmail: "GMAIL",
+  outlook: "OUTLOOK",
+  smtp: "SMTP_IMAP",
+};
+
+export function sessionKeyToEmailProvider(key: string): EmailProvider | null {
+  return SESSION_PROVIDER_MAP[key.toLowerCase()] ?? null;
+}
 
 export const EmailSetupWizard = ({
   open,
   onOpenChange,
   onComplete,
+  initialProvider,
 }: EmailSetupWizardProps) => {
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState<WizardStep>("provider");
@@ -81,13 +94,18 @@ export const EmailSetupWizard = ({
   useEffect(() => {
     if (open) {
       void loadAllowedProviders();
-      setCurrentStep("provider");
-      setSelectedProvider(null);
       setConnectionError(null);
       setConnectedEmail(null);
       setTestResult(null);
+      if (initialProvider) {
+        setSelectedProvider(initialProvider);
+        setCurrentStep("connect");
+      } else {
+        setCurrentStep("provider");
+        setSelectedProvider(null);
+      }
     }
-  }, [open]);
+  }, [open, initialProvider]);
 
   const loadAllowedProviders = async () => {
     try {

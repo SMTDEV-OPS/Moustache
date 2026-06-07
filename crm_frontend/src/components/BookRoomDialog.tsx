@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Check } from "lucide-react";
+import { RoomBookingCard } from "@/components/booking/RoomBookingCard";
+import { BookingReviewSummary } from "@/components/booking/BookingReviewSummary";
 import type { LeadDetail } from "@/services/leads";
 import {
   fetchAvailableRooms,
@@ -16,6 +19,12 @@ import {
   createEzeeBooking,
   readEzeeBooking,
 } from "@/services/ezeeBooking";
+import {
+  buildRateFieldsFromPms,
+  mealPlanOptionsForRoomType,
+  resolveRatePlanForSelection,
+  useEzeeRatesForProperty,
+} from "@/services/ezeeRates";
 import { useAuth } from "@/context/AuthContext";
 
 type HotelChoice = {
@@ -43,7 +52,6 @@ type RoomRow = {
   physicalRoomName?: string;
 };
 
-const NONE_PHYSICAL = "__none_physical__";
 /** Radix Select requires non-empty `value`; maps to no `sourceId` in the booking API. */
 const BOOKING_SOURCE_DIRECT = "__direct__";
 const BUSINESS_SOURCE_NONE = "__business_source_none__";
@@ -54,66 +62,14 @@ function defaultOccupancyCaps(): Pick<RoomRow, "baseAdultOccupancy" | "maxAdultO
   return { baseAdultOccupancy: 1, maxAdultOccupancy: 10, maxChildOccupancy: 5 };
 }
 
-function PhysicalRoomSelect({
-  hotelId,
-  roomTypeId,
-  fromDate,
-  toDate,
-  value,
-  onChange,
-}: {
-  hotelId: string;
-  roomTypeId: string;
-  fromDate: string;
-  toDate: string;
-  value?: string;
-  onChange: (roomId: string | undefined, roomName: string | undefined) => void;
-}) {
-  const [rooms, setRooms] = useState<{ roomId: string; roomName: string }[]>([]);
-  const [loading, setLoading] = useState(false);
+type BookStep = 1 | 2 | 3 | 4 | "done";
 
-  useEffect(() => {
-    if (!roomTypeId) return;
-    setLoading(true);
-    fetchPhysicalRooms({ hotelId, roomTypeId, fromDate, toDate })
-      .then(setRooms)
-      .catch(() => setRooms([]))
-      .finally(() => setLoading(false));
-  }, [hotelId, roomTypeId, fromDate, toDate]);
-
-  if (loading) {
-    return <span className="text-xs text-muted-foreground">Loading rooms…</span>;
-  }
-  if (rooms.length === 0) {
-    return <span className="text-xs text-muted-foreground">No physical rooms</span>;
-  }
-
-  return (
-    <Select
-      value={value && rooms.some((r) => r.roomId === value) ? value : NONE_PHYSICAL}
-      onValueChange={(val) => {
-        if (val === NONE_PHYSICAL) {
-          onChange(undefined, undefined);
-          return;
-        }
-        const hit = rooms.find((r) => r.roomId === val);
-        if (hit) onChange(hit.roomId, hit.roomName);
-      }}
-    >
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder="Room no." />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={NONE_PHYSICAL}>Not specified</SelectItem>
-        {rooms.map((r) => (
-          <SelectItem key={r.roomId} value={r.roomId}>
-            {r.roomName}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
+const WIZARD_STEPS: { n: 1 | 2 | 3 | 4; label: string }[] = [
+  { n: 1, label: "Dates" },
+  { n: 2, label: "Rooms" },
+  { n: 3, label: "Guest" },
+  { n: 4, label: "Review" },
+];
 
 function nightsBetween(checkIn: string, checkOut: string): number {
   const a = new Date(`${checkIn}T00:00:00.000Z`).getTime();
@@ -182,17 +138,39 @@ function buildInitialRoomRows(lead: LeadDetail["lead"], hotelId: string): RoomRo
     return pid && String(pid) === String(hotelId);
   });
   const reqs: any[] = Array.isArray(firstItin?.roomsRequested) ? firstItin.roomsRequested : [];
-  const count = Math.max(1, reqs.reduce((sum, r) => sum + (Number(r?.quantity) || 0), 0));
   const caps = defaultOccupancyCaps();
   const t = Date.now();
-  return Array.from({ length: count }).map((_, idx) => ({
-    id: `room-${idx + 1}-${t}`,
-    adults: Math.min(Math.max(1, caps.baseAdultOccupancy), caps.maxAdultOccupancy),
-    children: 0,
-    ratePerNight: 0,
-    nightlyRates: [],
-    ...caps,
-  }));
+  const rows: RoomRow[] = [];
+
+  for (const req of reqs) {
+    const qty = Math.max(1, Number(req?.quantity) || 1);
+    for (let q = 0; q < qty; q++) {
+      rows.push({
+        id: `room-${rows.length + 1}-${t}`,
+        roomTypeId: req.roomTypeId || undefined,
+        roomTypeName: req.roomTypeName || undefined,
+        rateTypeId: req.mealPlanId || req.ratePlanId || undefined,
+        planName: req.mealPlanName || req.ratePlanName || undefined,
+        adults: Math.min(Math.max(1, Number(req.adults) || 1), caps.maxAdultOccupancy),
+        children: Math.max(0, Number(req.children) || 0),
+        ratePerNight: Number(req.estimatedRate) || 0,
+        nightlyRates: [],
+        ...caps,
+      });
+    }
+  }
+
+  if (rows.length === 0) {
+    return Array.from({ length: 1 }).map((_, idx) => ({
+      id: `room-${idx + 1}-${t}`,
+      adults: Math.min(Math.max(1, caps.baseAdultOccupancy), caps.maxAdultOccupancy),
+      children: 0,
+      ratePerNight: 0,
+      nightlyRates: [],
+      ...caps,
+    }));
+  }
+  return rows;
 }
 
 export function BookRoomDialog({
@@ -215,7 +193,10 @@ export function BookRoomDialog({
     return 15;
   }, [user?.isAdmin, can]);
 
-  const [step, setStep] = useState<1 | 2 | 3 | "done">(1);
+  const [step, setStep] = useState<BookStep>(1);
+  const [activeRoomIdx, setActiveRoomIdx] = useState(0);
+  const [physicalRooms, setPhysicalRooms] = useState<{ roomId: string; roomName: string }[]>([]);
+  const [physicalRoomsLoading, setPhysicalRoomsLoading] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [available, setAvailable] = useState<AvailableRoomRow[]>([]);
   const [channelSources, setChannelSources] = useState<EzeeChannelSource[]>([]);
@@ -255,9 +236,35 @@ export function BookRoomDialog({
 
   const [rows, setRows] = useState<RoomRow[]>(() => buildInitialRoomRows(lead, hotel.hotelId));
 
+  const { mapping: ezeeMapping, rateMap: ezeeRateMap } = useEzeeRatesForProperty(
+    hotel.hotelId,
+    checkIn,
+    checkOut
+  );
+
+  useEffect(() => {
+    if (!open || !ezeeMapping || !ezeeRateMap) return;
+    setRows((prev) =>
+      prev.map((r) => {
+        if (!r.roomTypeId || r.roomRateId) return r;
+        const mealId = r.rateTypeId || mealPlanOptionsForRoomType(ezeeMapping, r.roomTypeId, r.roomTypeName)[0]?.id;
+        if (!mealId) return r;
+        const patch = buildRateFieldsFromPms(ezeeMapping, ezeeRateMap, r.roomTypeId, r.roomTypeName, mealId);
+        if (!patch.estimatedRate && !r.ratePerNight) return r;
+        return {
+          ...r,
+          rateTypeId: patch.mealPlanId || r.rateTypeId,
+          planName: patch.mealPlanName || patch.ratePlanName || r.planName,
+          ratePerNight: r.ratePerNight || patch.estimatedRate || 0,
+        };
+      })
+    );
+  }, [open, ezeeMapping, ezeeRateMap]);
+
   useEffect(() => {
     if (!open) return;
     setStep(1);
+    setActiveRoomIdx(0);
     setError(null);
     setBookingRef("");
     setReadBack(null);
@@ -396,10 +403,55 @@ export function BookRoomDialog({
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [available, checkIn, checkOut]);
 
-  const plansForRoomType = (roomTypeId?: string) =>
-    available
+  const plansForRoomType = (roomTypeId?: string) => {
+    const fromAvail = available
       .filter((r) => String(r.roomTypeId) === String(roomTypeId))
       .sort((a, b) => a.planName.localeCompare(b.planName));
+    if (fromAvail.length > 0 || !roomTypeId || !ezeeMapping) return fromAvail;
+
+    const mealOpts = mealPlanOptionsForRoomType(ezeeMapping, roomTypeId);
+    return mealOpts.map((mp) => {
+      const plan = resolveRatePlanForSelection(ezeeMapping, roomTypeId, undefined, mp.id);
+      const patch = buildRateFieldsFromPms(ezeeMapping, ezeeRateMap, roomTypeId, undefined, mp.id);
+      const nightly = nights > 0 ? (patch.estimatedRate || 0) * nights : 0;
+      return {
+        roomTypeId,
+        roomRateId: `fallback_${roomTypeId}_${mp.id}`,
+        rateTypeId: mp.id,
+        roomTypeName: "",
+        planName: mp.name,
+        availableRooms: 1,
+        totalBeforeTax: nightly,
+        totalTax: 0,
+        baseAdultOccupancy: 1,
+        maxAdultOccupancy: 10,
+        maxChildOccupancy: 5,
+        nightlyRates: [],
+      } as AvailableRoomRow;
+    });
+  };
+
+  const resetRowToPms = (rowId: string) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId || !r.roomTypeId || !ezeeMapping || !ezeeRateMap) return r;
+        const mealId = r.rateTypeId || mealPlanOptionsForRoomType(ezeeMapping, r.roomTypeId, r.roomTypeName)[0]?.id;
+        if (!mealId) return r;
+        const patch = buildRateFieldsFromPms(ezeeMapping, ezeeRateMap, r.roomTypeId, r.roomTypeName, mealId);
+        const match = r.roomRateId ? available.find((x) => x.roomRateId === r.roomRateId) : undefined;
+        if (match) {
+          const { ratePerNight, nightlyRates } = computeDiscountedRates(match, nights, bookingDiscountPercent);
+          return { ...r, ratePerNight, nightlyRates, rateTypeId: patch.mealPlanId || r.rateTypeId, planName: patch.mealPlanName || r.planName };
+        }
+        return {
+          ...r,
+          rateTypeId: patch.mealPlanId || r.rateTypeId,
+          planName: patch.mealPlanName || patch.ratePlanName || r.planName,
+          ratePerNight: patch.estimatedRate || 0,
+        };
+      })
+    );
+  };
 
   const capsForRoomTypeId = (roomTypeId: string) => {
     const entries = available.filter((a) => String(a.roomTypeId) === String(roomTypeId));
@@ -472,7 +524,9 @@ export function BookRoomDialog({
     setRows((prev) =>
       prev.map((r) => {
         if (r.id !== rowId) return r;
-        const match = available.find((x) => x.roomRateId === roomRateId);
+        const match =
+          available.find((x) => x.roomRateId === roomRateId) ||
+          plansForRoomType(r.roomTypeId).find((x) => x.roomRateId === roomRateId);
         if (!match) return r;
         const { ratePerNight, nightlyRates } = computeDiscountedRates(match, nights, bookingDiscountPercent);
         const baseAdult =
@@ -503,11 +557,20 @@ export function BookRoomDialog({
     );
   };
 
-  const removeRow = (rowId: string) => setRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.id !== rowId)));
-  const addRow = () =>
+  const removeRow = (rowId: string) => {
+    setRows((prev) => {
+      if (prev.length <= 1) return prev;
+      const idx = prev.findIndex((r) => r.id === rowId);
+      const next = prev.filter((r) => r.id !== rowId);
+      setActiveRoomIdx((i) => Math.min(i >= idx ? Math.max(0, i - 1) : i, next.length - 1));
+      return next;
+    });
+  };
+
+  const addRow = () => {
     setRows((prev) => {
       const caps = defaultOccupancyCaps();
-      return [
+      const next = [
         ...prev,
         {
           id: `room-${prev.length + 1}-${Date.now()}`,
@@ -518,7 +581,30 @@ export function BookRoomDialog({
           ...caps,
         },
       ];
+      if (next.length > 2) setActiveRoomIdx(next.length - 1);
+      return next;
     });
+  };
+
+  const displayedRoomIdx = rows.length > 2 ? activeRoomIdx : 0;
+  const displayedRow = rows[displayedRoomIdx];
+
+  useEffect(() => {
+    if (!displayedRow?.roomTypeId || !hotel.hotelId) {
+      setPhysicalRooms([]);
+      return;
+    }
+    setPhysicalRoomsLoading(true);
+    fetchPhysicalRooms({
+      hotelId: hotel.hotelId,
+      roomTypeId: displayedRow.roomTypeId,
+      fromDate: checkIn,
+      toDate: checkOut,
+    })
+      .then(setPhysicalRooms)
+      .catch(() => setPhysicalRooms([]))
+      .finally(() => setPhysicalRoomsLoading(false));
+  }, [displayedRow?.roomTypeId, hotel.hotelId, checkIn, checkOut]);
 
   const pricing = useMemo(() => {
     const roomCharges = rows.reduce((sum, r) => sum + (Number(r.ratePerNight) || 0) * nights, 0);
@@ -561,9 +647,11 @@ export function BookRoomDialog({
     };
   }, [rows, nights, available, bookingDiscountPercent]);
 
-  const canContinueFromStep1 = nights > 0 && rows.every((r) => r.roomTypeId && r.roomRateId && r.rateTypeId && r.ratePerNight > 0);
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim());
+  const canContinueFromStep1 = nights > 0 && !!checkIn && !!checkOut;
   const canContinueFromStep2 =
+    nights > 0 && rows.every((r) => r.roomTypeId && r.roomRateId && r.rateTypeId && r.ratePerNight > 0);
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim());
+  const canContinueFromStep3 =
     !!guestFirstName.trim() &&
     !!guestLastName.trim() &&
     emailOk &&
@@ -633,24 +721,124 @@ export function BookRoomDialog({
     }
   };
 
+  const renderStepper = () => {
+    if (step === "done") return null;
+    const current = step as 1 | 2 | 3 | 4;
+    return (
+      <div className="flex flex-wrap items-center gap-1.5 mt-3">
+        {WIZARD_STEPS.map(({ n, label }, i) => {
+          const done = n < current;
+          const active = n === current;
+          return (
+            <div key={n} className="flex items-center gap-1.5">
+              {i > 0 ? <span className="text-muted-foreground text-xs">—</span> : null}
+              <Badge
+                variant={active ? "default" : done ? "secondary" : "outline"}
+                className="gap-1 font-normal"
+              >
+                {done ? <Check className="h-3 w-3" /> : <span>{n}</span>}
+                {label}
+              </Badge>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderFooter = () => {
+    if (step === "done") {
+      return (
+        <DialogFooter className="px-6 py-4 shrink-0 border-t bg-background">
+          <Button type="button" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </DialogFooter>
+      );
+    }
+
+    if (step === 1) {
+      return (
+        <DialogFooter className="px-6 py-4 shrink-0 border-t bg-background flex-row justify-between sm:justify-between">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+          <Button type="button" onClick={() => setStep(2)} disabled={!canContinueFromStep1}>
+            Continue
+          </Button>
+        </DialogFooter>
+      );
+    }
+
+    if (step === 2) {
+      return (
+        <DialogFooter className="px-6 py-4 shrink-0 border-t bg-background flex-row flex-wrap gap-2 justify-between sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="outline" onClick={() => setStep(1)}>
+              Back
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Due <span className="font-semibold text-foreground">{money(pricing.due)}</span>
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={addRow} disabled={loadingRooms}>
+              Add room
+            </Button>
+            <Button type="button" onClick={() => setStep(3)} disabled={!canContinueFromStep2 || loadingRooms}>
+              {loadingRooms ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Continue
+            </Button>
+          </div>
+        </DialogFooter>
+      );
+    }
+
+    if (step === 3) {
+      return (
+        <DialogFooter className="px-6 py-4 shrink-0 border-t bg-background flex-row justify-between sm:justify-between">
+          <Button type="button" variant="outline" onClick={() => setStep(2)}>
+            Back
+          </Button>
+          <Button type="button" onClick={() => setStep(4)} disabled={!canContinueFromStep3}>
+            Continue
+          </Button>
+        </DialogFooter>
+      );
+    }
+
+    return (
+      <DialogFooter className="px-6 py-4 shrink-0 border-t bg-background flex-row justify-between sm:justify-between">
+        <Button type="button" variant="outline" onClick={() => setStep(3)}>
+          Back
+        </Button>
+        <Button type="button" onClick={confirmBooking} disabled={confirming}>
+          {confirming ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          Confirm booking
+        </Button>
+      </DialogFooter>
+    );
+  };
+
+  const roomsToShow =
+    rows.length > 2 ? [rows[displayedRoomIdx]].filter(Boolean) : rows;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[1100px]">
-        <DialogHeader>
-          <DialogTitle>
-            Book room · {hotel.hotelName}
-            {step !== "done" ? <span className="ml-2 text-sm font-normal text-muted-foreground">Step {step} of 3</span> : null}
-          </DialogTitle>
+      <DialogContent className="w-[min(100vw-2rem,960px)] max-h-[min(90vh,720px)] flex flex-col overflow-hidden p-0">
+        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+          <DialogTitle>Book room · {hotel.hotelName}</DialogTitle>
+          {renderStepper()}
         </DialogHeader>
 
         {error ? (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          <div className="mx-6 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 shrink-0">{error}</div>
         ) : null}
 
-        {step === 1 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
+        <div className="flex-1 min-h-0 overflow-hidden px-6 py-2">
+          {step === 1 ? (
+            <div className="space-y-4 max-w-lg">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label>Check-in</Label>
                   <Input
@@ -679,27 +867,14 @@ export function BookRoomDialog({
                 </div>
                 <div className="space-y-1">
                   <Label>Nights</Label>
-                  <Input value={String(nights || 0)} readOnly />
+                  <Input value={String(nights || 0)} readOnly className="bg-muted/40" />
                 </div>
-                <div className="space-y-1">
-                  <Label>Rooms</Label>
-                  <Input value={String(rows.length)} readOnly />
-                </div>
-                <div className="space-y-1">
-                  <Label>Reservation type</Label>
-                  <Select value="confirm">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Confirm Booking" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="confirm">Confirm Booking</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label>Booking source</Label>
                   <Select value={sourceId} onValueChange={setSourceId}>
-                    <SelectTrigger className="w-full min-w-0">
+                    <SelectTrigger>
                       <SelectValue placeholder="Select source" />
                     </SelectTrigger>
                     <SelectContent>
@@ -715,7 +890,7 @@ export function BookRoomDialog({
                 <div className="space-y-1">
                   <Label>Business source</Label>
                   <Select value={businessSourceId} onValueChange={setBusinessSourceId}>
-                    <SelectTrigger className="w-full min-w-0">
+                    <SelectTrigger>
                       <SelectValue placeholder="Not specified" />
                     </SelectTrigger>
                     <SelectContent>
@@ -723,522 +898,258 @@ export function BookRoomDialog({
                       <SelectItem value={BUSINESS_SOURCE_HOLIDAYS_UNLIMITED_ID}>HOLIDAYS UNLIMITED</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground leading-tight">
-                    Sent to eZee as Source_Id when set; overrides booking source.
-                  </p>
                 </div>
               </div>
+            </div>
+          ) : null}
 
-              <div className="flex flex-col gap-1 max-w-md">
-                <Label className="text-xs text-muted-foreground">Promotion code</Label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    placeholder="Enter code"
-                    value={promotionCode}
-                    onChange={(e) => {
-                      setPromotionCode(e.target.value);
-                      setPromoError("");
-                      if (lockedPromoCode) setLockedPromoCode(null);
-                    }}
-                    className="w-40"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!promotionCode.trim() || loadingRooms}
-                    onClick={() => void handleApplyPromo()}
-                  >
-                    Apply
-                  </Button>
-                  {lockedPromoCode ? (
-                    <span className="text-xs text-green-600 self-center">Applied</span>
-                  ) : null}
+          {step === 2 ? (
+            <div className="space-y-3 h-full flex flex-col min-h-0">
+              <div className="flex flex-wrap items-end gap-3 shrink-0">
+                <div className="space-y-1 flex-1 min-w-[140px]">
+                  <Label className="text-xs">Promotion code</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter code"
+                      value={promotionCode}
+                      onChange={(e) => {
+                        setPromotionCode(e.target.value);
+                        setPromoError("");
+                        if (lockedPromoCode) setLockedPromoCode(null);
+                      }}
+                      className="h-9"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 shrink-0"
+                      disabled={!promotionCode.trim() || loadingRooms}
+                      onClick={() => void handleApplyPromo()}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                  {promoError ? <p className="text-xs text-red-600">{promoError}</p> : null}
+                  {lockedPromoCode ? <p className="text-xs text-green-600">Applied: {lockedPromoCode}</p> : null}
                 </div>
-                {promoError ? <p className="text-xs text-red-600">{promoError}</p> : null}
-              </div>
-
-              <div className="flex flex-col gap-1 max-w-md">
-                <Label className="text-xs text-muted-foreground">Additional discount (%)</Label>
-                <div className="flex flex-wrap items-end gap-2">
+                <div className="space-y-1 w-28">
+                  <Label className="text-xs">Discount %</Label>
                   <Input
                     type="number"
                     min={0}
                     max={discountCap}
                     step={0.5}
+                    className="h-9"
                     value={String(bookingDiscountPercent)}
                     onChange={(e) => {
                       const v = Math.min(discountCap, Math.max(0, Number(e.target.value || 0)));
                       setBookingDiscountPercent(Number.isFinite(v) ? v : 0);
                     }}
-                    className="w-24"
                   />
-                  <span className="text-xs text-muted-foreground pb-2">max {discountCap}% · pre-tax room rates only</span>
+                  <p className="text-[10px] text-muted-foreground">max {discountCap}%</p>
                 </div>
-                <p className="text-[11px] text-muted-foreground leading-snug">
-                  Applies to pre-tax nightly room rates for the reservation (the values eZee receives as per-night{" "}
-                  <span className="font-mono text-[10px]">baserate</span> in InsertBooking).
-                </p>
               </div>
 
-              <div className="rounded-md border">
-                <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs text-muted-foreground bg-muted/40">
-                  <div className="col-span-2">Room type</div>
-                  <div className="col-span-2">Rate type / Meal plan</div>
-                  <div className="col-span-2">Room no.</div>
-                  <div className="col-span-2">Guests</div>
-                  <div className="col-span-2 text-right">Rate ₹ (per night)</div>
-                  <div className="col-span-2 text-right">Actions</div>
+              {rows.length > 2 ? (
+                <div className="flex flex-wrap gap-1.5 shrink-0">
+                  {rows.map((r, idx) => (
+                    <Button
+                      key={r.id}
+                      type="button"
+                      size="sm"
+                      variant={idx === activeRoomIdx ? "default" : "outline"}
+                      onClick={() => setActiveRoomIdx(idx)}
+                    >
+                      Room {idx + 1}
+                    </Button>
+                  ))}
                 </div>
+              ) : null}
 
-                {rows.map((r) => {
-                  const plans = plansForRoomType(r.roomTypeId);
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {roomsToShow.map((r) => {
+                  const idx = rows.findIndex((x) => x.id === r.id);
                   return (
-                    <div key={r.id} className="grid grid-cols-12 gap-2 px-3 py-2 border-t items-center">
-                      <div className="col-span-2">
-                        <Select value={r.roomTypeId || ""} onValueChange={(v) => chooseRoomType(r.id, v)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder={loadingRooms ? "Loading…" : "Select"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {roomTypeOptions.map((opt) => (
-                              <SelectItem key={opt.id} value={opt.id}>
-                                <span className="flex items-center justify-between gap-2">
-                                  <span className="truncate">{opt.name}</span>
-                                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                    {opt.minAvail} avail
-                                    {opt.anyUnavailable ? <span className="text-amber-700"> · some nights unavailable</span> : null}
-                                  </span>
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="col-span-2">
-                        <Select value={r.roomRateId || ""} onValueChange={(v) => choosePlan(r.id, v)} disabled={!r.roomTypeId}>
-                          <SelectTrigger>
-                            <SelectValue placeholder={!r.roomTypeId ? "Select room type" : "Select"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {plans.map((p) => {
-                              const ok = checkAvailability(p, checkIn, checkOut);
-                              return (
-                                <SelectItem key={p.roomRateId} value={p.roomRateId} disabled={!ok}>
-                                  <span className="flex items-center justify-between gap-2">
-                                    <span className="truncate">{p.planName}</span>
-                                    {!ok ? (
-                                      <span className="text-xs text-amber-700 whitespace-nowrap">Unavailable</span>
-                                    ) : null}
-                                  </span>
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="col-span-2">
-                        {r.roomTypeId && hotel.hotelId ? (
-                          <PhysicalRoomSelect
-                            hotelId={hotel.hotelId}
-                            roomTypeId={r.roomTypeId}
-                            fromDate={checkIn}
-                            toDate={checkOut}
-                            value={r.physicalRoomId}
-                            onChange={(roomId, roomName) =>
-                              setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, physicalRoomId: roomId, physicalRoomName: roomName } : x)))
-                            }
-                          />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </div>
-
-                      <div className="col-span-2 flex flex-col gap-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Select
-                            value={String(r.adults)}
-                            onValueChange={(val) =>
-                              setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, adults: Number(val) } : x)))
-                            }
-                          >
-                            <SelectTrigger className="w-[4.5rem]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Array.from({ length: r.maxAdultOccupancy || 10 }, (_, i) => i + 1).map((n) => (
-                                <SelectItem key={n} value={String(n)}>
-                                  {n}
-                                  {n === r.baseAdultOccupancy ? " (base)" : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={String(r.children)}
-                            onValueChange={(val) =>
-                              setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, children: Number(val) } : x)))
-                            }
-                            disabled={!r.roomTypeId}
-                          >
-                            <SelectTrigger className="w-[4.5rem]">
-                              <SelectValue placeholder="0" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Array.from({ length: (r.maxChildOccupancy ?? 5) + 1 }, (_, i) => i).map((n) => (
-                                <SelectItem key={n} value={String(n)}>
-                                  {n}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {r.roomTypeId ? (
-                          <p className="text-xs text-muted-foreground">
-                            Max {r.maxAdultOccupancy} adults · Max {r.maxChildOccupancy} children
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="col-span-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          value={String(r.ratePerNight || 0)}
-                          readOnly={bookingDiscountPercent > 0}
-                          title={bookingDiscountPercent > 0 ? "Set additional discount to 0 to edit rates manually" : undefined}
-                          onChange={(e) =>
-                            setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, ratePerNight: Number(e.target.value) || 0 } : x)))
-                          }
-                        />
-                        {lockedPromoCode && r.roomRateId ? (() => {
-                          const selectedPlan = available.find((a) => a.roomRateId === r.roomRateId);
-                          const d = selectedPlan?.discount;
-                          if (!d) return null;
-                          return (
-                            <div className="text-xs text-green-600 mt-1">
-                              {d.promotionName ? `${d.promotionName} — ` : ""}
-                              {d.discountPercentage > 0 ? `${d.discountPercentage}% off` : "Promo applied"}
-                              {d.couponCode ? ` (${d.couponCode})` : ""}
-                            </div>
-                          );
-                        })() : null}
-                      </div>
-                      <div className="col-span-2 flex justify-end gap-2">
-                        <Button type="button" variant="ghost" size="icon" onClick={() => removeRow(r.id)} aria-label="Remove room">
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
+                    <RoomBookingCard
+                      key={r.id}
+                      row={r}
+                      rowIndex={idx}
+                      hotelId={hotel.hotelId}
+                      checkIn={checkIn}
+                      checkOut={checkOut}
+                      loadingRooms={loadingRooms}
+                      canRemove={rows.length > 1}
+                      roomTypeOptions={roomTypeOptions}
+                      plans={plansForRoomType(r.roomTypeId)}
+                      checkAvailability={checkAvailability}
+                      lockedPromoCode={lockedPromoCode}
+                      available={available}
+                      ezeeMapping={ezeeMapping}
+                      ezeeRateMap={ezeeRateMap}
+                      physicalRooms={physicalRooms}
+                      physicalRoomsLoading={physicalRoomsLoading}
+                      onChooseRoomType={(v) => chooseRoomType(r.id, v)}
+                      onChoosePlan={(v) => choosePlan(r.id, v)}
+                      onResetPms={() => resetRowToPms(r.id)}
+                      onRemove={() => removeRow(r.id)}
+                      onAdultsChange={(n) =>
+                        setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, adults: n } : x)))
+                      }
+                      onChildrenChange={(n) =>
+                        setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, children: n } : x)))
+                      }
+                      onRateChange={(n) =>
+                        setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, ratePerNight: n } : x)))
+                      }
+                      onPhysicalRoomChange={(roomId, roomName) =>
+                        setRows((prev) =>
+                          prev.map((x) =>
+                            x.id === r.id ? { ...x, physicalRoomId: roomId, physicalRoomName: roomName } : x
+                          )
+                        )
+                      }
+                    />
                   );
                 })}
               </div>
+            </div>
+          ) : null}
 
-              <div className="flex items-center justify-between">
-                <Button type="button" variant="outline" onClick={addRow} disabled={loadingRooms}>
-                  Add room
-                </Button>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                    Close
-                  </Button>
-                  <Button type="button" onClick={() => setStep(2)} disabled={!canContinueFromStep1 || loadingRooms}>
-                    {loadingRooms ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Continue
-                  </Button>
+          {step === 3 ? (
+            <div className="h-full overflow-y-auto pr-1 space-y-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Title *</Label>
+                  <Select value={guestTitle} onValueChange={setGuestTitle}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Mr">Mr</SelectItem>
+                      <SelectItem value="Mrs">Mrs</SelectItem>
+                      <SelectItem value="Ms">Ms</SelectItem>
+                      <SelectItem value="Dr">Dr</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">First name *</Label>
+                  <Input className="h-9" value={guestFirstName} onChange={(e) => setGuestFirstName(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Last name *</Label>
+                  <Input className="h-9" value={guestLastName} onChange={(e) => setGuestLastName(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Email *</Label>
+                  <Input className="h-9" type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Phone *</Label>
+                  <Input className="h-9" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} placeholder="+91 …" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Gender *</Label>
+                  <Select value={guestGender} onValueChange={setGuestGender}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={GUEST_GENDER_UNSET}>Select gender</SelectItem>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Date of birth *</Label>
+                  <Input className="h-9" type="date" value={guestDateOfBirth} onChange={(e) => setGuestDateOfBirth(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Nationality *</Label>
+                  <Input className="h-9" value={guestNationality} onChange={(e) => setGuestNationality(e.target.value)} placeholder="e.g. India" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Country *</Label>
+                  <Input className="h-9" value={guestCountry} onChange={(e) => setGuestCountry(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">City *</Label>
+                  <Input className="h-9" value={guestCity} onChange={(e) => setGuestCity(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">State</Label>
+                  <Input className="h-9" value={guestState} onChange={(e) => setGuestState(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Postal code</Label>
+                  <Input className="h-9" value={guestZipcode} onChange={(e) => setGuestZipcode(e.target.value)} />
+                </div>
+                <div className="space-y-1 col-span-2 lg:col-span-4">
+                  <Label className="text-xs">Street address</Label>
+                  <Input className="h-9" value={guestAddress} onChange={(e) => setGuestAddress(e.target.value)} />
+                </div>
+                <div className="space-y-1 col-span-2 lg:col-span-4">
+                  <Label className="text-xs">Special request</Label>
+                  <Textarea value={specialRequest} onChange={(e) => setSpecialRequest(e.target.value)} rows={2} />
                 </div>
               </div>
             </div>
+          ) : null}
 
-            <div className="rounded-md border p-4 h-fit">
-              <div className="text-sm font-semibold">Billing summary</div>
-              <div className="mt-3 space-y-2 text-sm">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Check-in</span>
-                  <span>{checkIn}</span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Check-out</span>
-                  <span>{checkOut}</span>
-                </div>
-                <div className="h-px bg-border my-2" />
-                <div className="flex justify-between">
-                  <span>Room charges</span>
-                  <span>{money(pricing.roomCharges)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Taxes (est.)</span>
-                  <span>{money(pricing.taxes)}</span>
-                </div>
-                {lockedPromoCode && pricing.totalPromotionSavings > 0 ? (
-                  <div className="flex justify-between text-sm text-green-600">
-                    <span>Est. savings (promo)</span>
-                    <span>{money(pricing.totalPromotionSavings)}</span>
-                  </div>
-                ) : null}
-                {bookingDiscountPercent > 0 && pricing.manualDiscountSavings > 0 ? (
-                  <div className="flex justify-between text-sm text-green-600">
-                    <span>Est. savings ({bookingDiscountPercent}% off list)</span>
-                    <span>{money(pricing.manualDiscountSavings)}</span>
-                  </div>
-                ) : null}
-                <div className="h-px bg-border my-2" />
-                <div className="flex justify-between text-base font-semibold">
-                  <span>Due amount</span>
-                  <span>{money(pricing.due)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
+          {step === 4 ? (
+            <BookingReviewSummary
+              hotelName={hotel.hotelName}
+              checkIn={checkIn}
+              checkOut={checkOut}
+              nights={nights}
+              rows={rows}
+              guestTitle={guestTitle}
+              guestFirstName={guestFirstName}
+              guestLastName={guestLastName}
+              guestPhone={guestPhone}
+              guestEmail={guestEmail}
+              guestCity={guestCity}
+              guestState={guestState}
+              guestCountry={guestCountry}
+              lockedPromoCode={lockedPromoCode}
+              bookingDiscountPercent={bookingDiscountPercent}
+              pricing={pricing}
+              formatMoney={money}
+            />
+          ) : null}
 
-        {step === 2 ? (
-          <div className="space-y-4">
-            <div className="text-sm font-medium">Guest details</div>
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-              <div className="space-y-1">
-                <Label>
-                  Title <span className="text-red-500">*</span>
-                </Label>
-                <Select value={guestTitle} onValueChange={setGuestTitle}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select title" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Mr">Mr</SelectItem>
-                    <SelectItem value="Mrs">Mrs</SelectItem>
-                    <SelectItem value="Ms">Ms</SelectItem>
-                    <SelectItem value="Dr">Dr</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  First name <span className="text-red-500">*</span>
-                </Label>
-                <Input value={guestFirstName} onChange={(e) => setGuestFirstName(e.target.value)} autoComplete="given-name" />
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  Last name <span className="text-red-500">*</span>
-                </Label>
-                <Input value={guestLastName} onChange={(e) => setGuestLastName(e.target.value)} autoComplete="family-name" />
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  Email <span className="text-red-500">*</span>
-                </Label>
-                <Input type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} autoComplete="email" />
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  Phone number <span className="text-red-500">*</span>
-                </Label>
-                <Input value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} autoComplete="tel" placeholder="+91 …" />
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  Gender <span className="text-red-500">*</span>
-                </Label>
-                <Select value={guestGender} onValueChange={setGuestGender}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={GUEST_GENDER_UNSET}>Select gender</SelectItem>
-                    <SelectItem value="Male">Male</SelectItem>
-                    <SelectItem value="Female">Female</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  Date of birth <span className="text-red-500">*</span>
-                </Label>
-                <Input type="date" value={guestDateOfBirth} onChange={(e) => setGuestDateOfBirth(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  Nationality <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  value={guestNationality}
-                  onChange={(e) => setGuestNationality(e.target.value)}
-                  placeholder="e.g. India"
-                  autoComplete="country-name"
-                />
-              </div>
-            </div>
-            <div className="text-sm font-medium pt-2">Address</div>
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-              <div className="space-y-1">
-                <Label>
-                  Country <span className="text-red-500">*</span>
-                </Label>
-                <Input value={guestCountry} onChange={(e) => setGuestCountry(e.target.value)} autoComplete="country-name" />
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  City <span className="text-red-500">*</span>
-                </Label>
-                <Input value={guestCity} onChange={(e) => setGuestCity(e.target.value)} autoComplete="address-level2" placeholder="Enter city" />
-              </div>
-              <div className="space-y-1">
-                <Label>State / region</Label>
-                <Input value={guestState} onChange={(e) => setGuestState(e.target.value)} autoComplete="address-level1" />
-              </div>
-              <div className="space-y-1">
-                <Label>Postal code</Label>
-                <Input value={guestZipcode} onChange={(e) => setGuestZipcode(e.target.value)} autoComplete="postal-code" />
-              </div>
-              <div className="space-y-1 lg:col-span-4">
-                <Label>Street address</Label>
-                <Input value={guestAddress} onChange={(e) => setGuestAddress(e.target.value)} autoComplete="street-address" />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>Special request</Label>
-              <Textarea value={specialRequest} onChange={(e) => setSpecialRequest(e.target.value)} rows={3} />
-            </div>
-            <div className="flex justify-between">
-              <Button type="button" variant="outline" onClick={() => setStep(1)}>
-                Back
-              </Button>
-              <Button type="button" onClick={() => setStep(3)} disabled={!canContinueFromStep2}>
-                Continue
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {step === 3 ? (
-          <div className="space-y-4">
-            <div className="rounded-md border p-4">
-              <div className="text-sm font-semibold">Review</div>
-              <div className="mt-2 text-sm text-muted-foreground">
-                {hotel.hotelName} · {checkIn} → {checkOut} · {nights} night{nights === 1 ? "" : "s"}
-              </div>
-              {lockedPromoCode ? (
-                <div className="mt-2 flex justify-between text-sm">
-                  <span className="text-muted-foreground">Promotion code</span>
-                  <span className="font-medium text-green-600">{lockedPromoCode}</span>
-                </div>
-              ) : null}
-              {businessSourceId && businessSourceId !== BUSINESS_SOURCE_NONE ? (
-                <div className="mt-2 flex justify-between text-sm">
-                  <span className="text-muted-foreground">Business source (eZee Source_Id)</span>
-                  <span className="font-medium">HOLIDAYS UNLIMITED</span>
-                </div>
-              ) : null}
-              <div className="mt-4 space-y-2">
-                {rows.map((r, idx) => (
-                  <div key={r.id} className="flex justify-between text-sm">
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">
-                        Room {idx + 1}: {r.roomTypeName || r.roomTypeId} · {r.planName}
-                      </div>
-                      <div className="text-muted-foreground">
-                        {r.adults} adult{r.adults === 1 ? "" : "s"}, {r.children} child{r.children === 1 ? "" : "ren"} · {money(r.ratePerNight)} / night
-                      </div>
-                    </div>
-                    <div className="font-medium">{money(r.ratePerNight * nights)}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="h-px bg-border my-3" />
-              <div className="flex justify-between text-sm">
-                <span>Guest</span>
-                <span className="font-medium">
-                  {guestTitle} {guestFirstName} {guestLastName}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>Contact</span>
-                <span className="text-muted-foreground">{[guestPhone, guestEmail].filter(Boolean).join(" · ") || "—"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Gender</span>
-                <span className="font-medium">{guestGender !== GUEST_GENDER_UNSET ? guestGender : "—"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Date of birth</span>
-                <span className="font-medium">{guestDateOfBirth || "—"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Nationality</span>
-                <span className="font-medium">{guestNationality || "—"}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Location</span>
-                <span className="font-medium">
-                  {[guestCity, guestState, guestCountry].filter(Boolean).join(", ") || "—"}
-                </span>
-              </div>
-              <div className="h-px bg-border my-3" />
-              {lockedPromoCode && pricing.totalPromotionSavings > 0 ? (
-                <div className="flex justify-between text-sm text-green-600 mb-2">
-                  <span>Est. savings (promo)</span>
-                  <span>{money(pricing.totalPromotionSavings)}</span>
-                </div>
-              ) : null}
-              <div className="flex justify-between text-base font-semibold">
-                <span>Grand total (est.)</span>
-                <span>{money(pricing.due)}</span>
-              </div>
-              {specialRequest?.trim() ? (
-                <div className="mt-3 text-sm">
-                  <div className="text-muted-foreground">Special request</div>
-                  <div className="mt-1">{specialRequest}</div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex justify-between">
-              <Button type="button" variant="outline" onClick={() => setStep(1)}>
-                Edit
-              </Button>
-              <Button type="button" onClick={confirmBooking} disabled={confirming}>
-                {confirming ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Confirm booking
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {step === "done" ? (
-          <div className="space-y-4">
-            <div className="rounded-md border p-4">
+          {step === "done" ? (
+            <div className="rounded-md border p-4 space-y-3">
               <div className="text-sm font-semibold">Booking confirmed</div>
-              <div className="mt-1 text-sm text-muted-foreground">eZee reference</div>
-              <div className="mt-1 text-lg font-semibold">{bookingRef}</div>
-              <div className="mt-3 flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      const data = await readEzeeBooking({ hotelId: hotel.hotelId, bookingRef });
-                      setReadBack(data);
-                    } catch (e) {
-                      setError(e instanceof Error ? e.message : "Failed to read booking");
-                    }
-                  }}
-                >
-                  View booking
-                </Button>
-                <Button type="button" onClick={() => onOpenChange(false)}>
-                  Done
-                </Button>
-              </div>
+              <div className="text-sm text-muted-foreground">eZee reference</div>
+              <div className="text-lg font-semibold">{bookingRef}</div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const data = await readEzeeBooking({ hotelId: hotel.hotelId, bookingRef });
+                    setReadBack(data);
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "Failed to read booking");
+                  }
+                }}
+              >
+                View booking details
+              </Button>
               {readBack ? (
-                <pre className="mt-3 max-h-[240px] overflow-auto rounded-md bg-muted p-3 text-xs">
+                <pre className="max-h-[200px] overflow-auto rounded-md bg-muted p-3 text-xs">
                   {JSON.stringify(readBack, null, 2)}
                 </pre>
               ) : null}
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
+
+        {renderFooter()}
       </DialogContent>
     </Dialog>
   );

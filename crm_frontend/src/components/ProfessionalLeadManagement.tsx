@@ -30,7 +30,9 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SendQuotationDialog } from "@/components/SendQuotationDialog";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
-import { getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { aggregateInventoryByRoomType, getLiveAvailabilityCached, getRoomCatalogue, syncRoomCatalogue, RoomCatalogue, resolveRoomTypeDisplayName } from "@/services/pms";
+import { useEzeeRatesForProperty } from "@/services/ezeeRates";
+import { RoomRateFields } from "@/components/leads/RoomRateFields";
 import {
   COUNTRY_PHONE_OPTIONS,
   parsePhoneForForm,
@@ -53,6 +55,14 @@ const hotelRoomRequestSchema = z.object({
   adults: z.number().int().min(1).default(1),
   children: z.number().int().min(0).default(0),
   notes: z.string().optional(),
+  mealPlanId: z.string().optional(),
+  mealPlanName: z.string().optional(),
+  ratePlanId: z.string().optional(),
+  ratePlanName: z.string().optional(),
+  estimatedRate: z.number().optional(),
+  extraAdultRate: z.number().optional(),
+  extraChildRate: z.number().optional(),
+  rateSource: z.enum(["pms", "manual"]).optional(),
 });
 
 const hotelEntrySchema = z.object({
@@ -114,6 +124,12 @@ const defaultRoomRequest = () => ({
   quantity: 1,
   adults: 1,
   children: 0,
+  mealPlanId: "",
+  mealPlanName: "",
+  ratePlanId: "",
+  ratePlanName: "",
+  estimatedRate: undefined as number | undefined,
+  rateSource: undefined as "pms" | "manual" | undefined,
 });
 
 /** Parse YYYY-MM-DD as local noon to avoid UTC boundary issues with calendar fields. */
@@ -159,7 +175,22 @@ function HotelItineraryCard({
   const roomsReqWatch = useWatch({
     control,
     name: `hotels.${index}.roomsRequested`,
-  }) as { roomTypeId?: string; roomTypeName?: string }[] | undefined;
+  }) as {
+    roomTypeId?: string;
+    roomTypeName?: string;
+    mealPlanId?: string;
+    mealPlanName?: string;
+    ratePlanId?: string;
+    ratePlanName?: string;
+    estimatedRate?: number;
+    extraAdultRate?: number;
+    extraChildRate?: number;
+    rateSource?: "pms" | "manual";
+  }[] | undefined;
+
+  const fromDate = checkInDate ? format(checkInDate, "yyyy-MM-dd") : "";
+  const toDate = checkOutDate ? format(checkOutDate, "yyyy-MM-dd") : "";
+  const { mapping, rateMap, loading: ratesLoading } = useEzeeRatesForProperty(propertyId, fromDate, toDate);
 
   useEffect(() => {
     if (!propertyId || !checkInDate || !checkOutDate) {
@@ -190,11 +221,7 @@ function HotelItineraryCard({
             return;
           }
           const inv = Array.isArray(res) ? res : [];
-          const byRoomTypeId: Record<string, number> = {};
-          for (const row of inv) {
-            if (!row?.roomTypeId) continue;
-            byRoomTypeId[row.roomTypeId] = Number(row.availableCount ?? 0);
-          }
+          const byRoomTypeId = aggregateInventoryByRoomType(inv);
           setAvailabilityState({ status: "ready", byRoomTypeId, key: requestKey });
         })
         .catch((err) => {
@@ -520,6 +547,33 @@ function HotelItineraryCard({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+
+              <RoomRateFields
+                propertyId={propertyId}
+                fromDate={fromDate}
+                toDate={toDate}
+                roomTypeId={roomsReqWatch?.[roomIndex]?.roomTypeId}
+                roomTypeName={roomsReqWatch?.[roomIndex]?.roomTypeName}
+                value={{
+                  mealPlanId: roomsReqWatch?.[roomIndex]?.mealPlanId,
+                  mealPlanName: roomsReqWatch?.[roomIndex]?.mealPlanName,
+                  ratePlanId: roomsReqWatch?.[roomIndex]?.ratePlanId,
+                  ratePlanName: roomsReqWatch?.[roomIndex]?.ratePlanName,
+                  estimatedRate: roomsReqWatch?.[roomIndex]?.estimatedRate,
+                  extraAdultRate: roomsReqWatch?.[roomIndex]?.extraAdultRate,
+                  extraChildRate: roomsReqWatch?.[roomIndex]?.extraChildRate,
+                  rateSource: roomsReqWatch?.[roomIndex]?.rateSource,
+                }}
+                onChange={(patch) => {
+                  for (const [k, v] of Object.entries(patch)) {
+                    setValue(`hotels.${index}.roomsRequested.${roomIndex}.${k}` as any, v);
+                  }
+                }}
+                mapping={mapping}
+                rateMap={rateMap}
+                ratesLoading={ratesLoading}
+                compact
+              />
             </div>
           ))}
         </div>
@@ -1126,6 +1180,14 @@ const ProfessionalLeadManagement = ({
             adults: Number(r.adults) || 1,
             children: Number(r.children) || 0,
             notes: r.notes || undefined,
+            mealPlanId: r.mealPlanId || undefined,
+            mealPlanName: r.mealPlanName || undefined,
+            ratePlanId: r.ratePlanId || undefined,
+            ratePlanName: r.ratePlanName || undefined,
+            estimatedRate: r.estimatedRate !== undefined && r.estimatedRate !== "" ? Number(r.estimatedRate) : undefined,
+            extraAdultRate: r.extraAdultRate !== undefined ? Number(r.extraAdultRate) : undefined,
+            extraChildRate: r.extraChildRate !== undefined ? Number(r.extraChildRate) : undefined,
+            rateSource: r.rateSource || undefined,
           })),
         };
       });

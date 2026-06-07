@@ -460,9 +460,9 @@ export const ProfessionalCRM = ({
             </div>
           );
         }
-        return <IntegrationHub />;
+        return <IntegrationHub onNavigate={setActiveView} />;
       case 'setup/webhooks':
-        return <IntegrationSettings />;
+        return <IntegrationSettings onNavigate={setActiveView} />;
       case 'setup/audit-log':
         if (!isAdmin && !canManageUsers) {
           return (
@@ -491,7 +491,7 @@ export const ProfessionalCRM = ({
         }
         return <AdminApiConsole />;
       case 'integration-settings':
-        return <IntegrationSettings />;
+        return <IntegrationSettings onNavigate={setActiveView} />;
       case 'pipeline-management':
         if (!isAdmin && !permissions?.includes("leads.manage")) {
           return (
