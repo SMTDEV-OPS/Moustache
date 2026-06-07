@@ -2,6 +2,7 @@ import { Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { config } from "./config/env";
+import { isAllowedOrigin } from "./config/cors";
 import { logger } from "./config/logger";
 import { LeadModel } from "./models/lead";
 import { UserModel } from "./models/user";
@@ -22,7 +23,13 @@ interface AuthPayload {
 export function initializeWebSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     cors: {
-      origin: "*",
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Origin ${origin} not allowed by CORS`));
+        }
+      },
       methods: ["GET", "POST"],
     },
     transports: ["websocket", "polling"],

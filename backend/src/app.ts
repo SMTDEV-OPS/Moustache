@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { corsOriginCallback } from "./config/cors";
 import { errorHandler } from "./middleware/errorHandler";
 import { requestLogger } from "./middleware/requestLogger";
 import { logger } from "./config/logger";
@@ -54,7 +55,7 @@ export const app = express();
 
 app.use(
   cors({
-    origin: "*",
+    origin: corsOriginCallback,
   })
 );
 app.use(express.json());

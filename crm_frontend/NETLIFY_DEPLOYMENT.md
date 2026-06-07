@@ -13,6 +13,12 @@ You **MUST** set the following environment variable in your Netlify dashboard:
    - **Value**: `https://moustachecrm.onrender.com`
    - **Scopes**: Select "All scopes" (or specific scopes as needed)
 
+### Deploy Branch
+
+In **Site settings** → **Build & deploy** → **Continuous deployment**, set:
+
+- **Branch to deploy**: `new_role_management` (not `main`)
+
 ### Build Settings
 
 The `netlify.toml` file is already configured with:
@@ -46,13 +52,5 @@ The `netlify.toml` file is already configured with:
 
 ### CORS Configuration
 
-Make sure your backend (`backend/src/app.ts`) has CORS configured to allow your Netlify domain:
-
-```typescript
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "*", // Or specific Netlify domain
-  })
-);
-```
+The backend uses an explicit CORS allowlist in `backend/src/config/cors.ts`. Set `FRONTEND_URL` on Render to your Netlify URL, or add it to `ALLOWED_ORIGINS` (comma-separated).
 

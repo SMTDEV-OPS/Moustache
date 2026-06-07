@@ -3,6 +3,7 @@ export interface AppConfig {
   mongoUri: string;
   jwtSecret: string;
   nodeEnv: string;
+  frontendUrl: string;
   /** Base URL (no trailing slash) for quotation email @font-face WOFF2 files on S3/CDN. Empty = no @font-face. */
   quotationFontCdnBase: string;
   aws: {
@@ -29,6 +30,7 @@ export const config: AppConfig = {
   mongoUri: getEnv("MONGO_URI", "mongodb://localhost:27017/Moustachecrm"),
   jwtSecret: getEnv("JWT_SECRET", "change-me-in-production"),
   nodeEnv: getEnv("NODE_ENV", "development"),
+  frontendUrl: getEnv("FRONTEND_URL", "http://localhost:8080"),
   quotationFontCdnBase: (process.env.QUOTATION_FONT_CDN_BASE ?? "").trim().replace(/\/$/, ""),
   aws: {
     accessKeyId: getEnv("AWS_ACCESS_KEY_ID", ""),

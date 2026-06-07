@@ -21,15 +21,19 @@ Make sure to set these in your Render dashboard:
 - `JWT_SECRET` - Secret key for JWT tokens
 - `NODE_ENV` - Set to `production`
 - `NODE_OPTIONS` - Set to `--max-old-space-size=4096` (increases memory limit)
+- `FRONTEND_URL` - Your Netlify frontend URL for CORS (e.g. `https://your-app.netlify.app`)
 
 ### Render Dashboard Configuration
 
 If using Render dashboard (not render.yaml):
 
-1. **Root Directory**: `backend`
-2. **Build Command**: `npm install && npm run build`
-3. **Start Command**: `npm start`
-4. **Environment**: `Node`
+1. **Branch**: `new_role_management` (not `main`)
+2. **Root Directory**: `backend`
+3. **Build Command**: `npm install && npm run build`
+4. **Start Command**: `npm start`
+5. **Environment**: `Node`
+
+Set `FRONTEND_URL` to your Netlify site URL (e.g. `https://your-app.netlify.app`) so CORS allows production frontend requests.
 
 ### Troubleshooting
 
