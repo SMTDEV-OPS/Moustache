@@ -1,9 +1,20 @@
+function isNetlifyOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return protocol === "https:" && hostname.endsWith(".netlify.app");
+  } catch {
+    return false;
+  }
+}
+
 export function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true;
 
   if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) return true;
 
   if (/^http:\/\/localhost:\d+$/.test(origin)) return true;
+
+  if (isNetlifyOrigin(origin)) return true;
 
   const extra = (process.env.ALLOWED_ORIGINS ?? "")
     .split(",")
@@ -17,9 +28,5 @@ export const corsOriginCallback = (
   origin: string | undefined,
   callback: (err: Error | null, allow?: boolean) => void
 ) => {
-  if (isAllowedOrigin(origin)) {
-    callback(null, true);
-  } else {
-    callback(new Error(`Origin ${origin} not allowed by CORS`));
-  }
+  callback(null, isAllowedOrigin(origin));
 };

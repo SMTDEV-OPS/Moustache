@@ -21,7 +21,7 @@ Make sure to set these in your Render dashboard:
 - `JWT_SECRET` - Secret key for JWT tokens
 - `NODE_ENV` - Set to `production`
 - `NODE_OPTIONS` - Set to `--max-old-space-size=4096` (increases memory limit)
-- `FRONTEND_URL` - Your Netlify frontend URL for CORS (e.g. `https://your-app.netlify.app`)
+- `FRONTEND_URL` - Your Netlify frontend URL for OAuth redirects (e.g. `https://your-app.netlify.app`). All `https://*.netlify.app` origins are allowed for CORS automatically.
 
 ### Render Dashboard Configuration
 
@@ -33,7 +33,7 @@ If using Render dashboard (not render.yaml):
 4. **Start Command**: `npm start`
 5. **Environment**: `Node`
 
-Set `FRONTEND_URL` to your Netlify site URL (e.g. `https://your-app.netlify.app`) so CORS allows production frontend requests.
+Set `FRONTEND_URL` to your Netlify site URL (e.g. `https://tubular-mooncake-84659c.netlify.app`) for OAuth redirects. CORS allows any `https://*.netlify.app` origin; use `ALLOWED_ORIGINS` for custom domains.
 
 ### Troubleshooting
 

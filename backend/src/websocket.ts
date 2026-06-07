@@ -24,11 +24,7 @@ export function initializeWebSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        if (isAllowedOrigin(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error(`Origin ${origin} not allowed by CORS`));
-        }
+        callback(null, isAllowedOrigin(origin));
       },
       methods: ["GET", "POST"],
     },
